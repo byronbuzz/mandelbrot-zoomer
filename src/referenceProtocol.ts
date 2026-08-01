@@ -11,5 +11,5 @@ export type ReferenceResponse = {
   length: number;
   escaped: boolean;
   generationMs: number;
-  orbit: Float32Array;
+  orbit: Float32Array<ArrayBuffer>;
 };
