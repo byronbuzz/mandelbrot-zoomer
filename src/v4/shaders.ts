@@ -1,4 +1,8 @@
 export const computeShader = /* wgsl */ `
+const TILE_COLUMNS = 16u;
+const TILE_ROWS = 16u;
+const TILE_COUNT = 256u;
+
 struct Params {
   centerX: vec2f,
   centerY: vec2f,
@@ -18,6 +22,7 @@ struct Params {
 struct Telemetry {
   unresolved: atomic<u32>,
   exhausted: atomic<u32>,
+  tiles: array<atomic<u32>, 256>,
 }
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var outTex: texture_storage_2d<rgba8unorm, write>;
@@ -58,12 +63,17 @@ fn writeResult(id: vec2u, escaped: bool, iteration: u32, radius: f32) {
   let smoothValue = f32(iteration) + 1.0 - log2(log2(sqrt(max(radius, 1.0001))));
   textureStore(outTex, vec2i(id), vec4f(paletteColour(fract(.018 * smoothValue)), 1));
 }
-fn writeUnresolved(id: vec2u, exhausted: bool) {
+fn recordUnresolved(id: vec2u, exhausted: bool) {
   atomicAdd(&telemetry.unresolved, 1u);
   if (exhausted) { atomicAdd(&telemetry.exhausted, 1u); }
-  let checker = f32(((id.x / 8u) + (id.y / 8u)) & 1u);
-  let level = .025 + checker * .015;
-  textureStore(outTex, vec2i(id), vec4f(level, level, level, 1));
+  let tileX = min((id.x * TILE_COLUMNS) / max(p.width, 1u), TILE_COLUMNS - 1u);
+  let tileY = min((id.y * TILE_ROWS) / max(p.height, 1u), TILE_ROWS - 1u);
+  atomicAdd(&telemetry.tiles[tileY * TILE_COLUMNS + tileX], 1u);
+}
+fn writeUnresolved(id: vec2u, exhausted: bool) {
+  recordUnresolved(id, exhausted);
+  let markerAlpha = select(.25, 0.0, exhausted);
+  textureStore(outTex, vec2i(id), vec4f(0, 0, 0, markerAlpha));
 }
 fn pixelDelta(value: f32) -> vec2f {
   return vec2f(ldexp(value * p.scaleMantissa, p.scaleExponent), 0.0);
@@ -121,9 +131,6 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  // Store perturbations in viewport units: u = dz / viewportScale. Pixel
-  // deltas and reference offsets therefore remain order-one even when the
-  // physical viewport scale enters the f32 subnormal range.
   let dcx = dsAdd(p.referenceOffsetX, vec2f(normalizedX, 0.0));
   let dcy = dsAdd(p.referenceOffsetY, vec2f(normalizedY, 0.0));
   var ux = vec2f(0.0);
@@ -186,6 +193,44 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   writeResult(id, iteration < p.iterations, iteration, radius);
 }`;
 
+export const composeShader = /* wgsl */ `
+const TILE_COLUMNS = 16u;
+const TILE_ROWS = 16u;
+
+struct ComposeParams {
+  width: u32,
+  height: u32,
+}
+struct Telemetry {
+  unresolved: atomic<u32>,
+  exhausted: atomic<u32>,
+  tiles: array<atomic<u32>, 256>,
+}
+@group(0) @binding(0) var<uniform> p: ComposeParams;
+@group(0) @binding(1) var baseTex: texture_2d<f32>;
+@group(0) @binding(2) var repairTex: texture_2d<f32>;
+@group(0) @binding(3) var outTex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var<storage, read_write> telemetry: Telemetry;
+
+fn recordUnresolved(id: vec2u, exhausted: bool) {
+  atomicAdd(&telemetry.unresolved, 1u);
+  if (exhausted) { atomicAdd(&telemetry.exhausted, 1u); }
+  let tileX = min((id.x * TILE_COLUMNS) / max(p.width, 1u), TILE_COLUMNS - 1u);
+  let tileY = min((id.y * TILE_ROWS) / max(p.height, 1u), TILE_ROWS - 1u);
+  atomicAdd(&telemetry.tiles[tileY * TILE_COLUMNS + tileX], 1u);
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let id = gid.xy;
+  if (id.x >= p.width || id.y >= p.height) { return; }
+  let base = textureLoad(baseTex, vec2i(id), 0);
+  let repair = textureLoad(repairTex, vec2i(id), 0);
+  let result = select(base, repair, repair.a >= .5);
+  textureStore(outTex, vec2i(id), result);
+  if (result.a < .5) { recordUnresolved(id, result.a < .125); }
+}`;
+
 export const presentShader = /* wgsl */ `
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -215,5 +260,9 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-  return textureSample(imageTexture, imageSampler, input.uv);
+  let colour = textureSample(imageTexture, imageSampler, input.uv);
+  if (colour.a >= .5) { return vec4f(colour.rgb, 1); }
+  let checker = f32((u32(floor(input.position.x / 8.0)) + u32(floor(input.position.y / 8.0))) & 1u);
+  let level = .025 + checker * .015;
+  return vec4f(level, level, level, 1);
 }`;
