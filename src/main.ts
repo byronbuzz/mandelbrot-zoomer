@@ -3,21 +3,26 @@ import './style.css';
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing app root');
 
+const ITERATION_MIN = 50;
+const ITERATION_MAX = 100_000;
+const ITERATION_RATIO = ITERATION_MAX / ITERATION_MIN;
+const INITIAL_ITERATION_SLIDER = Math.log(500 / ITERATION_MIN) / Math.log(ITERATION_RATIO);
+
 app.innerHTML = `
 <section class="shell">
   <canvas id="fractal"></canvas>
   <header><strong>Mandelbrot Zoomer</strong><span id="status">Initialising WebGPU…</span></header>
   <aside>
     <h2>Render</h2>
+    <label>Zoom speed <output id="speedOut">1.00×/s</output><input id="speed" type="range" min="0.25" max="8" step="0.25" value="1"></label>
+    <label>Iterations <output id="iterOut">500</output><input id="iterations" type="range" min="0" max="1" step="0.001" value="${INITIAL_ITERATION_SLIDER.toFixed(3)}"></label>
+    <label>Palette phase <output id="palOut">0.00</output><input id="palette" type="range" min="0" max="1" step="0.005" value="0"></label>
     <label>Zoom depth <output id="zoomOut">1.00× · 10^0.00</output></label>
     <label>Precision <output id="precisionOut">f32</output></label>
     <label>Reference orbit <output id="orbitOut">inactive</output></label>
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>GPU frame rate <output id="fpsOut">0.0 FPS</output></label>
     <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
-    <label>Zoom speed <output id="speedOut">1.00×/s</output><input id="speed" type="range" min="0.25" max="8" step="0.25" value="1"></label>
-    <label>Iterations <output id="iterOut">500</output><input id="iterations" type="range" min="50" max="10000" step="50" value="500"></label>
-    <label>Palette phase <output id="palOut">0.00</output><input id="palette" type="range" min="0" max="1" step="0.005" value="0"></label>
     <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Rendering switches automatically from f32 to double-float and then perturbation for deeper zooms.</p>
   </aside>
 </section>`;
@@ -55,6 +60,7 @@ struct Params {
   height: u32,
   mode: u32,
   orbitLength: u32,
+  referenceOffset: vec2f,
 }
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var outTex: texture_storage_2d<rgba8unorm, write>;
@@ -146,7 +152,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  let dc = vec2f(ox, oy) * (p.scale.x + p.scale.y);
+  let dc = p.referenceOffset + vec2f(ox, oy) * (p.scale.x + p.scale.y);
   var dz = vec2f(0.);
   var iteration = 0u;
   var radius = 0.0;
@@ -196,9 +202,8 @@ if (shaderErrors.length) {
 }
 const pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 const params = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-const MAX_ITERATIONS = 10000;
 const orbitBuffer = device.createBuffer({
-  size: (MAX_ITERATIONS + 1) * 16,
+  size: (ITERATION_MAX + 1) * 16,
   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 });
 const info = adapter.info;
@@ -207,7 +212,8 @@ device.addEventListener('uncapturederror', event => { status.textContent = `WebG
 device.lost.then(reason => { status.textContent = `GPU device lost: ${reason.message || reason.reason}`; }).catch(() => undefined);
 
 const DOUBLE_FLOAT_THRESHOLD = 1e4;
-const PERTURBATION_THRESHOLD = 5e4;
+const PERTURBATION_ENTER_THRESHOLD = 5e4;
+const PERTURBATION_EXIT_THRESHOLD = 3e4;
 const TARGET_FPS = 60;
 const FULL_RESOLUTION = 1;
 const SETTLE_MS = 180;
@@ -217,6 +223,15 @@ const MIN_ITERATION_SCALE = .70;
 
 type RenderStage = 'interactive' | 'refining' | 'full-quality';
 type PrecisionMode = 'f32' | 'double-float' | 'perturbation';
+type OrbitCache = {
+  refX: number;
+  refY: number;
+  scaleAtBuild: number;
+  iterationLimit: number;
+  length: number;
+  escaped: boolean;
+  ms: number;
+};
 
 let centerX = -.5, centerY = 0, scale = 3, direction = 0, px = .5, py = .5;
 let panning = false, panPointer = -1, panX = 0, panY = 0;
@@ -226,13 +241,16 @@ let adaptiveResolutionScale = 1, adaptiveIterationScale = 1;
 let fpsValue = 0, smoothedFrameMs = 1000 / TARGET_FPS, displayedIterations = 500, displayedResolution = 1;
 let renderStage: RenderStage = 'full-quality', refineStep = 0;
 let displayedPrecision: PrecisionMode = 'f32';
+let precisionLatch: PrecisionMode = 'f32';
 let orbitStatus = 'inactive';
-let orbitCacheKey = '';
-let orbitCacheLength = 0;
+let orbitCache: OrbitCache | null = null;
 
 function split(value: number): [number, number] {
   const hi = Math.fround(value);
   return [hi, Math.fround(value - hi)];
+}
+function requestedIterations(): number {
+  return Math.round(ITERATION_MIN * Math.pow(ITERATION_RATIO, Number(iterations.value)));
 }
 function targetFrameMs(): number { return 1000 / TARGET_FPS; }
 function isInteractive(now = performance.now()): boolean { return direction !== 0 || panning || now - lastInteraction < SETTLE_MS; }
@@ -245,19 +263,23 @@ function markInteraction(): void {
   clearRefinementTimers();
   settleTimer = window.setTimeout(() => { renderStage = 'refining'; refineStep = 1; requestRender(); }, SETTLE_MS);
 }
-function roundedIterations(value: number): number { return Math.max(50, Math.round(value / 50) * 50); }
+function roundedIterations(value: number): number {
+  if (value < 1000) return Math.max(ITERATION_MIN, Math.round(value / 50) * 50);
+  if (value < 10_000) return Math.round(value / 100) * 100;
+  return Math.round(value / 1000) * 1000;
+}
 function effectiveQuality(stage: RenderStage): { iterations: number; resolution: number } {
-  const requestedIterations = Number(iterations.value);
-  if (stage === 'full-quality') return { iterations: requestedIterations, resolution: FULL_RESOLUTION };
+  const requested = requestedIterations();
+  if (stage === 'full-quality') return { iterations: requested, resolution: FULL_RESOLUTION };
   if (stage === 'refining') {
     const progress = refineStep === 1 ? .65 : .85;
     return {
-      iterations: roundedIterations(requestedIterations * (.85 + .15 * progress)),
+      iterations: roundedIterations(requested * (.85 + .15 * progress)),
       resolution: .55 + .45 * progress
     };
   }
   return {
-    iterations: roundedIterations(requestedIterations * adaptiveIterationScale),
+    iterations: roundedIterations(requested * adaptiveIterationScale),
     resolution: Math.max(MIN_RESOLUTION_SCALE, adaptiveResolutionScale)
   };
 }
@@ -272,15 +294,60 @@ function updateController(frameMs: number): void {
   }
 }
 function precisionFor(magnification: number): PrecisionMode {
-  if (magnification >= PERTURBATION_THRESHOLD) return 'perturbation';
-  if (magnification >= DOUBLE_FLOAT_THRESHOLD) return 'double-float';
-  return 'f32';
+  if (precisionLatch === 'perturbation') {
+    if (magnification < PERTURBATION_EXIT_THRESHOLD) precisionLatch = magnification >= DOUBLE_FLOAT_THRESHOLD ? 'double-float' : 'f32';
+    return precisionLatch;
+  }
+  if (magnification >= PERTURBATION_ENTER_THRESHOLD) precisionLatch = 'perturbation';
+  else if (magnification >= DOUBLE_FLOAT_THRESHOLD) precisionLatch = 'double-float';
+  else precisionLatch = 'f32';
+  return precisionLatch;
 }
-function buildReferenceOrbit(iterationLimit: number): { length: number; escaped: boolean; ms: number } {
-  const key = `${centerX}|${centerY}|${iterationLimit}`;
-  if (key === orbitCacheKey) return { length: orbitCacheLength, escaped: orbitCacheLength <= iterationLimit, ms: 0 };
+function orbitLengthAt(cx: number, cy: number, limit: number): number {
+  let zx = 0, zy = 0;
+  for (let i = 0; i < limit; i++) {
+    const nextX = zx * zx - zy * zy + cx;
+    const nextY = 2 * zx * zy + cy;
+    zx = nextX;
+    zy = nextY;
+    if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) return i + 1;
+  }
+  return limit + 1;
+}
+function canReuseOrbit(limit: number): boolean {
+  if (!orbitCache || orbitCache.iterationLimit < limit) return false;
+  const dx = centerX - orbitCache.refX;
+  const dy = centerY - orbitCache.refY;
+  const distance = Math.hypot(dx, dy);
+  return distance <= orbitCache.scaleAtBuild * .42 && scale <= orbitCache.scaleAtBuild * 1.25 && scale >= orbitCache.scaleAtBuild * .16;
+}
+function buildReferenceOrbit(iterationLimit: number, aspect: number): OrbitCache {
+  if (canReuseOrbit(iterationLimit)) return { ...orbitCache!, ms: 0 };
 
   const started = performance.now();
+  const offsets: Array<[number, number]> = [[0, 0]];
+  for (const radius of [.22, .42]) {
+    offsets.push(
+      [-radius, 0], [radius, 0], [0, -radius], [0, radius],
+      [-radius, -radius], [-radius, radius], [radius, -radius], [radius, radius]
+    );
+  }
+
+  let bestX = centerX;
+  let bestY = centerY;
+  let bestLength = 0;
+  for (const [ox, oy] of offsets) {
+    const candidateX = centerX + ox * aspect * scale;
+    const candidateY = centerY + oy * scale;
+    const length = orbitLengthAt(candidateX, candidateY, iterationLimit);
+    if (length > bestLength) {
+      bestLength = length;
+      bestX = candidateX;
+      bestY = candidateY;
+    }
+    if (length > iterationLimit) break;
+  }
+
   const data = new Float32Array((iterationLimit + 1) * 4);
   let zx = 0, zy = 0;
   let length = 0;
@@ -295,8 +362,8 @@ function buildReferenceOrbit(iterationLimit: number): { length: number; escaped:
     data[offset + 3] = zyLo;
     length = i + 1;
     if (i === iterationLimit) break;
-    const nextX = zx * zx - zy * zy + centerX;
-    const nextY = 2 * zx * zy + centerY;
+    const nextX = zx * zx - zy * zy + bestX;
+    const nextY = 2 * zx * zy + bestY;
     zx = nextX;
     zy = nextY;
     if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) {
@@ -305,22 +372,29 @@ function buildReferenceOrbit(iterationLimit: number): { length: number; escaped:
     }
   }
   device.queue.writeBuffer(orbitBuffer, 0, data, 0, length * 4);
-  orbitCacheKey = key;
-  orbitCacheLength = length;
-  return { length, escaped, ms: performance.now() - started };
+  orbitCache = {
+    refX: bestX,
+    refY: bestY,
+    scaleAtBuild: scale,
+    iterationLimit,
+    length,
+    escaped,
+    ms: performance.now() - started
+  };
+  return orbitCache;
 }
 function updateReadouts(): void {
   const magnification = 3 / scale;
   const orders = Math.log10(magnification);
-  const requestedIterations = Number(iterations.value);
+  const requested = requestedIterations();
   zoomOut.value = `${magnification < 1000 ? magnification.toFixed(2) : magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;
   precisionOut.value = displayedPrecision;
   orbitOut.value = orbitStatus;
   stateOut.value = renderStage;
   fpsOut.value = `${fpsValue.toFixed(1)} FPS`;
-  qualityOut.value = `${displayedIterations} / ${requestedIterations} iter · ${Math.round(displayedResolution * 100)}%`;
+  qualityOut.value = `${displayedIterations} / ${requested} iter · ${Math.round(displayedResolution * 100)}%`;
   speedOut.value = `${Number(speed.value).toFixed(2)}×/s`;
-  iterOut.value = iterations.value;
+  iterOut.value = requested.toLocaleString();
   palOut.value = Number(palette.value).toFixed(2);
 }
 
@@ -338,18 +412,20 @@ async function renderFrame(): Promise<void> {
   canvas.height = h;
 
   const magnification = 3 / scale;
-  let precision = precisionFor(magnification);
+  const precision = precisionFor(magnification);
   let orbitLength = 1;
+  let referenceOffsetX = 0;
+  let referenceOffsetY = 0;
   orbitStatus = 'inactive';
   if (precision === 'perturbation') {
-    const orbit = buildReferenceOrbit(quality.iterations);
+    const orbit = buildReferenceOrbit(quality.iterations, w / h);
     orbitLength = orbit.length;
-    if (orbit.escaped && orbit.length <= quality.iterations) {
-      precision = 'double-float';
-      orbitStatus = `fallback · reference escaped at ${Math.max(0, orbit.length - 1)}`;
-    } else {
-      orbitStatus = orbit.ms > 0 ? `${orbit.length - 1} iter · ${orbit.ms.toFixed(2)} ms` : `${orbit.length - 1} iter · cached`;
-    }
+    referenceOffsetX = centerX - orbit.refX;
+    referenceOffsetY = centerY - orbit.refY;
+    const timing = orbit.ms > 0 ? `${orbit.ms.toFixed(1)} ms` : 'cached';
+    orbitStatus = orbit.escaped
+      ? `selected reference escaped at ${Math.max(0, orbit.length - 1)} · ${timing}`
+      : `${orbit.length - 1} iter · ${timing}`;
   }
   displayedPrecision = precision;
 
@@ -373,6 +449,8 @@ async function renderFrame(): Promise<void> {
   u[9] = w; u[10] = h;
   u[11] = precision === 'f32' ? 0 : precision === 'double-float' ? 1 : 2;
   u[12] = orbitLength;
+  f[14] = Math.fround(referenceOffsetX);
+  f[15] = Math.fround(referenceOffsetY);
   device.queue.writeBuffer(params, 0, data);
 
   const group = device.createBindGroup({
@@ -432,7 +510,6 @@ canvas.addEventListener('pointermove', e => {
   centerY -= (e.clientY - panY) / r.height * scale;
   panX = e.clientX;
   panY = e.clientY;
-  orbitCacheKey = '';
   markInteraction();
   requestRender();
 });
@@ -471,7 +548,6 @@ canvas.addEventListener('wheel', e => {
   scale *= k;
   centerX = ax + (centerX - ax) * k;
   centerY = ay + (centerY - ay) * k;
-  orbitCacheKey = '';
   markInteraction();
   requestRender();
   e.preventDefault();
@@ -479,7 +555,7 @@ canvas.addEventListener('wheel', e => {
 for (const input of [speed, iterations, palette]) input.addEventListener('input', () => {
   if (input === iterations) {
     resetController();
-    orbitCacheKey = '';
+    orbitCache = null;
   }
   if (input !== speed) { renderStage = 'full-quality'; refineStep = 0; }
   requestRender();
@@ -498,7 +574,6 @@ function tick(now: number): void {
     scale *= k;
     centerX = ax + (centerX - ax) * k;
     centerY = ay + (centerY - ay) * k;
-    orbitCacheKey = '';
     markInteraction();
     requestRender();
   }
