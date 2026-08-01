@@ -1,5 +1,22 @@
 import './style.css';
-import { dd, ddAdd, ddDifference, ddSplit, ddSub, ddValue, type DoubleDouble } from './deepMath';
+import {
+  fixedAddScaled,
+  fixedFromNumber,
+  fixedRescale,
+  fixedSplitF32,
+  requiredCoordinateBits,
+  serializeFixed,
+  type BigFixed
+} from './bigFixed';
+import {
+  normalizeScale,
+  scaleDeltaParts,
+  scaleLog2,
+  scaleLog10,
+  scaleMultiply,
+  type BinaryScale
+} from './binaryScale';
+import type { ReferenceRequest, ReferenceResponse } from './referenceProtocol';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing app root');
@@ -21,10 +38,12 @@ app.innerHTML = `
     <label>Zoom depth <output id="zoomOut">1.00× · 10^0.00</output></label>
     <label>Precision <output id="precisionOut">f32</output></label>
     <label>Reference orbit <output id="orbitOut">inactive</output></label>
+    <label>Coordinate bits <output id="bitsOut">160</output></label>
+    <label>Scale exponent <output id="exponentOut">2</output></label>
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>GPU frame rate <output id="fpsOut">0.0 FPS</output></label>
     <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
-    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Deep navigation uses compensated camera coordinates; exhausted perturbation orbits continue automatically in double-float.</p>
+    <p><b>Numerical core V2:</b> arbitrary fixed-point camera coordinates, exponent-separated scale and an asynchronously generated high-precision centre reference orbit.</p>
   </aside>
 </section>`;
 
@@ -42,6 +61,8 @@ const palette = el<HTMLInputElement>('#palette');
 const zoomOut = el<HTMLOutputElement>('#zoomOut');
 const precisionOut = el<HTMLOutputElement>('#precisionOut');
 const orbitOut = el<HTMLOutputElement>('#orbitOut');
+const bitsOut = el<HTMLOutputElement>('#bitsOut');
+const exponentOut = el<HTMLOutputElement>('#exponentOut');
 const stateOut = el<HTMLOutputElement>('#stateOut');
 const fpsOut = el<HTMLOutputElement>('#fpsOut');
 const qualityOut = el<HTMLOutputElement>('#qualityOut');
@@ -53,7 +74,7 @@ const shader = `
 struct Params {
   centerX: vec2f,
   centerY: vec2f,
-  scale: vec2f,
+  scaleMantissa: f32,
   aspect: f32,
   iterations: u32,
   phase: f32,
@@ -61,149 +82,90 @@ struct Params {
   height: u32,
   mode: u32,
   orbitLength: u32,
-  referenceOffset: vec2f,
+  scaleExponent: i32,
+  _pad0: u32,
 }
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var outTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<storage, read> referenceOrbit: array<vec4f>;
 
-fn dsAdd(a: vec2f, b: vec2f) -> vec2f {
-  let s = a.x + b.x;
-  let v = s - a.x;
-  let e = (a.x - (s - v)) + (b.x - v) + a.y + b.y;
-  let hi = s + e;
-  return vec2f(hi, e - (hi - s));
+fn twoSum(a:f32,b:f32)->vec2f { let s=a+b; let bb=s-a; return vec2f(s,(a-(s-bb))+(b-bb)); }
+fn dsAdd(a:vec2f,b:vec2f)->vec2f { let s=twoSum(a.x,b.x); let e=s.y+a.y+b.y; let h=twoSum(s.x,e); return vec2f(h.x,h.y); }
+fn dsSub(a:vec2f,b:vec2f)->vec2f { return dsAdd(a,vec2f(-b.x,-b.y)); }
+fn dsMul(a:vec2f,b:vec2f)->vec2f { let q=a.x*b.x; let e=fma(a.x,b.x,-q)+a.x*b.y+a.y*b.x+a.y*b.y; let h=twoSum(q,e); return vec2f(h.x,h.y); }
+fn dsFrom(v:f32)->vec2f { return vec2f(v,0.0); }
+fn complexSquare(x:vec2f,y:vec2f)->array<vec2f,2> { return array<vec2f,2>(dsSub(dsMul(x,x),dsMul(y,y)),dsMul(dsMul(x,y),vec2f(2.0,0.0))); }
+fn paletteColour(t:f32)->vec3f { return .5+.5*cos(6.28318*(vec3f(t)+vec3f(0.0,.12,.24)+p.phase)); }
+fn writeResult(id:vec2u,escaped:bool,iteration:u32,radius:f32){
+  if(!escaped){textureStore(outTex,vec2i(id),vec4f(0,0,0,1));return;}
+  let smoothValue=f32(iteration)+1.0-log2(log2(sqrt(max(radius,1.0001))));
+  textureStore(outTex,vec2i(id),vec4f(paletteColour(fract(.018*smoothValue)),1));
 }
-fn dsSub(a: vec2f, b: vec2f) -> vec2f { return dsAdd(a, vec2f(-b.x, -b.y)); }
-fn dsMul(a: vec2f, b: vec2f) -> vec2f {
-  let product = a.x * b.x;
-  let error = fma(a.x, b.x, -product) + a.x * b.y + a.y * b.x + a.y * b.y;
-  let hi = product + error;
-  return vec2f(hi, error - (hi - product));
-}
-fn dsScale(a: vec2f, b: f32) -> vec2f {
-  let product = a.x * b;
-  let error = fma(a.x, b, -product) + a.y * b;
-  let hi = product + error;
-  return vec2f(hi, error - (hi - product));
-}
-fn paletteColour(t: f32) -> vec3f {
-  return .5 + .5 * cos(6.28318 * (vec3f(t) + vec3f(0.0, .12, .24) + p.phase));
-}
-fn writeResult(id: vec2u, escaped: bool, iteration: u32, radius: f32) {
-  if (!escaped) {
-    textureStore(outTex, vec2i(id), vec4f(0, 0, 0, 1));
-    return;
-  }
-  let smoothValue = f32(iteration) + 1.0 - log2(log2(sqrt(max(radius, 1.0001))));
-  textureStore(outTex, vec2i(id), vec4f(paletteColour(fract(.018 * smoothValue)), 1));
+fn pixelDelta(ox:f32,oy:f32)->vec2f {
+  return vec2f(ldexp(ox*p.scaleMantissa,p.scaleExponent),ldexp(oy*p.scaleMantissa,p.scaleExponent));
 }
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3u) {
-  let id = gid.xy;
-  if (id.x >= p.width || id.y >= p.height) { return; }
-  let uv = (vec2f(id) + .5) / vec2f(f32(p.width), f32(p.height));
-  let ox = (uv.x - .5) * p.aspect;
-  let oy = uv.y - .5;
+@compute @workgroup_size(8,8)
+fn main(@builtin(global_invocation_id) gid:vec3u){
+  let id=gid.xy;
+  if(id.x>=p.width||id.y>=p.height){return;}
+  let uv=(vec2f(id)+.5)/vec2f(f32(p.width),f32(p.height));
+  let ox=(uv.x-.5)*p.aspect;
+  let oy=uv.y-.5;
+  let dc=pixelDelta(ox,oy);
 
-  if (p.mode == 0u) {
-    let c = vec2f(p.centerX.x, p.centerY.x) + vec2f(ox, oy) * p.scale.x;
-    let q = (c.x - .25) * (c.x - .25) + c.y * c.y;
-    if (q * (q + c.x - .25) <= .25 * c.y * c.y || (c.x + 1.) * (c.x + 1.) + c.y * c.y <= .0625) {
-      textureStore(outTex, vec2i(id), vec4f(0, 0, 0, 1)); return;
-    }
-    var z = vec2f(0.);
-    var iteration = 0u;
-    var radius = 0.0;
-    loop {
-      radius = dot(z, z);
-      if (iteration >= p.iterations || radius > 256.) { break; }
-      z = vec2f(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
-      iteration++;
-    }
-    writeResult(id, iteration < p.iterations, iteration, radius);
-    return;
+  if(p.mode==0u){
+    let c=vec2f(p.centerX.x,p.centerY.x)+dc;
+    var z=vec2f(0.0); var iteration=0u; var radius=0.0;
+    loop{radius=dot(z,z);if(iteration>=p.iterations||radius>256.0){break;}z=vec2f(z.x*z.x-z.y*z.y,2.0*z.x*z.y)+c;iteration++;}
+    writeResult(id,iteration<p.iterations,iteration,radius);return;
   }
 
-  let cx = dsAdd(p.centerX, dsScale(p.scale, ox));
-  let cy = dsAdd(p.centerY, dsScale(p.scale, oy));
-  if (p.mode == 1u) {
-    let cxApprox = cx.x + cx.y;
-    let cyApprox = cy.x + cy.y;
-    let q = (cxApprox - .25) * (cxApprox - .25) + cyApprox * cyApprox;
-    if (q * (q + cxApprox - .25) <= .25 * cyApprox * cyApprox || (cxApprox + 1.) * (cxApprox + 1.) + cyApprox * cyApprox <= .0625) {
-      textureStore(outTex, vec2i(id), vec4f(0, 0, 0, 1)); return;
+  let cx=dsAdd(p.centerX,dsFrom(dc.x));
+  let cy=dsAdd(p.centerY,dsFrom(dc.y));
+  if(p.mode==1u){
+    var zx=vec2f(0.0); var zy=vec2f(0.0); var iteration=0u; var radius=0.0;
+    loop{
+      radius=zx.x*zx.x+zy.x*zy.x;
+      if(iteration>=p.iterations||radius>256.0){break;}
+      let sq=complexSquare(zx,zy); zx=dsAdd(sq[0],cx); zy=dsAdd(sq[1],cy); iteration++;
     }
-    var zx = vec2f(0.);
-    var zy = vec2f(0.);
-    var iteration = 0u;
-    var radius = 0.0;
-    loop {
-      radius = zx.x * zx.x + zy.x * zy.x;
-      if (iteration >= p.iterations || radius > 256.) { break; }
-      let zx2 = dsMul(zx, zx);
-      let zy2 = dsMul(zy, zy);
-      let zxy = dsMul(zx, zy);
-      zx = dsAdd(dsSub(zx2, zy2), cx);
-      zy = dsAdd(dsScale(zxy, 2.0), cy);
-      iteration++;
-    }
-    writeResult(id, iteration < p.iterations, iteration, radius);
-    return;
+    writeResult(id,iteration<p.iterations,iteration,radius);return;
   }
 
-  let dc = p.referenceOffset + vec2f(ox, oy) * (p.scale.x + p.scale.y);
-  var dz = vec2f(0.);
-  var currentZ = vec2f(0.);
-  var iteration = 0u;
-  var radius = 0.0;
-  var continueDirect = false;
-  loop {
-    let parts = referenceOrbit[iteration];
-    let referenceZ = vec2f(parts.x + parts.y, parts.z + parts.w);
-    currentZ = referenceZ + dz;
-    radius = dot(currentZ, currentZ);
-    if (iteration >= p.iterations || radius > 256.) { break; }
-    if (iteration + 1u >= p.orbitLength) { continueDirect = true; break; }
-    let dz2 = vec2f(dz.x * dz.x - dz.y * dz.y, 2.0 * dz.x * dz.y);
-    let twiceReferenceTimesDelta = vec2f(
-      2.0 * (referenceZ.x * dz.x - referenceZ.y * dz.y),
-      2.0 * (referenceZ.x * dz.y + referenceZ.y * dz.x)
-    );
-    dz = twiceReferenceTimesDelta + dz2 + dc;
-    if (any(abs(dz) > vec2f(1e12))) { continueDirect = true; break; }
+  var dz=vec2f(0.0); var currentZ=vec2f(0.0); var iteration=0u; var radius=0.0; var direct=false;
+  loop{
+    let parts=referenceOrbit[iteration];
+    let rz=vec2f(parts.x+parts.y,parts.z+parts.w);
+    currentZ=rz+dz; radius=dot(currentZ,currentZ);
+    if(iteration>=p.iterations||radius>256.0){break;}
+    if(iteration+1u>=p.orbitLength){direct=true;break;}
+    let dz2=vec2f(dz.x*dz.x-dz.y*dz.y,2.0*dz.x*dz.y);
+    let cross=vec2f(2.0*(rz.x*dz.x-rz.y*dz.y),2.0*(rz.x*dz.y+rz.y*dz.x));
+    dz=cross+dz2+dc;
+    if(any(abs(dz)>vec2f(1e12))){direct=true;break;}
     iteration++;
   }
-
-  if (continueDirect && radius <= 256. && iteration < p.iterations) {
-    var zx = vec2f(currentZ.x, 0.0);
-    var zy = vec2f(currentZ.y, 0.0);
-    loop {
-      radius = zx.x * zx.x + zy.x * zy.x;
-      if (iteration >= p.iterations || radius > 256.) { break; }
-      let zx2 = dsMul(zx, zx);
-      let zy2 = dsMul(zy, zy);
-      let zxy = dsMul(zx, zy);
-      zx = dsAdd(dsSub(zx2, zy2), cx);
-      zy = dsAdd(dsScale(zxy, 2.0), cy);
-      iteration++;
+  if(direct&&iteration<p.iterations&&radius<=256.0){
+    var zx=vec2f(currentZ.x,0.0); var zy=vec2f(currentZ.y,0.0);
+    loop{
+      radius=zx.x*zx.x+zy.x*zy.x;
+      if(iteration>=p.iterations||radius>256.0){break;}
+      let sq=complexSquare(zx,zy); zx=dsAdd(sq[0],cx); zy=dsAdd(sq[1],cy); iteration++;
     }
   }
-  writeResult(id, iteration < p.iterations, iteration, radius);
+  writeResult(id,iteration<p.iterations,iteration,radius);
 }`;
 
 if (!navigator.gpu) throw new Error('WebGPU is unavailable. Use a current Chromium browser with hardware acceleration enabled.');
 const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
 if (!adapter) throw new Error('No WebGPU adapter found');
-const features: GPUFeatureName[] = adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
-const device = await adapter.requestDevice({ requiredFeatures: features });
+const device = await adapter.requestDevice();
 const context = canvas.getContext('webgpu');
 if (!context) throw new Error('Unable to create WebGPU canvas context');
 const gpuContext: GPUCanvasContext = context;
 const canvasFormat: GPUTextureFormat = 'rgba8unorm';
 gpuContext.configure({ device, format: canvasFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST, alphaMode: 'opaque' });
-
 const module = device.createShaderModule({ code: shader });
 const compilation = await module.getCompilationInfo();
 const shaderErrors = compilation.messages.filter(message => message.type === 'error');
@@ -216,57 +178,57 @@ if (shaderErrors.length) {
 const pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 const params = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const orbitBuffer = device.createBuffer({ size: (ITERATION_MAX + 1) * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-const info = adapter.info;
-status.textContent = `${info.vendor || 'GPU'} · WebGPU${device.features.has('timestamp-query') ? ' · GPU timing' : ''}`;
+status.textContent = `${adapter.info.vendor || 'GPU'} · WebGPU · numerical core V2`;
 device.addEventListener('uncapturederror', event => { status.textContent = `WebGPU error: ${event.error.message}`; });
 device.lost.then(reason => { status.textContent = `GPU device lost: ${reason.message || reason.reason}`; }).catch(() => undefined);
 
-const DOUBLE_FLOAT_THRESHOLD = 1e4;
-const PERTURBATION_ENTER_THRESHOLD = 5e4;
-const PERTURBATION_EXIT_THRESHOLD = 3e4;
+const worker = new Worker(new URL('./referenceWorker.ts', import.meta.url), { type: 'module' });
 const TARGET_FPS = 60;
 const SETTLE_MS = 180;
 const REFINE_DELAY_MS = 90;
 const MIN_RESOLUTION_SCALE = .35;
 const MIN_ITERATION_SCALE = .70;
+const DOUBLE_FLOAT_THRESHOLD_LOG10 = 4;
+const PERTURBATION_THRESHOLD_LOG10 = 5;
 
 type RenderStage = 'interactive' | 'refining' | 'full-quality';
-type PrecisionMode = 'f32' | 'double-float' | 'perturbation';
-type OrbitCache = {
-  refX: number;
-  refY: number;
-  scaleAtBuild: number;
-  iterationLimit: number;
-  length: number;
-  escaped: boolean;
-  ms: number;
-};
+type DisplayPrecision = 'f32' | 'double-float' | 'perturbation' | 'building reference';
+type ReferenceCache = { key: string; iterations: number; length: number; escaped: boolean; bits: number; ms: number };
 
-let centerX: DoubleDouble = dd(-.5);
-let centerY: DoubleDouble = dd(0);
-let scale = 3, direction = 0, px = .5, py = .5;
+let coordinateBits = 160;
+let centerX: BigFixed = fixedFromNumber(-.5, coordinateBits);
+let centerY: BigFixed = fixedFromNumber(0, coordinateBits);
+let viewportScale: BinaryScale = normalizeScale(.75, 2);
+let direction = 0, px = .5, py = .5;
 let panning = false, panPointer = -1, panX = 0, panY = 0;
 let renderRequested = false, frameInFlight = false, pumpScheduled = false;
 let lastInteraction = -Infinity, settleTimer = 0, refineTimer = 0;
 let adaptiveResolutionScale = 1, adaptiveIterationScale = 1;
 let fpsValue = 0, smoothedFrameMs = 1000 / TARGET_FPS, displayedIterations = 500, displayedResolution = 1;
 let renderStage: RenderStage = 'full-quality', refineStep = 0;
-let displayedPrecision: PrecisionMode = 'f32';
-let precisionLatch: PrecisionMode = 'f32';
+let displayedPrecision: DisplayPrecision = 'f32';
 let orbitStatus = 'inactive';
-let orbitCache: OrbitCache | null = null;
+let referenceCache: ReferenceCache | null = null;
+let pendingReferenceKey = '';
+let referenceRequestId = 0;
 
 function requestedIterations(): number {
   return Math.round(ITERATION_MIN * Math.pow(ITERATION_RATIO, Number(iterations.value)));
 }
+function log10Magnification(): number { return Math.log10(3) - scaleLog10(viewportScale); }
+function ensureCoordinatePrecision(): void {
+  const needed = requiredCoordinateBits(-scaleLog2(viewportScale) + Math.log2(3));
+  if (needed <= coordinateBits) return;
+  coordinateBits = needed;
+  centerX = fixedRescale(centerX, coordinateBits);
+  centerY = fixedRescale(centerY, coordinateBits);
+  referenceCache = null;
+}
 function isInteractive(now = performance.now()): boolean { return direction !== 0 || panning || now - lastInteraction < SETTLE_MS; }
 function resetController(): void { adaptiveResolutionScale = 1; adaptiveIterationScale = 1; smoothedFrameMs = 1000 / TARGET_FPS; }
-function clearRefinementTimers(): void { if (settleTimer) clearTimeout(settleTimer); if (refineTimer) clearTimeout(refineTimer); }
+function clearTimers(): void { if (settleTimer) clearTimeout(settleTimer); if (refineTimer) clearTimeout(refineTimer); }
 function markInteraction(): void {
-  lastInteraction = performance.now();
-  renderStage = 'interactive';
-  refineStep = 0;
-  clearRefinementTimers();
+  lastInteraction = performance.now(); renderStage = 'interactive'; refineStep = 0; clearTimers();
   settleTimer = window.setTimeout(() => { renderStage = 'refining'; refineStep = 1; requestRender(); }, SETTLE_MS);
 }
 function roundedIterations(value: number): number {
@@ -293,67 +255,50 @@ function updateController(frameMs: number): void {
     else adaptiveResolutionScale = Math.min(1, adaptiveResolutionScale * 1.06 + .01);
   }
 }
-function precisionFor(magnification: number): PrecisionMode {
-  if (precisionLatch === 'perturbation') {
-    if (magnification < PERTURBATION_EXIT_THRESHOLD) precisionLatch = magnification >= DOUBLE_FLOAT_THRESHOLD ? 'double-float' : 'f32';
-    return precisionLatch;
-  }
-  if (magnification >= PERTURBATION_ENTER_THRESHOLD) precisionLatch = 'perturbation';
-  else if (magnification >= DOUBLE_FLOAT_THRESHOLD) precisionLatch = 'double-float';
-  else precisionLatch = 'f32';
-  return precisionLatch;
+function referenceKey(iterationLimit: number): string {
+  return `${centerX.raw}:${centerX.bits}|${centerY.raw}:${centerY.bits}|${iterationLimit}`;
 }
-function orbitLengthAt(cx: number, cy: number, limit: number): number {
-  let zx = 0, zy = 0;
-  for (let i = 0; i < limit; i++) {
-    const nextX = zx * zx - zy * zy + cx;
-    const nextY = 2 * zx * zy + cy;
-    zx = nextX; zy = nextY;
-    if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) return i + 1;
-  }
-  return limit + 1;
+function requestReference(iterationLimit: number): boolean {
+  const key = referenceKey(iterationLimit);
+  if (referenceCache?.key === key && referenceCache.iterations >= iterationLimit) return true;
+  if (pendingReferenceKey === key) return false;
+  pendingReferenceKey = key;
+  referenceRequestId++;
+  const request: ReferenceRequest = {
+    id: referenceRequestId,
+    centerX: serializeFixed(centerX),
+    centerY: serializeFixed(centerY),
+    iterations: iterationLimit
+  };
+  orbitStatus = `building ${coordinateBits}-bit reference…`;
+  worker.postMessage(request);
+  return false;
 }
-function canReuseOrbit(limit: number): boolean {
-  if (!orbitCache || orbitCache.iterationLimit < limit) return false;
-  const distance = Math.hypot(ddDifference(centerX, orbitCache.refX), ddDifference(centerY, orbitCache.refY));
-  return distance <= orbitCache.scaleAtBuild * .42 && scale <= orbitCache.scaleAtBuild * 1.25 && scale >= orbitCache.scaleAtBuild * .16;
-}
-function buildReferenceOrbit(iterationLimit: number, aspect: number): OrbitCache {
-  if (canReuseOrbit(iterationLimit)) return { ...orbitCache!, ms: 0 };
-  const started = performance.now();
-  const cx0 = ddValue(centerX), cy0 = ddValue(centerY);
-  const offsets: Array<[number, number]> = [[0, 0]];
-  for (const radius of [.22, .42]) offsets.push([-radius, 0], [radius, 0], [0, -radius], [0, radius], [-radius, -radius], [-radius, radius], [radius, -radius], [radius, radius]);
-  let bestX = cx0, bestY = cy0, bestLength = 0;
-  for (const [ox, oy] of offsets) {
-    const candidateX = cx0 + ox * aspect * scale;
-    const candidateY = cy0 + oy * scale;
-    const length = orbitLengthAt(candidateX, candidateY, iterationLimit);
-    if (length > bestLength) { bestLength = length; bestX = candidateX; bestY = candidateY; }
-    if (length > iterationLimit) break;
-  }
-  const data = new Float32Array((iterationLimit + 1) * 4);
-  let zx = 0, zy = 0, length = 0, escaped = false;
-  for (let i = 0; i <= iterationLimit; i++) {
-    const zxHi = Math.fround(zx), zyHi = Math.fround(zy), offset = i * 4;
-    data[offset] = zxHi; data[offset + 1] = Math.fround(zx - zxHi);
-    data[offset + 2] = zyHi; data[offset + 3] = Math.fround(zy - zyHi);
-    length = i + 1;
-    if (i === iterationLimit) break;
-    const nextX = zx * zx - zy * zy + bestX;
-    const nextY = 2 * zx * zy + bestY;
-    zx = nextX; zy = nextY;
-    if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) { escaped = true; break; }
-  }
-  device.queue.writeBuffer(orbitBuffer, 0, data, 0, length * 4);
-  orbitCache = { refX: bestX, refY: bestY, scaleAtBuild: scale, iterationLimit, length, escaped, ms: performance.now() - started };
-  return orbitCache;
-}
+worker.addEventListener('message', event => {
+  const response = event.data as ReferenceResponse;
+  if (response.id !== referenceRequestId) return;
+  const key = pendingReferenceKey;
+  pendingReferenceKey = '';
+  device.queue.writeBuffer(orbitBuffer, 0, response.orbit);
+  referenceCache = {
+    key,
+    iterations: response.length - 1,
+    length: response.length,
+    escaped: response.escaped,
+    bits: response.bits,
+    ms: response.generationMs
+  };
+  requestRender();
+});
+
 function updateReadouts(): void {
-  const magnification = 3 / scale, orders = Math.log10(magnification), requested = requestedIterations();
-  zoomOut.value = `${magnification < 1000 ? magnification.toFixed(2) : magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;
+  const order = log10Magnification();
+  const requested = requestedIterations();
+  zoomOut.value = `10^${order.toFixed(2)}`;
   precisionOut.value = displayedPrecision;
   orbitOut.value = orbitStatus;
+  bitsOut.value = `${coordinateBits}`;
+  exponentOut.value = `${viewportScale.exponent}`;
   stateOut.value = renderStage;
   fpsOut.value = `${fpsValue.toFixed(1)} FPS`;
   qualityOut.value = `${displayedIterations} / ${requested} iter · ${Math.round(displayedResolution * 100)}%`;
@@ -364,6 +309,7 @@ function updateReadouts(): void {
 
 async function renderFrame(): Promise<void> {
   frameInFlight = true; renderRequested = false;
+  ensureCoordinatePrecision();
   const activeStage: RenderStage = isInteractive() ? 'interactive' : renderStage;
   const quality = effectiveQuality(activeStage);
   displayedIterations = quality.iterations; displayedResolution = quality.resolution;
@@ -371,29 +317,37 @@ async function renderFrame(): Promise<void> {
   const h = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio * quality.resolution));
   canvas.width = w; canvas.height = h;
 
-  const precision = precisionFor(3 / scale);
-  let orbitLength = 1, referenceOffsetX = 0, referenceOffsetY = 0;
+  const order = log10Magnification();
+  let mode = order < DOUBLE_FLOAT_THRESHOLD_LOG10 ? 0 : 1;
   orbitStatus = 'inactive';
-  if (precision === 'perturbation') {
-    const orbit = buildReferenceOrbit(quality.iterations, w / h);
-    orbitLength = orbit.length;
-    referenceOffsetX = ddDifference(centerX, orbit.refX);
-    referenceOffsetY = ddDifference(centerY, orbit.refY);
-    const timing = orbit.ms > 0 ? `${orbit.ms.toFixed(1)} ms` : 'cached';
-    orbitStatus = orbit.escaped ? `reference ${orbit.length - 1} iter · hybrid continuation · ${timing}` : `${orbit.length - 1} iter · ${timing}`;
-  }
-  displayedPrecision = precision;
+  if (order >= PERTURBATION_THRESHOLD_LOG10) {
+    if (requestReference(quality.iterations) && referenceCache) {
+      mode = 2;
+      displayedPrecision = 'perturbation';
+      orbitStatus = `${referenceCache.bits}-bit · ${referenceCache.length - 1} iter · ${referenceCache.escaped ? 'hybrid' : 'complete'} · ${referenceCache.ms.toFixed(1)} ms`;
+    } else {
+      mode = 1;
+      displayedPrecision = 'building reference';
+    }
+  } else displayedPrecision = mode === 0 ? 'f32' : 'double-float';
 
-  const [cxHi, cxLo] = ddSplit(centerX), [cyHi, cyLo] = ddSplit(centerY);
-  const scaleHi = Math.fround(scale), scaleLo = Math.fround(scale - scaleHi);
+  const [cxHi, cxLo] = fixedSplitF32(centerX);
+  const [cyHi, cyLo] = fixedSplitF32(centerY);
   const texture = device.createTexture({ size: [w, h], format: canvasFormat, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC });
-  const data = new ArrayBuffer(64), f = new Float32Array(data), u = new Uint32Array(data);
-  f[0] = cxHi; f[1] = cxLo; f[2] = cyHi; f[3] = cyLo; f[4] = scaleHi; f[5] = scaleLo;
-  f[6] = w / h; u[7] = quality.iterations; f[8] = Number(palette.value); u[9] = w; u[10] = h;
-  u[11] = precision === 'f32' ? 0 : precision === 'double-float' ? 1 : 2; u[12] = orbitLength;
-  f[14] = Math.fround(referenceOffsetX); f[15] = Math.fround(referenceOffsetY);
+  const data = new ArrayBuffer(64), f = new Float32Array(data), u = new Uint32Array(data), i = new Int32Array(data);
+  f[0] = cxHi; f[1] = cxLo; f[2] = cyHi; f[3] = cyLo;
+  f[4] = Math.fround(viewportScale.mantissa); f[5] = w / h; u[6] = quality.iterations; f[7] = Number(palette.value);
+  u[8] = w; u[9] = h; u[10] = mode; u[11] = mode === 2 && referenceCache ? referenceCache.length : 1;
+  i[12] = viewportScale.exponent;
   device.queue.writeBuffer(params, 0, data);
-  const group = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: params } }, { binding: 1, resource: texture.createView() }, { binding: 2, resource: { buffer: orbitBuffer } }] });
+  const group = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: params } },
+      { binding: 1, resource: texture.createView() },
+      { binding: 2, resource: { buffer: orbitBuffer } }
+    ]
+  });
   const encoder = device.createCommandEncoder(), pass = encoder.beginComputePass();
   pass.setPipeline(pipeline); pass.setBindGroup(0, group); pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8)); pass.end();
   encoder.copyTextureToTexture({ texture }, { texture: gpuContext.getCurrentTexture() }, { width: w, height: h });
@@ -415,49 +369,51 @@ function schedulePump(): void {
   requestAnimationFrame(() => { pumpScheduled = false; if (!frameInFlight && renderRequested) void renderFrame(); });
 }
 function requestRender(): void { renderRequested = true; schedulePump(); }
-function pointer(e: PointerEvent): void {
-  const r = canvas.getBoundingClientRect(); px = (e.clientX - r.left) / r.width; py = (e.clientY - r.top) / r.height;
+function pointer(event: { clientX: number; clientY: number }): void {
+  const r = canvas.getBoundingClientRect(); px = (event.clientX - r.left) / r.width; py = (event.clientY - r.top) / r.height;
 }
-function moveCamera(dx: number, dy: number): void {
-  centerX = ddAdd(centerX, dx); centerY = ddAdd(centerY, dy);
+function moveByScaleMultipliers(xMultiplier: number, yMultiplier: number): void {
+  const dx = scaleDeltaParts(viewportScale, xMultiplier);
+  const dy = scaleDeltaParts(viewportScale, yMultiplier);
+  centerX = fixedAddScaled(centerX, dx.mantissa, dx.exponent);
+  centerY = fixedAddScaled(centerY, dy.mantissa, dy.exponent);
+  referenceCache = null;
 }
-function zoomAboutPointer(k: number, aspect: number): void {
-  const oldScale = scale;
-  moveCamera((px - .5) * aspect * oldScale * (1 - k), (py - .5) * oldScale * (1 - k));
-  scale = oldScale * k;
+function zoomAboutPointer(factor: number, aspect: number): void {
+  moveByScaleMultipliers((px - .5) * aspect * (1 - factor), (py - .5) * (1 - factor));
+  viewportScale = scaleMultiply(viewportScale, factor);
+  ensureCoordinatePrecision();
 }
 
-canvas.addEventListener('pointermove', e => {
-  pointer(e);
-  if (!panning || e.pointerId !== panPointer) return;
+canvas.addEventListener('pointermove', event => {
+  pointer(event);
+  if (!panning || event.pointerId !== panPointer) return;
   const r = canvas.getBoundingClientRect();
-  centerX = ddSub(centerX, (e.clientX - panX) / r.width * (r.width / r.height) * scale);
-  centerY = ddSub(centerY, (e.clientY - panY) / r.height * scale);
-  panX = e.clientX; panY = e.clientY; markInteraction(); requestRender();
+  moveByScaleMultipliers(-(event.clientX - panX) / r.height, -(event.clientY - panY) / r.height);
+  panX = event.clientX; panY = event.clientY; markInteraction(); requestRender();
 });
-canvas.addEventListener('pointerdown', e => {
-  pointer(e); canvas.setPointerCapture(e.pointerId);
-  if (e.button === 1) { panning = true; panPointer = e.pointerId; panX = e.clientX; panY = e.clientY; direction = 0; }
-  else direction = e.button === 2 ? -1 : 1;
-  markInteraction(); requestRender(); e.preventDefault();
+canvas.addEventListener('pointerdown', event => {
+  pointer(event); canvas.setPointerCapture(event.pointerId);
+  if (event.button === 1) { panning = true; panPointer = event.pointerId; panX = event.clientX; panY = event.clientY; direction = 0; }
+  else direction = event.button === 2 ? -1 : 1;
+  markInteraction(); requestRender(); event.preventDefault();
 });
-function endPointer(e: PointerEvent): void {
-  if (e.pointerId === panPointer) { panning = false; panPointer = -1; }
-  direction = 0; lastInteraction = performance.now() - SETTLE_MS; clearRefinementTimers();
+function endPointer(event: PointerEvent): void {
+  if (event.pointerId === panPointer) { panning = false; panPointer = -1; }
+  direction = 0; lastInteraction = performance.now() - SETTLE_MS; clearTimers();
   renderStage = 'refining'; refineStep = 1; requestRender();
-  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('auxclick', e => e.preventDefault());
-canvas.addEventListener('wheel', e => {
-  pointer(e);
-  zoomAboutPointer(Math.exp(e.deltaY * .0012), canvas.clientWidth / canvas.clientHeight);
-  markInteraction(); requestRender(); e.preventDefault();
+canvas.addEventListener('contextmenu', event => event.preventDefault());
+canvas.addEventListener('auxclick', event => event.preventDefault());
+canvas.addEventListener('wheel', event => {
+  pointer(event); zoomAboutPointer(Math.exp(event.deltaY * .0012), canvas.clientWidth / canvas.clientHeight);
+  markInteraction(); requestRender(); event.preventDefault();
 }, { passive: false });
 for (const input of [speed, iterations, palette]) input.addEventListener('input', () => {
-  if (input === iterations) { resetController(); orbitCache = null; }
+  if (input === iterations) { resetController(); referenceCache = null; }
   if (input !== speed) { renderStage = 'full-quality'; refineStep = 0; }
   requestRender();
 });
