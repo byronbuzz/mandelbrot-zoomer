@@ -13,13 +13,11 @@ app.innerHTML = `
     <label>Precision <output id="precisionOut">f32</output></label>
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>GPU frame rate <output id="fpsOut">0.0 FPS</output></label>
-    <label>Effective quality <output id="qualityOut">500 / 500 iter · 100 / 100%</output></label>
-    <label>Target frame rate <output id="targetOut">60 FPS</output><input id="targetFps" type="range" min="30" max="120" step="15" value="60"></label>
+    <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
     <label>Zoom speed <output id="speedOut">1.00×/s</output><input id="speed" type="range" min="0.25" max="8" step="0.25" value="1"></label>
     <label>Iterations <output id="iterOut">500</output><input id="iterations" type="range" min="50" max="10000" step="50" value="500"></label>
-    <label>Internal resolution <output id="resOut">100%</output><input id="resolution" type="range" min="0.35" max="1" step="0.05" value="1"></label>
     <label>Palette phase <output id="palOut">0.00</output><input id="palette" type="range" min="0" max="1" step="0.005" value="0"></label>
-    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. During movement, spatial resolution is reduced before iterations. Quality then refines in stages after movement stops.</p>
+    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. During movement, spatial resolution adapts automatically toward 60 FPS before iterations are reduced. Quality then refines in stages after movement stops.</p>
   </aside>
 </section>`;
 
@@ -33,18 +31,14 @@ const canvas = el<HTMLCanvasElement>('#fractal');
 const status = el<HTMLElement>('#status');
 const speed = el<HTMLInputElement>('#speed');
 const iterations = el<HTMLInputElement>('#iterations');
-const resolution = el<HTMLInputElement>('#resolution');
 const palette = el<HTMLInputElement>('#palette');
-const targetFps = el<HTMLInputElement>('#targetFps');
 const zoomOut = el<HTMLOutputElement>('#zoomOut');
 const precisionOut = el<HTMLOutputElement>('#precisionOut');
 const stateOut = el<HTMLOutputElement>('#stateOut');
 const fpsOut = el<HTMLOutputElement>('#fpsOut');
 const qualityOut = el<HTMLOutputElement>('#qualityOut');
-const targetOut = el<HTMLOutputElement>('#targetOut');
 const speedOut = el<HTMLOutputElement>('#speedOut');
 const iterOut = el<HTMLOutputElement>('#iterOut');
-const resOut = el<HTMLOutputElement>('#resOut');
 const palOut = el<HTMLOutputElement>('#palOut');
 
 const shader = `
@@ -106,31 +100,31 @@ status.textContent = `${info.vendor || 'GPU'} · WebGPU${device.features.has('ti
 device.addEventListener('uncapturederror', event => { status.textContent = `WebGPU error: ${event.error.message}`; });
 device.lost.then(reason => { status.textContent = `GPU device lost: ${reason.message || reason.reason}`; }).catch(() => undefined);
 
-const DOUBLE_FLOAT_THRESHOLD=1e4, SETTLE_MS=180, REFINE_DELAY_MS=90, MIN_RESOLUTION_SCALE=.35, MIN_ITERATION_SCALE=.70;
+const DOUBLE_FLOAT_THRESHOLD=1e4, TARGET_FPS=60, FULL_RESOLUTION=1, SETTLE_MS=180, REFINE_DELAY_MS=90, MIN_RESOLUTION_SCALE=.35, MIN_ITERATION_SCALE=.70;
 type RenderStage='interactive'|'refining'|'full-quality';
 let centerX=-.5,centerY=0,scale=3,direction=0,px=.5,py=.5;
 let panning=false,panPointer=-1,panX=0,panY=0;
 let renderRequested=false,frameInFlight=false,pumpScheduled=false;
 let lastInteraction=-Infinity,settleTimer=0,refineTimer=0;
 let adaptiveResolutionScale=1,adaptiveIterationScale=1;
-let fpsValue=0,smoothedFrameMs=1000/Number(targetFps.value),displayedIterations=500,displayedResolution=1;
+let fpsValue=0,smoothedFrameMs=1000/TARGET_FPS,displayedIterations=500,displayedResolution=1;
 let renderStage:RenderStage='full-quality',refineStep=0;
 
 function split(value:number):[number,number]{const hi=Math.fround(value);return[hi,Math.fround(value-hi)];}
-function targetFrameMs(){return 1000/Number(targetFps.value);}
+function targetFrameMs(){return 1000/TARGET_FPS;}
 function isInteractive(now=performance.now()){return direction!==0||panning||now-lastInteraction<SETTLE_MS;}
 function resetController(){adaptiveResolutionScale=1;adaptiveIterationScale=1;smoothedFrameMs=targetFrameMs();}
 function clearRefinementTimers(){if(settleTimer)clearTimeout(settleTimer);if(refineTimer)clearTimeout(refineTimer);}
 function markInteraction(){lastInteraction=performance.now();renderStage='interactive';refineStep=0;clearRefinementTimers();settleTimer=window.setTimeout(()=>{renderStage='refining';refineStep=1;requestRender();},SETTLE_MS);}
 function roundedIterations(value:number){return Math.max(50,Math.round(value/50)*50);}
 function effectiveQuality(stage:RenderStage){
- const requestedIterations=Number(iterations.value),requestedResolution=Number(resolution.value);
+ const requestedIterations=Number(iterations.value),requestedResolution=FULL_RESOLUTION;
  if(stage==='full-quality')return{iterations:requestedIterations,resolution:requestedResolution};
  if(stage==='refining'){const progress=refineStep===1?.65:.85;return{iterations:roundedIterations(requestedIterations*(.85+.15*progress)),resolution:requestedResolution*(.55+.45*progress)};}
  return{iterations:roundedIterations(requestedIterations*adaptiveIterationScale),resolution:Math.max(MIN_RESOLUTION_SCALE,requestedResolution*adaptiveResolutionScale)};
 }
 function updateController(frameMs:number){const target=targetFrameMs();if(frameMs>target*1.08){if(adaptiveResolutionScale>MIN_RESOLUTION_SCALE+.001)adaptiveResolutionScale=Math.max(MIN_RESOLUTION_SCALE,adaptiveResolutionScale*.88);else adaptiveIterationScale=Math.max(MIN_ITERATION_SCALE,adaptiveIterationScale*.94);}else if(frameMs<target*.78){if(adaptiveIterationScale<.999)adaptiveIterationScale=Math.min(1,adaptiveIterationScale+.03);else adaptiveResolutionScale=Math.min(1,adaptiveResolutionScale*1.06+.01);}}
-function updateReadouts(){const magnification=3/scale,orders=Math.log10(magnification),requestedIterations=Number(iterations.value),requestedResolution=Number(resolution.value);zoomOut.value=`${magnification<1000?magnification.toFixed(2):magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;precisionOut.value=magnification>=DOUBLE_FLOAT_THRESHOLD?'double-float':'f32';stateOut.value=renderStage;fpsOut.value=`${fpsValue.toFixed(1)} FPS`;qualityOut.value=`${displayedIterations} / ${requestedIterations} iter · ${Math.round(displayedResolution*100)} / ${Math.round(requestedResolution*100)}%`;targetOut.value=`${targetFps.value} FPS`;speedOut.value=`${Number(speed.value).toFixed(2)}×/s`;iterOut.value=iterations.value;resOut.value=`${Math.round(requestedResolution*100)}%`;palOut.value=Number(palette.value).toFixed(2);}
+function updateReadouts(){const magnification=3/scale,orders=Math.log10(magnification),requestedIterations=Number(iterations.value);zoomOut.value=`${magnification<1000?magnification.toFixed(2):magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;precisionOut.value=magnification>=DOUBLE_FLOAT_THRESHOLD?'double-float':'f32';stateOut.value=renderStage;fpsOut.value=`${fpsValue.toFixed(1)} FPS`;qualityOut.value=`${displayedIterations} / ${requestedIterations} iter · ${Math.round(displayedResolution*100)}%`;speedOut.value=`${Number(speed.value).toFixed(2)}×/s`;iterOut.value=iterations.value;palOut.value=Number(palette.value).toFixed(2);}
 
 async function renderFrame(){
  frameInFlight=true;renderRequested=false;const activeStage:RenderStage=isInteractive()?'interactive':renderStage;const quality=effectiveQuality(activeStage);displayedIterations=quality.iterations;displayedResolution=quality.resolution;
@@ -150,7 +144,7 @@ canvas.addEventListener('pointerdown',e=>{pointer(e);canvas.setPointerCapture(e.
 function endPointer(e:PointerEvent){if(e.pointerId===panPointer){panning=false;panPointer=-1;}direction=0;lastInteraction=performance.now()-SETTLE_MS;clearRefinementTimers();renderStage='refining';refineStep=1;requestRender();if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);}
 canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',endPointer);canvas.addEventListener('contextmenu',e=>e.preventDefault());canvas.addEventListener('auxclick',e=>e.preventDefault());
 canvas.addEventListener('wheel',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,a=r.width/r.height,ax=centerX+(x-.5)*a*scale,ay=centerY+(y-.5)*scale,k=Math.exp(e.deltaY*.0012);scale*=k;centerX=ax+(centerX-ax)*k;centerY=ay+(centerY-ay)*k;markInteraction();requestRender();e.preventDefault();},{passive:false});
-for(const input of [speed,iterations,resolution,palette,targetFps])input.addEventListener('input',()=>{if(input===iterations||input===resolution||input===targetFps)resetController();if(input!==speed){renderStage='full-quality';refineStep=0;}requestRender();});
+for(const input of [speed,iterations,palette])input.addEventListener('input',()=>{if(input===iterations)resetController();if(input!==speed){renderStage='full-quality';refineStep=0;}requestRender();});
 new ResizeObserver(()=>{resetController();requestRender();}).observe(canvas);
 let last=performance.now();function tick(now:number){const dt=Math.min(.05,(now-last)/1000);last=now;if(direction){const a=canvas.clientWidth/canvas.clientHeight,ax=centerX+(px-.5)*a*scale,ay=centerY+(py-.5)*scale,k=Math.exp(-direction*Number(speed.value)*dt);scale*=k;centerX=ax+(centerX-ax)*k;centerY=ay+(centerY-ay)*k;markInteraction();requestRender();}requestAnimationFrame(tick);}
 updateReadouts();requestRender();requestAnimationFrame(tick);
