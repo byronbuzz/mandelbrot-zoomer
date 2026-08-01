@@ -11,12 +11,14 @@ app.innerHTML = `
     <h2>Render</h2>
     <label>Zoom depth <output id="zoomOut">1.00× · 10^0.00</output></label>
     <label>Precision <output id="precisionOut">f32</output></label>
+    <label>Render state <output id="stateOut">full-quality</output></label>
     <label>GPU frame rate <output id="fpsOut">0.0 FPS</output></label>
+    <label>Effective quality <output id="qualityOut">500 iter · 100%</output></label>
     <label>Zoom speed <output id="speedOut">1.00×/s</output><input id="speed" type="range" min="0.25" max="8" step="0.25" value="1"></label>
     <label>Iterations <output id="iterOut">500</output><input id="iterations" type="range" min="50" max="10000" step="50" value="500"></label>
     <label>Internal resolution <output id="resOut">100%</output><input id="resolution" type="range" min="0.35" max="1" step="0.05" value="1"></label>
     <label>Palette phase <output id="palOut">0.00</output><input id="palette" type="range" min="0" max="1" step="0.005" value="0"></label>
-    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Use the wheel for discrete zooming.</p>
+    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. During movement, quality adapts toward 60 FPS; full quality is restored after movement stops.</p>
   </aside>
 </section>`;
 
@@ -28,7 +30,9 @@ const resolution = document.querySelector<HTMLInputElement>('#resolution')!;
 const palette = document.querySelector<HTMLInputElement>('#palette')!;
 const zoomOut = document.querySelector<HTMLOutputElement>('#zoomOut')!;
 const precisionOut = document.querySelector<HTMLOutputElement>('#precisionOut')!;
+const stateOut = document.querySelector<HTMLOutputElement>('#stateOut')!;
 const fpsOut = document.querySelector<HTMLOutputElement>('#fpsOut')!;
+const qualityOut = document.querySelector<HTMLOutputElement>('#qualityOut')!;
 const speedOut = document.querySelector<HTMLOutputElement>('#speedOut')!;
 const iterOut = document.querySelector<HTMLOutputElement>('#iterOut')!;
 const resOut = document.querySelector<HTMLOutputElement>('#resOut')!;
@@ -158,41 +162,85 @@ const params = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | G
 const info = adapter.info;
 status.textContent = `${info.vendor || 'GPU'} · WebGPU${device.features.has('timestamp-query') ? ' · GPU timing' : ''}`;
 
-device.addEventListener('uncapturederror', event => {
-  status.textContent = `WebGPU error: ${event.error.message}`;
-});
-device.lost.then(reason => {
-  status.textContent = `GPU device lost: ${reason.message || reason.reason}`;
-}).catch(() => undefined);
+device.addEventListener('uncapturederror', event => { status.textContent = `WebGPU error: ${event.error.message}`; });
+device.lost.then(reason => { status.textContent = `GPU device lost: ${reason.message || reason.reason}`; }).catch(() => undefined);
 
 const DOUBLE_FLOAT_THRESHOLD = 1e4;
-let centerX = -0.5, centerY = 0, scale = 3, direction = 0, px = .5, py = .5, queued = false;
+const TARGET_FRAME_MS = 1000 / 60;
+const SETTLE_MS = 180;
+const MIN_ITERATION_SCALE = 0.08;
+const MIN_RESOLUTION_SCALE = 0.35;
+
+let centerX = -0.5, centerY = 0, scale = 3, direction = 0, px = .5, py = .5;
 let panning = false, panPointer = -1, panX = 0, panY = 0;
-let completedFrames = 0, fpsValue = 0, fpsLast = performance.now();
+let renderRequested = false, frameInFlight = false, pumpScheduled = false;
+let lastInteraction = -Infinity, refinementTimer = 0;
+let adaptiveIterationScale = 1, adaptiveResolutionScale = 1;
+let fpsValue = 0, smoothedFrameMs = TARGET_FRAME_MS;
+let displayedIterations = 500, displayedResolution = 1, displayedInteractive = false;
 
 function split(value: number): [number, number] {
   const hi = Math.fround(value);
   return [hi, Math.fround(value - hi)];
 }
-function updateReadouts(rs: number, deepMode: boolean) {
+function isInteractive(now = performance.now()): boolean {
+  return direction !== 0 || panning || now - lastInteraction < SETTLE_MS;
+}
+function markInteraction(): void {
+  lastInteraction = performance.now();
+  if (refinementTimer) window.clearTimeout(refinementTimer);
+  refinementTimer = window.setTimeout(() => requestRender(), SETTLE_MS + 10);
+}
+function roundedIterations(value: number): number {
+  if (value <= 100) return Math.max(50, Math.round(value / 10) * 10);
+  return Math.max(50, Math.round(value / 50) * 50);
+}
+function effectiveQuality(interactive: boolean): { iterations: number; resolution: number } {
+  const requestedIterations = Number(iterations.value);
+  const requestedResolution = Number(resolution.value);
+  if (!interactive) return { iterations: requestedIterations, resolution: requestedResolution };
+  return {
+    iterations: roundedIterations(Math.max(50, requestedIterations * adaptiveIterationScale)),
+    resolution: Math.max(0.35, requestedResolution * adaptiveResolutionScale)
+  };
+}
+function updateController(frameMs: number): void {
+  if (frameMs > TARGET_FRAME_MS * 1.08) {
+    if (adaptiveIterationScale > MIN_ITERATION_SCALE + 0.001) adaptiveIterationScale = Math.max(MIN_ITERATION_SCALE, adaptiveIterationScale * 0.82);
+    else adaptiveResolutionScale = Math.max(MIN_RESOLUTION_SCALE, adaptiveResolutionScale * 0.9);
+  } else if (frameMs < TARGET_FRAME_MS * 0.78) {
+    if (adaptiveResolutionScale < 0.995) adaptiveResolutionScale = Math.min(1, adaptiveResolutionScale * 1.06 + 0.01);
+    else adaptiveIterationScale = Math.min(1, adaptiveIterationScale * 1.08 + 0.01);
+  }
+}
+function updateReadouts(): void {
   const magnification = 3 / scale;
   const orders = Math.log10(magnification);
   zoomOut.value = `${magnification < 1000 ? magnification.toFixed(2) : magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;
-  precisionOut.value = deepMode ? 'double-float' : 'f32';
+  precisionOut.value = magnification >= DOUBLE_FLOAT_THRESHOLD ? 'double-float' : 'f32';
+  stateOut.value = displayedInteractive ? 'interactive' : 'full-quality';
   fpsOut.value = `${fpsValue.toFixed(1)} FPS`;
+  qualityOut.value = `${displayedIterations} iter · ${Math.round(displayedResolution * 100)}%`;
   speedOut.value = `${Number(speed.value).toFixed(2)}×/s`;
   iterOut.value = iterations.value;
-  resOut.value = `${Math.round(rs * 100)}%`;
+  resOut.value = `${Math.round(Number(resolution.value) * 100)}%`;
   palOut.value = Number(palette.value).toFixed(2);
 }
 
-function render() {
-  queued = false;
-  const rs = Number(resolution.value);
-  const w = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio * rs));
-  const h = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio * rs));
+async function renderFrame(): Promise<void> {
+  frameInFlight = true;
+  renderRequested = false;
+  const interactive = isInteractive();
+  const quality = effectiveQuality(interactive);
+  displayedInteractive = interactive;
+  displayedIterations = quality.iterations;
+  displayedResolution = quality.resolution;
+
+  const w = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio * quality.resolution));
+  const h = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio * quality.resolution));
   canvas.width = w;
   canvas.height = h;
+
   const magnification = 3 / scale;
   const deepMode = magnification >= DOUBLE_FLOAT_THRESHOLD;
   const [cxHi, cxLo] = split(centerX);
@@ -201,24 +249,54 @@ function render() {
   const texture = device.createTexture({ size: [w, h], format: canvasFormat, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC });
   const data = new ArrayBuffer(48), f = new Float32Array(data), u = new Uint32Array(data);
   f[0] = cxHi; f[1] = cxLo; f[2] = cyHi; f[3] = cyLo; f[4] = scaleHi; f[5] = scaleLo;
-  f[6] = w / h; u[7] = Number(iterations.value); f[8] = Number(palette.value);
+  f[6] = w / h; u[7] = quality.iterations; f[8] = Number(palette.value);
   u[9] = w; u[10] = h; u[11] = deepMode ? 1 : 0;
   device.queue.writeBuffer(params, 0, data);
-  const group = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: params } }, { binding: 1, resource: texture.createView() }] });
-  const encoder = device.createCommandEncoder(), pass = encoder.beginComputePass();
-  pass.setPipeline(pipeline); pass.setBindGroup(0, group); pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8)); pass.end();
+
+  const group = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: params } }, { binding: 1, resource: texture.createView() }]
+  });
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, group);
+  pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8));
+  pass.end();
   encoder.copyTextureToTexture({ texture }, { texture: gpuContext.getCurrentTexture() }, { width: w, height: h });
+
+  const started = performance.now();
   device.queue.submit([encoder.finish()]);
-  void device.queue.onSubmittedWorkDone().then(() => { completedFrames++; });
+  await device.queue.onSubmittedWorkDone();
+  const frameMs = Math.max(0.1, performance.now() - started);
   texture.destroy();
-  updateReadouts(rs, deepMode);
+
+  smoothedFrameMs = smoothedFrameMs * 0.78 + frameMs * 0.22;
+  fpsValue = 1000 / smoothedFrameMs;
+  if (interactive) updateController(smoothedFrameMs);
+  frameInFlight = false;
+  updateReadouts();
+
+  if (renderRequested || isInteractive()) schedulePump();
 }
-function queue() { if (!queued) { queued = true; requestAnimationFrame(render); } }
-function pointer(e: PointerEvent) {
+function schedulePump(): void {
+  if (pumpScheduled) return;
+  pumpScheduled = true;
+  requestAnimationFrame(() => {
+    pumpScheduled = false;
+    if (!frameInFlight && renderRequested) void renderFrame();
+  });
+}
+function requestRender(): void {
+  renderRequested = true;
+  schedulePump();
+}
+function pointer(e: PointerEvent): void {
   const r = canvas.getBoundingClientRect();
   px = (e.clientX - r.left) / r.width;
   py = (e.clientY - r.top) / r.height;
 }
+
 canvas.addEventListener('pointermove', e => {
   pointer(e);
   if (!panning || e.pointerId !== panPointer) return;
@@ -226,17 +304,25 @@ canvas.addEventListener('pointermove', e => {
   const dx = e.clientX - panX, dy = e.clientY - panY;
   centerX -= dx / r.width * (r.width / r.height) * scale;
   centerY -= dy / r.height * scale;
-  panX = e.clientX; panY = e.clientY; queue();
+  panX = e.clientX; panY = e.clientY;
+  markInteraction();
+  requestRender();
 });
 canvas.addEventListener('pointerdown', e => {
-  pointer(e); canvas.setPointerCapture(e.pointerId);
-  if (e.button === 1) { panning = true; panPointer = e.pointerId; panX = e.clientX; panY = e.clientY; direction = 0; }
-  else direction = e.button === 2 ? -1 : 1;
+  pointer(e);
+  canvas.setPointerCapture(e.pointerId);
+  if (e.button === 1) {
+    panning = true; panPointer = e.pointerId; panX = e.clientX; panY = e.clientY; direction = 0;
+  } else direction = e.button === 2 ? -1 : 1;
+  markInteraction();
+  requestRender();
   e.preventDefault();
 });
-function endPointer(e: PointerEvent) {
+function endPointer(e: PointerEvent): void {
   if (e.pointerId === panPointer) { panning = false; panPointer = -1; }
   direction = 0;
+  markInteraction();
+  requestRender();
   if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 }
 canvas.addEventListener('pointerup', endPointer);
@@ -244,33 +330,43 @@ canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('auxclick', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
-  const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-  const a = r.width / r.height, ax = centerX + (x - .5) * a * scale, ay = centerY + (y - .5) * scale;
+  const r = canvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+  const a = r.width / r.height;
+  const ax = centerX + (x - .5) * a * scale, ay = centerY + (y - .5) * scale;
   const k = Math.exp(e.deltaY * .0012);
-  scale *= k; centerX = ax + (centerX - ax) * k; centerY = ay + (centerY - ay) * k;
-  queue(); e.preventDefault();
+  scale *= k;
+  centerX = ax + (centerX - ax) * k;
+  centerY = ay + (centerY - ay) * k;
+  markInteraction();
+  requestRender();
+  e.preventDefault();
 }, { passive: false });
-for (const el of [speed, iterations, resolution, palette]) el.addEventListener('input', queue);
-new ResizeObserver(queue).observe(canvas);
+for (const el of [speed, iterations, resolution, palette]) el.addEventListener('input', () => {
+  if (el === iterations || el === resolution) {
+    adaptiveIterationScale = Math.min(adaptiveIterationScale, 1);
+    adaptiveResolutionScale = Math.min(adaptiveResolutionScale, 1);
+  }
+  requestRender();
+});
+new ResizeObserver(requestRender).observe(canvas);
 
 let last = performance.now();
-function tick(now: number) {
+function tick(now: number): void {
   const dt = Math.min(.05, (now - last) / 1000);
   last = now;
-  if (now - fpsLast >= 500) {
-    fpsValue = completedFrames * 1000 / (now - fpsLast);
-    completedFrames = 0;
-    fpsLast = now;
-    updateReadouts(Number(resolution.value), 3 / scale >= DOUBLE_FLOAT_THRESHOLD);
-  }
   if (direction) {
     const a = canvas.clientWidth / canvas.clientHeight;
     const ax = centerX + (px - .5) * a * scale, ay = centerY + (py - .5) * scale;
     const k = Math.exp(-direction * Number(speed.value) * dt);
-    scale *= k; centerX = ax + (centerX - ax) * k; centerY = ay + (centerY - ay) * k;
-    queue();
+    scale *= k;
+    centerX = ax + (centerX - ax) * k;
+    centerY = ay + (centerY - ay) * k;
+    markInteraction();
+    requestRender();
   }
   requestAnimationFrame(tick);
 }
-queue();
+
+requestRender();
 requestAnimationFrame(tick);
