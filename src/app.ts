@@ -33,6 +33,10 @@ const PERTURBATION_THRESHOLD_LOG10 = 4.5;
 const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.52;
 const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.42;
 const PERTURBATION_INTERACTIVE_RESOLUTION = 0.72;
+const MAX_REPAIR_PASSES = 6;
+const REPAIR_TARGET_FRACTION = 0.0005;
+const MIN_REPAIR_RELATIVE_IMPROVEMENT = 0.01;
+const MAX_STALLED_REPAIR_PASSES = 2;
 
 let presentationEpoch = 1;
 let stage: RenderStage = 'full-quality';
@@ -50,9 +54,15 @@ let panY = 0;
 let settleTimer = 0;
 let refineTimer = 0;
 let activeReference: GpuReference | null = null;
+let repairReference: GpuReference | null = null;
 let lastSnapshot: RenderSnapshot | null = null;
 let lastTelemetry: RenderTelemetry | null = null;
 let deferredReference: CpuReference | null = null;
+let repairPass = 0;
+let repairRequestEpoch = -1;
+let repairRequestCameraGeneration = -1;
+let lastRepairUnresolved = Number.POSITIVE_INFINITY;
+let stalledRepairPasses = 0;
 const retiredReferences: GpuReference[] = [];
 
 function requestedIterations(): number { return iterationCount(ui.iterations.value); }
@@ -66,9 +76,20 @@ function clearTimers(): void {
   refineTimer = 0;
 }
 
+function resetRepairState(): void {
+  repairPass = 0;
+  repairRequestEpoch = -1;
+  repairRequestCameraGeneration = -1;
+  lastRepairUnresolved = Number.POSITIVE_INFINITY;
+  stalledRepairPasses = 0;
+  if (repairReference) retiredReferences.push(repairReference);
+  repairReference = null;
+}
+
 function invalidatePresentation(): void {
   presentationEpoch++;
   lastTelemetry = null;
+  resetRepairState();
 }
 
 function setStage(next: RenderStage, nextRefineStep = 0): void {
@@ -177,10 +198,14 @@ function precisionFor(reference: GpuReference | null): PrecisionMode {
   return 'perturbation';
 }
 
-function buildSnapshot(): RenderSnapshot {
+function buildSnapshot(
+  reference: GpuReference | null = activeReference,
+  repairPassValue = 0,
+  manageReferences = true
+): RenderSnapshot {
   const cameraSnapshot = camera.snapshot();
   const quality = effectiveQuality();
-  manageReferenceRequests(cameraSnapshot, quality.iterations);
+  if (manageReferences) manageReferenceRequests(cameraSnapshot, quality.iterations);
   return {
     generation: presentationEpoch,
     camera: cameraSnapshot,
@@ -190,13 +215,21 @@ function buildSnapshot(): RenderSnapshot {
     cssWidth: Math.max(1, ui.canvas.clientWidth),
     cssHeight: Math.max(1, ui.canvas.clientHeight),
     devicePixelRatio,
-    reference: activeReference,
-    precision: precisionFor(activeReference)
+    reference,
+    precision: precisionFor(reference),
+    repairPass: repairPassValue
   };
 }
 
 function requestCurrentRender(): void {
   const snapshot = buildSnapshot();
+  lastSnapshot = snapshot;
+  coordinator.request(snapshot);
+  updateReadouts(snapshot);
+}
+
+function requestRepairRender(reference: GpuReference): void {
+  const snapshot = buildSnapshot(reference, repairPass, false);
   lastSnapshot = snapshot;
   coordinator.request(snapshot);
   updateReadouts(snapshot);
@@ -215,11 +248,76 @@ function updateController(frameMs: number, renderedStage: RenderStage): void {
   else if (frameMs < TARGET_FRAME_MS * 0.78) adaptiveResolution = Math.min(1, adaptiveResolution * 1.06 + 0.01);
 }
 
+function worstUnresolvedTile(telemetry: RenderTelemetry): { x: number; y: number; count: number } | null {
+  let bestIndex = -1;
+  let bestCount = 0;
+  for (let index = 0; index < telemetry.tileUnresolved.length; index++) {
+    const count = telemetry.tileUnresolved[index] ?? 0;
+    if (count <= bestCount) continue;
+    bestCount = count;
+    bestIndex = index;
+  }
+  if (bestIndex < 0 || bestCount <= 0) return null;
+  return {
+    x: bestIndex % telemetry.tileColumns,
+    y: Math.floor(bestIndex / telemetry.tileColumns),
+    count: bestCount
+  };
+}
+
+function maybeScheduleRepair(frame: PresentedFrame): void {
+  const telemetry = frame.telemetry;
+  const snapshot = frame.snapshot;
+  if (!telemetry || snapshot.stage !== 'full-quality' || snapshot.precision !== 'perturbation') return;
+  if (snapshot.generation !== presentationEpoch || snapshot.camera.generation !== camera.generation) return;
+  if (snapshot.repairPass === 0 && snapshot.reference?.purpose !== 'settled') return;
+  if (repairRequestEpoch >= 0 || repairPass >= MAX_REPAIR_PASSES) return;
+
+  const unresolvedFraction = telemetry.totalPixels > 0
+    ? telemetry.unresolvedPixels / telemetry.totalPixels
+    : 0;
+  if (unresolvedFraction <= REPAIR_TARGET_FRACTION) return;
+
+  if (Number.isFinite(lastRepairUnresolved)) {
+    const relativeImprovement = (lastRepairUnresolved - telemetry.unresolvedPixels)
+      / Math.max(1, lastRepairUnresolved);
+    if (relativeImprovement < MIN_REPAIR_RELATIVE_IMPROVEMENT) stalledRepairPasses++;
+    else stalledRepairPasses = 0;
+    if (stalledRepairPasses >= MAX_STALLED_REPAIR_PASSES) return;
+  }
+  lastRepairUnresolved = telemetry.unresolvedPixels;
+
+  const tile = worstUnresolvedTile(telemetry);
+  if (!tile) return;
+  const normalizedX = (tile.x + 0.5) / telemetry.tileColumns;
+  const normalizedY = (tile.y + 0.5) / telemetry.tileRows;
+  repairRequestEpoch = presentationEpoch;
+  repairRequestCameraGeneration = camera.generation;
+  const requested = references.requestRepair(
+    camera.snapshot(),
+    requestedIterations(),
+    aspect(),
+    normalizedX,
+    normalizedY
+  );
+  if (!requested) {
+    repairRequestEpoch = -1;
+    repairRequestCameraGeneration = -1;
+  }
+}
+
 function onPresented(frame: PresentedFrame): void {
   updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
   if (frame.telemetry) lastTelemetry = frame.telemetry;
   updateReadouts(frame.snapshot);
-  if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === presentationEpoch) scheduleNextRefinement();
+  if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === presentationEpoch) {
+    scheduleNextRefinement();
+  }
+  if (frame.snapshot.repairPass > 0 && repairReference) {
+    retiredReferences.push(repairReference);
+    repairReference = null;
+  }
+  maybeScheduleRepair(frame);
 }
 
 function onCoordinatorIdle(): void {
@@ -265,6 +363,25 @@ function tryActivateDeferredReference(): void {
 }
 
 references.onReference(candidate => {
+  if (candidate.purpose === 'repair') {
+    const expectedEpoch = repairRequestEpoch;
+    const expectedCameraGeneration = repairRequestCameraGeneration;
+    repairRequestEpoch = -1;
+    repairRequestCameraGeneration = -1;
+    if (
+      expectedEpoch < 0
+      || expectedEpoch !== presentationEpoch
+      || expectedCameraGeneration !== camera.generation
+      || candidate.cameraGeneration !== camera.generation
+      || stage !== 'full-quality'
+    ) return;
+    if (repairReference) retiredReferences.push(repairReference);
+    repairReference = renderer.createReference(candidate);
+    repairPass++;
+    requestRepairRender(repairReference);
+    return;
+  }
+
   if (!candidateIsUseful(candidate)) return;
   const currentHealthy = activeReference && !referenceIsWeak(activeReference, requestedIterations());
   if (isInteracting() && currentHealthy) {
@@ -292,7 +409,12 @@ function updateReadouts(snapshot: RenderSnapshot): void {
     const percentage = lastTelemetry.totalPixels > 0
       ? (lastTelemetry.unresolvedPixels / lastTelemetry.totalPixels) * 100
       : 0;
-    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted`;
+    const repairStatus = repairRequestEpoch >= 0
+      ? ` · repair ${Math.min(repairPass + 1, MAX_REPAIR_PASSES)}/${MAX_REPAIR_PASSES} queued`
+      : repairPass > 0
+        ? ` · ${repairPass}/${MAX_REPAIR_PASSES} repair passes`
+        : '';
+    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted${repairStatus}`;
   }
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(snapshot.camera.scale.exponent);
@@ -380,7 +502,7 @@ new ResizeObserver(() => {
 }).observe(ui.canvas);
 
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.2`;
+ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.3`;
 
 let previousTick = performance.now();
 function tick(now: number): void {
