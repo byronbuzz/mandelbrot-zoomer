@@ -4,15 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "generate:v31": "node scripts/generate-v31.mjs",
-    "generate:v32": "node scripts/generate-v32.mjs",
-    "generate:v33": "node scripts/generate-v33.mjs",
-    "generate:v34": "node scripts/generate-v34.mjs",
-    "generate:v35": "node scripts/generate-v35.mjs",
-    "dev": "npm run generate:v35 && vite",
-    "build": "npm run generate:v35 && tsc -b && vite build",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "npm run generate:v35 && tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
