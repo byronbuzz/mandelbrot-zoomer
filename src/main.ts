@@ -52,8 +52,13 @@ const device = await adapter.requestDevice({ requiredFeatures: features });
 const context = canvas.getContext('webgpu');
 if (!context) throw new Error('Unable to create WebGPU canvas context');
 const gpuContext: GPUCanvasContext = context;
-const format = navigator.gpu.getPreferredCanvasFormat();
-gpuContext.configure({ device, format, alphaMode: 'opaque' });
+const canvasFormat: GPUTextureFormat = 'rgba8unorm';
+gpuContext.configure({
+  device,
+  format: canvasFormat,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+  alphaMode: 'opaque'
+});
 const module = device.createShaderModule({ code: shader });
 const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 const params = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -67,7 +72,7 @@ function render(){
  const w=Math.max(1,Math.floor(canvas.clientWidth*devicePixelRatio*rs));
  const h=Math.max(1,Math.floor(canvas.clientHeight*devicePixelRatio*rs));
  canvas.width=w; canvas.height=h;
- const texture=device.createTexture({size:[w,h],format:'rgba8unorm',usage:GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.COPY_SRC});
+ const texture=device.createTexture({size:[w,h],format:canvasFormat,usage:GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.COPY_SRC});
  const data=new ArrayBuffer(32), f=new Float32Array(data), u=new Uint32Array(data);
  f[0]=centerX;f[1]=centerY;f[2]=scale;f[3]=w/h;u[4]=Number(iterations.value);f[5]=Number(palette.value);u[6]=w;u[7]=h;
  device.queue.writeBuffer(params,0,data);
