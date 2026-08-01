@@ -6,10 +6,11 @@
   "scripts": {
     "generate:v31": "node scripts/generate-v31.mjs",
     "generate:v32": "node scripts/generate-v32.mjs",
-    "dev": "npm run generate:v32 && vite",
-    "build": "npm run generate:v32 && tsc -b && vite build",
+    "generate:v33": "node scripts/generate-v33.mjs",
+    "dev": "npm run generate:v33 && vite",
+    "build": "npm run generate:v33 && tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "npm run generate:v32 && tsc -b --pretty false"
+    "typecheck": "npm run generate:v33 && tsc -b --pretty false"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
