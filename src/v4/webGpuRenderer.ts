@@ -1,8 +1,10 @@
 import { fixedDifferenceToNumber, fixedSplitF32 } from '../bigFixed';
+import { scaleToNumber } from '../binaryScale';
 import { computeShader, presentShader } from './shaders';
-import type { CpuReference, GpuReference, PreparedFrame, RenderSnapshot } from './types';
+import type { CpuReference, GpuReference, PreparedFrame, RenderSnapshot, RenderTelemetry } from './types';
 
 const PARAMETER_BYTES = 80;
+const TELEMETRY_BYTES = 16;
 const COMPUTE_TEXTURE_FORMAT: GPUTextureFormat = 'rgba8unorm';
 
 export class WebGpuRenderer {
@@ -113,13 +115,23 @@ export class WebGpuRenderer {
       size: PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
+    const telemetryBuffer = this.device.createBuffer({
+      size: TELEMETRY_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+    });
+    const captureTelemetry = snapshot.stage === 'full-quality' && snapshot.precision === 'perturbation';
+    const telemetryReadback = captureTelemetry
+      ? this.device.createBuffer({ size: TELEMETRY_BYTES, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+      : null;
     this.device.queue.writeBuffer(uniform, 0, this.createParameterData(snapshot, computeWidth, computeHeight));
+    this.device.queue.writeBuffer(telemetryBuffer, 0, new Uint32Array(4));
     const bindGroup = this.device.createBindGroup({
       layout: this.computePipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: uniform } },
         { binding: 1, resource: texture.createView() },
-        { binding: 2, resource: { buffer: snapshot.reference?.buffer ?? this.fallbackOrbit } }
+        { binding: 2, resource: { buffer: snapshot.reference?.buffer ?? this.fallbackOrbit } },
+        { binding: 3, resource: { buffer: telemetryBuffer } }
       ]
     });
     const encoder = this.device.createCommandEncoder();
@@ -128,25 +140,34 @@ export class WebGpuRenderer {
     pass.setBindGroup(0, bindGroup);
     pass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
     pass.end();
+    if (telemetryReadback) encoder.copyBufferToBuffer(telemetryBuffer, 0, telemetryReadback, 0, TELEMETRY_BYTES);
     const started = performance.now();
     this.device.queue.submit([encoder.finish()]);
     try {
       await this.device.queue.onSubmittedWorkDone();
+      const telemetry = telemetryReadback
+        ? await this.readTelemetry(telemetryReadback, computeWidth * computeHeight)
+        : null;
+      uniform.destroy();
+      telemetryBuffer.destroy();
+      telemetryReadback?.destroy();
+      return {
+        snapshot,
+        texture,
+        computeWidth,
+        computeHeight,
+        displayWidth,
+        displayHeight,
+        computeMs: Math.max(0.1, performance.now() - started),
+        telemetry
+      };
     } catch (error) {
       texture.destroy();
       uniform.destroy();
+      telemetryBuffer.destroy();
+      telemetryReadback?.destroy();
       throw error;
     }
-    uniform.destroy();
-    return {
-      snapshot,
-      texture,
-      computeWidth,
-      computeHeight,
-      displayWidth,
-      displayHeight,
-      computeMs: Math.max(0.1, performance.now() - started)
-    };
   }
 
   async present(frame: PreparedFrame): Promise<number> {
@@ -198,8 +219,9 @@ export class WebGpuRenderer {
     let referenceOffsetX = 0;
     let referenceOffsetY = 0;
     if (snapshot.reference) {
-      referenceOffsetX = fixedDifferenceToNumber(snapshot.camera.centerX, snapshot.reference.centerX);
-      referenceOffsetY = fixedDifferenceToNumber(snapshot.camera.centerY, snapshot.reference.centerY);
+      const viewportScale = Math.max(scaleToNumber(snapshot.camera.scale), Number.MIN_VALUE);
+      referenceOffsetX = fixedDifferenceToNumber(snapshot.camera.centerX, snapshot.reference.centerX) / viewportScale;
+      referenceOffsetY = fixedDifferenceToNumber(snapshot.camera.centerY, snapshot.reference.centerY) / viewportScale;
     }
     const offsetXHi = Math.fround(referenceOffsetX);
     const offsetYHi = Math.fround(referenceOffsetY);
@@ -221,6 +243,18 @@ export class WebGpuRenderer {
     unsigned[15] = snapshot.reference?.length ?? 1;
     signed[16] = snapshot.camera.scale.exponent;
     return data;
+  }
+
+  private async readTelemetry(buffer: GPUBuffer, totalPixels: number): Promise<RenderTelemetry> {
+    await buffer.mapAsync(GPUMapMode.READ);
+    const values = new Uint32Array(buffer.getMappedRange());
+    const telemetry: RenderTelemetry = {
+      unresolvedPixels: values[0] ?? 0,
+      exhaustedPixels: values[1] ?? 0,
+      totalPixels
+    };
+    buffer.unmap();
+    return telemetry;
   }
 
   private static async assertShaderValid(module: GPUShaderModule, label: string): Promise<void> {
