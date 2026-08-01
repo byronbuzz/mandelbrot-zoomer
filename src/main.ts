@@ -51,8 +51,9 @@ const features: GPUFeatureName[] = adapter.features.has('timestamp-query') ? ['t
 const device = await adapter.requestDevice({ requiredFeatures: features });
 const context = canvas.getContext('webgpu');
 if (!context) throw new Error('Unable to create WebGPU canvas context');
+const gpuContext: GPUCanvasContext = context;
 const format = navigator.gpu.getPreferredCanvasFormat();
-context.configure({ device, format, alphaMode: 'opaque' });
+gpuContext.configure({ device, format, alphaMode: 'opaque' });
 const module = device.createShaderModule({ code: shader });
 const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 const params = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -73,7 +74,7 @@ function render(){
  const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:params}},{binding:1,resource:texture.createView()}]});
  const encoder=device.createCommandEncoder(), pass=encoder.beginComputePass();
  pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(w/8),Math.ceil(h/8));pass.end();
- encoder.copyTextureToTexture({texture},{texture:context.getCurrentTexture()},{width:w,height:h});
+ encoder.copyTextureToTexture({texture},{texture:gpuContext.getCurrentTexture()},{width:w,height:h});
  device.queue.submit([encoder.finish()]);texture.destroy();
  iterOut.value=iterations.value;resOut.value=`${Math.round(rs*100)}%`;palOut.value=Number(palette.value).toFixed(2);
 }
