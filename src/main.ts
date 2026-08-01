@@ -1,4 +1,5 @@
 import './style.css';
+import { dd, ddAdd, ddDifference, ddSplit, ddSub, ddValue, type DoubleDouble } from './deepMath';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing app root');
@@ -23,7 +24,7 @@ app.innerHTML = `
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>GPU frame rate <output id="fpsOut">0.0 FPS</output></label>
     <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
-    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Rendering switches automatically from f32 to double-float and then perturbation for deeper zooms.</p>
+    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Deep navigation uses compensated camera coordinates; exhausted perturbation orbits continue automatically in double-float.</p>
   </aside>
 </section>`;
 
@@ -125,9 +126,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
+  let cx = dsAdd(p.centerX, dsScale(p.scale, ox));
+  let cy = dsAdd(p.centerY, dsScale(p.scale, oy));
   if (p.mode == 1u) {
-    let cx = dsAdd(p.centerX, dsScale(p.scale, ox));
-    let cy = dsAdd(p.centerY, dsScale(p.scale, oy));
     let cxApprox = cx.x + cx.y;
     let cyApprox = cy.x + cy.y;
     let q = (cxApprox - .25) * (cxApprox - .25) + cyApprox * cyApprox;
@@ -154,28 +155,40 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   let dc = p.referenceOffset + vec2f(ox, oy) * (p.scale.x + p.scale.y);
   var dz = vec2f(0.);
+  var currentZ = vec2f(0.);
   var iteration = 0u;
   var radius = 0.0;
-  var unstable = false;
+  var continueDirect = false;
   loop {
     let parts = referenceOrbit[iteration];
     let referenceZ = vec2f(parts.x + parts.y, parts.z + parts.w);
-    let z = referenceZ + dz;
-    radius = dot(z, z);
+    currentZ = referenceZ + dz;
+    radius = dot(currentZ, currentZ);
     if (iteration >= p.iterations || radius > 256.) { break; }
-    if (iteration + 1u >= p.orbitLength) { unstable = true; break; }
+    if (iteration + 1u >= p.orbitLength) { continueDirect = true; break; }
     let dz2 = vec2f(dz.x * dz.x - dz.y * dz.y, 2.0 * dz.x * dz.y);
     let twiceReferenceTimesDelta = vec2f(
       2.0 * (referenceZ.x * dz.x - referenceZ.y * dz.y),
       2.0 * (referenceZ.x * dz.y + referenceZ.y * dz.x)
     );
     dz = twiceReferenceTimesDelta + dz2 + dc;
-    if (any(abs(dz) > vec2f(1e18))) { unstable = true; break; }
+    if (any(abs(dz) > vec2f(1e12))) { continueDirect = true; break; }
     iteration++;
   }
-  if (unstable) {
-    textureStore(outTex, vec2i(id), vec4f(.55, .05, .7, 1));
-    return;
+
+  if (continueDirect && radius <= 256. && iteration < p.iterations) {
+    var zx = vec2f(currentZ.x, 0.0);
+    var zy = vec2f(currentZ.y, 0.0);
+    loop {
+      radius = zx.x * zx.x + zy.x * zy.x;
+      if (iteration >= p.iterations || radius > 256.) { break; }
+      let zx2 = dsMul(zx, zx);
+      let zy2 = dsMul(zy, zy);
+      let zxy = dsMul(zx, zy);
+      zx = dsAdd(dsSub(zx2, zy2), cx);
+      zy = dsAdd(dsScale(zxy, 2.0), cy);
+      iteration++;
+    }
   }
   writeResult(id, iteration < p.iterations, iteration, radius);
 }`;
@@ -202,10 +215,7 @@ if (shaderErrors.length) {
 }
 const pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'main' } });
 const params = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-const orbitBuffer = device.createBuffer({
-  size: (ITERATION_MAX + 1) * 16,
-  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-});
+const orbitBuffer = device.createBuffer({ size: (ITERATION_MAX + 1) * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 const info = adapter.info;
 status.textContent = `${info.vendor || 'GPU'} · WebGPU${device.features.has('timestamp-query') ? ' · GPU timing' : ''}`;
 device.addEventListener('uncapturederror', event => { status.textContent = `WebGPU error: ${event.error.message}`; });
@@ -215,7 +225,6 @@ const DOUBLE_FLOAT_THRESHOLD = 1e4;
 const PERTURBATION_ENTER_THRESHOLD = 5e4;
 const PERTURBATION_EXIT_THRESHOLD = 3e4;
 const TARGET_FPS = 60;
-const FULL_RESOLUTION = 1;
 const SETTLE_MS = 180;
 const REFINE_DELAY_MS = 90;
 const MIN_RESOLUTION_SCALE = .35;
@@ -233,7 +242,9 @@ type OrbitCache = {
   ms: number;
 };
 
-let centerX = -.5, centerY = 0, scale = 3, direction = 0, px = .5, py = .5;
+let centerX: DoubleDouble = dd(-.5);
+let centerY: DoubleDouble = dd(0);
+let scale = 3, direction = 0, px = .5, py = .5;
 let panning = false, panPointer = -1, panX = 0, panY = 0;
 let renderRequested = false, frameInFlight = false, pumpScheduled = false;
 let lastInteraction = -Infinity, settleTimer = 0, refineTimer = 0;
@@ -245,16 +256,11 @@ let precisionLatch: PrecisionMode = 'f32';
 let orbitStatus = 'inactive';
 let orbitCache: OrbitCache | null = null;
 
-function split(value: number): [number, number] {
-  const hi = Math.fround(value);
-  return [hi, Math.fround(value - hi)];
-}
 function requestedIterations(): number {
   return Math.round(ITERATION_MIN * Math.pow(ITERATION_RATIO, Number(iterations.value)));
 }
-function targetFrameMs(): number { return 1000 / TARGET_FPS; }
 function isInteractive(now = performance.now()): boolean { return direction !== 0 || panning || now - lastInteraction < SETTLE_MS; }
-function resetController(): void { adaptiveResolutionScale = 1; adaptiveIterationScale = 1; smoothedFrameMs = targetFrameMs(); }
+function resetController(): void { adaptiveResolutionScale = 1; adaptiveIterationScale = 1; smoothedFrameMs = 1000 / TARGET_FPS; }
 function clearRefinementTimers(): void { if (settleTimer) clearTimeout(settleTimer); if (refineTimer) clearTimeout(refineTimer); }
 function markInteraction(): void {
   lastInteraction = performance.now();
@@ -270,21 +276,15 @@ function roundedIterations(value: number): number {
 }
 function effectiveQuality(stage: RenderStage): { iterations: number; resolution: number } {
   const requested = requestedIterations();
-  if (stage === 'full-quality') return { iterations: requested, resolution: FULL_RESOLUTION };
+  if (stage === 'full-quality') return { iterations: requested, resolution: 1 };
   if (stage === 'refining') {
     const progress = refineStep === 1 ? .65 : .85;
-    return {
-      iterations: roundedIterations(requested * (.85 + .15 * progress)),
-      resolution: .55 + .45 * progress
-    };
+    return { iterations: roundedIterations(requested * (.85 + .15 * progress)), resolution: .55 + .45 * progress };
   }
-  return {
-    iterations: roundedIterations(requested * adaptiveIterationScale),
-    resolution: Math.max(MIN_RESOLUTION_SCALE, adaptiveResolutionScale)
-  };
+  return { iterations: roundedIterations(requested * adaptiveIterationScale), resolution: Math.max(MIN_RESOLUTION_SCALE, adaptiveResolutionScale) };
 }
 function updateController(frameMs: number): void {
-  const target = targetFrameMs();
+  const target = 1000 / TARGET_FPS;
   if (frameMs > target * 1.08) {
     if (adaptiveResolutionScale > MIN_RESOLUTION_SCALE + .001) adaptiveResolutionScale = Math.max(MIN_RESOLUTION_SCALE, adaptiveResolutionScale * .88);
     else adaptiveIterationScale = Math.max(MIN_ITERATION_SCALE, adaptiveIterationScale * .94);
@@ -308,85 +308,49 @@ function orbitLengthAt(cx: number, cy: number, limit: number): number {
   for (let i = 0; i < limit; i++) {
     const nextX = zx * zx - zy * zy + cx;
     const nextY = 2 * zx * zy + cy;
-    zx = nextX;
-    zy = nextY;
+    zx = nextX; zy = nextY;
     if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) return i + 1;
   }
   return limit + 1;
 }
 function canReuseOrbit(limit: number): boolean {
   if (!orbitCache || orbitCache.iterationLimit < limit) return false;
-  const dx = centerX - orbitCache.refX;
-  const dy = centerY - orbitCache.refY;
-  const distance = Math.hypot(dx, dy);
+  const distance = Math.hypot(ddDifference(centerX, orbitCache.refX), ddDifference(centerY, orbitCache.refY));
   return distance <= orbitCache.scaleAtBuild * .42 && scale <= orbitCache.scaleAtBuild * 1.25 && scale >= orbitCache.scaleAtBuild * .16;
 }
 function buildReferenceOrbit(iterationLimit: number, aspect: number): OrbitCache {
   if (canReuseOrbit(iterationLimit)) return { ...orbitCache!, ms: 0 };
-
   const started = performance.now();
+  const cx0 = ddValue(centerX), cy0 = ddValue(centerY);
   const offsets: Array<[number, number]> = [[0, 0]];
-  for (const radius of [.22, .42]) {
-    offsets.push(
-      [-radius, 0], [radius, 0], [0, -radius], [0, radius],
-      [-radius, -radius], [-radius, radius], [radius, -radius], [radius, radius]
-    );
-  }
-
-  let bestX = centerX;
-  let bestY = centerY;
-  let bestLength = 0;
+  for (const radius of [.22, .42]) offsets.push([-radius, 0], [radius, 0], [0, -radius], [0, radius], [-radius, -radius], [-radius, radius], [radius, -radius], [radius, radius]);
+  let bestX = cx0, bestY = cy0, bestLength = 0;
   for (const [ox, oy] of offsets) {
-    const candidateX = centerX + ox * aspect * scale;
-    const candidateY = centerY + oy * scale;
+    const candidateX = cx0 + ox * aspect * scale;
+    const candidateY = cy0 + oy * scale;
     const length = orbitLengthAt(candidateX, candidateY, iterationLimit);
-    if (length > bestLength) {
-      bestLength = length;
-      bestX = candidateX;
-      bestY = candidateY;
-    }
+    if (length > bestLength) { bestLength = length; bestX = candidateX; bestY = candidateY; }
     if (length > iterationLimit) break;
   }
-
   const data = new Float32Array((iterationLimit + 1) * 4);
-  let zx = 0, zy = 0;
-  let length = 0;
-  let escaped = false;
+  let zx = 0, zy = 0, length = 0, escaped = false;
   for (let i = 0; i <= iterationLimit; i++) {
-    const [zxHi, zxLo] = split(zx);
-    const [zyHi, zyLo] = split(zy);
-    const offset = i * 4;
-    data[offset] = zxHi;
-    data[offset + 1] = zxLo;
-    data[offset + 2] = zyHi;
-    data[offset + 3] = zyLo;
+    const zxHi = Math.fround(zx), zyHi = Math.fround(zy), offset = i * 4;
+    data[offset] = zxHi; data[offset + 1] = Math.fround(zx - zxHi);
+    data[offset + 2] = zyHi; data[offset + 3] = Math.fround(zy - zyHi);
     length = i + 1;
     if (i === iterationLimit) break;
     const nextX = zx * zx - zy * zy + bestX;
     const nextY = 2 * zx * zy + bestY;
-    zx = nextX;
-    zy = nextY;
-    if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) {
-      escaped = true;
-      break;
-    }
+    zx = nextX; zy = nextY;
+    if (!Number.isFinite(zx) || !Number.isFinite(zy) || zx * zx + zy * zy > 256) { escaped = true; break; }
   }
   device.queue.writeBuffer(orbitBuffer, 0, data, 0, length * 4);
-  orbitCache = {
-    refX: bestX,
-    refY: bestY,
-    scaleAtBuild: scale,
-    iterationLimit,
-    length,
-    escaped,
-    ms: performance.now() - started
-  };
+  orbitCache = { refX: bestX, refY: bestY, scaleAtBuild: scale, iterationLimit, length, escaped, ms: performance.now() - started };
   return orbitCache;
 }
 function updateReadouts(): void {
-  const magnification = 3 / scale;
-  const orders = Math.log10(magnification);
-  const requested = requestedIterations();
+  const magnification = 3 / scale, orders = Math.log10(magnification), requested = requestedIterations();
   zoomOut.value = `${magnification < 1000 ? magnification.toFixed(2) : magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;
   precisionOut.value = displayedPrecision;
   orbitOut.value = orbitStatus;
@@ -399,88 +363,46 @@ function updateReadouts(): void {
 }
 
 async function renderFrame(): Promise<void> {
-  frameInFlight = true;
-  renderRequested = false;
+  frameInFlight = true; renderRequested = false;
   const activeStage: RenderStage = isInteractive() ? 'interactive' : renderStage;
   const quality = effectiveQuality(activeStage);
-  displayedIterations = quality.iterations;
-  displayedResolution = quality.resolution;
-
+  displayedIterations = quality.iterations; displayedResolution = quality.resolution;
   const w = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio * quality.resolution));
   const h = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio * quality.resolution));
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = w; canvas.height = h;
 
-  const magnification = 3 / scale;
-  const precision = precisionFor(magnification);
-  let orbitLength = 1;
-  let referenceOffsetX = 0;
-  let referenceOffsetY = 0;
+  const precision = precisionFor(3 / scale);
+  let orbitLength = 1, referenceOffsetX = 0, referenceOffsetY = 0;
   orbitStatus = 'inactive';
   if (precision === 'perturbation') {
     const orbit = buildReferenceOrbit(quality.iterations, w / h);
     orbitLength = orbit.length;
-    referenceOffsetX = centerX - orbit.refX;
-    referenceOffsetY = centerY - orbit.refY;
+    referenceOffsetX = ddDifference(centerX, orbit.refX);
+    referenceOffsetY = ddDifference(centerY, orbit.refY);
     const timing = orbit.ms > 0 ? `${orbit.ms.toFixed(1)} ms` : 'cached';
-    orbitStatus = orbit.escaped
-      ? `selected reference escaped at ${Math.max(0, orbit.length - 1)} · ${timing}`
-      : `${orbit.length - 1} iter · ${timing}`;
+    orbitStatus = orbit.escaped ? `reference ${orbit.length - 1} iter · hybrid continuation · ${timing}` : `${orbit.length - 1} iter · ${timing}`;
   }
   displayedPrecision = precision;
 
-  const [cxHi, cxLo] = split(centerX);
-  const [cyHi, cyLo] = split(centerY);
-  const [scaleHi, scaleLo] = split(scale);
-  const texture = device.createTexture({
-    size: [w, h],
-    format: canvasFormat,
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
-  });
-  const data = new ArrayBuffer(64);
-  const f = new Float32Array(data);
-  const u = new Uint32Array(data);
-  f[0] = cxHi; f[1] = cxLo;
-  f[2] = cyHi; f[3] = cyLo;
-  f[4] = scaleHi; f[5] = scaleLo;
-  f[6] = w / h;
-  u[7] = quality.iterations;
-  f[8] = Number(palette.value);
-  u[9] = w; u[10] = h;
-  u[11] = precision === 'f32' ? 0 : precision === 'double-float' ? 1 : 2;
-  u[12] = orbitLength;
-  f[14] = Math.fround(referenceOffsetX);
-  f[15] = Math.fround(referenceOffsetY);
+  const [cxHi, cxLo] = ddSplit(centerX), [cyHi, cyLo] = ddSplit(centerY);
+  const scaleHi = Math.fround(scale), scaleLo = Math.fround(scale - scaleHi);
+  const texture = device.createTexture({ size: [w, h], format: canvasFormat, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC });
+  const data = new ArrayBuffer(64), f = new Float32Array(data), u = new Uint32Array(data);
+  f[0] = cxHi; f[1] = cxLo; f[2] = cyHi; f[3] = cyLo; f[4] = scaleHi; f[5] = scaleLo;
+  f[6] = w / h; u[7] = quality.iterations; f[8] = Number(palette.value); u[9] = w; u[10] = h;
+  u[11] = precision === 'f32' ? 0 : precision === 'double-float' ? 1 : 2; u[12] = orbitLength;
+  f[14] = Math.fround(referenceOffsetX); f[15] = Math.fround(referenceOffsetY);
   device.queue.writeBuffer(params, 0, data);
-
-  const group = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: params } },
-      { binding: 1, resource: texture.createView() },
-      { binding: 2, resource: { buffer: orbitBuffer } }
-    ]
-  });
-  const encoder = device.createCommandEncoder();
-  const pass = encoder.beginComputePass();
-  pass.setPipeline(pipeline);
-  pass.setBindGroup(0, group);
-  pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8));
-  pass.end();
+  const group = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: params } }, { binding: 1, resource: texture.createView() }, { binding: 2, resource: { buffer: orbitBuffer } }] });
+  const encoder = device.createCommandEncoder(), pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline); pass.setBindGroup(0, group); pass.dispatchWorkgroups(Math.ceil(w / 8), Math.ceil(h / 8)); pass.end();
   encoder.copyTextureToTexture({ texture }, { texture: gpuContext.getCurrentTexture() }, { width: w, height: h });
-
   const started = performance.now();
-  device.queue.submit([encoder.finish()]);
-  await device.queue.onSubmittedWorkDone();
-  const frameMs = Math.max(.1, performance.now() - started);
-  texture.destroy();
-
-  smoothedFrameMs = smoothedFrameMs * .78 + frameMs * .22;
-  fpsValue = 1000 / smoothedFrameMs;
+  device.queue.submit([encoder.finish()]); await device.queue.onSubmittedWorkDone();
+  const frameMs = Math.max(.1, performance.now() - started); texture.destroy();
+  smoothedFrameMs = smoothedFrameMs * .78 + frameMs * .22; fpsValue = 1000 / smoothedFrameMs;
   if (activeStage === 'interactive') updateController(smoothedFrameMs);
-  frameInFlight = false;
-  updateReadouts();
-
+  frameInFlight = false; updateReadouts();
   if (!isInteractive() && renderStage === 'refining') {
     if (refineStep < 2) refineTimer = window.setTimeout(() => { refineStep++; requestRender(); }, REFINE_DELAY_MS);
     else refineTimer = window.setTimeout(() => { renderStage = 'full-quality'; requestRender(); }, REFINE_DELAY_MS);
@@ -490,47 +412,39 @@ async function renderFrame(): Promise<void> {
 function schedulePump(): void {
   if (pumpScheduled) return;
   pumpScheduled = true;
-  requestAnimationFrame(() => {
-    pumpScheduled = false;
-    if (!frameInFlight && renderRequested) void renderFrame();
-  });
+  requestAnimationFrame(() => { pumpScheduled = false; if (!frameInFlight && renderRequested) void renderFrame(); });
 }
 function requestRender(): void { renderRequested = true; schedulePump(); }
 function pointer(e: PointerEvent): void {
-  const r = canvas.getBoundingClientRect();
-  px = (e.clientX - r.left) / r.width;
-  py = (e.clientY - r.top) / r.height;
+  const r = canvas.getBoundingClientRect(); px = (e.clientX - r.left) / r.width; py = (e.clientY - r.top) / r.height;
+}
+function moveCamera(dx: number, dy: number): void {
+  centerX = ddAdd(centerX, dx); centerY = ddAdd(centerY, dy);
+}
+function zoomAboutPointer(k: number, aspect: number): void {
+  const oldScale = scale;
+  moveCamera((px - .5) * aspect * oldScale * (1 - k), (py - .5) * oldScale * (1 - k));
+  scale = oldScale * k;
 }
 
 canvas.addEventListener('pointermove', e => {
   pointer(e);
   if (!panning || e.pointerId !== panPointer) return;
   const r = canvas.getBoundingClientRect();
-  centerX -= (e.clientX - panX) / r.width * (r.width / r.height) * scale;
-  centerY -= (e.clientY - panY) / r.height * scale;
-  panX = e.clientX;
-  panY = e.clientY;
-  markInteraction();
-  requestRender();
+  centerX = ddSub(centerX, (e.clientX - panX) / r.width * (r.width / r.height) * scale);
+  centerY = ddSub(centerY, (e.clientY - panY) / r.height * scale);
+  panX = e.clientX; panY = e.clientY; markInteraction(); requestRender();
 });
 canvas.addEventListener('pointerdown', e => {
-  pointer(e);
-  canvas.setPointerCapture(e.pointerId);
-  if (e.button === 1) {
-    panning = true; panPointer = e.pointerId; panX = e.clientX; panY = e.clientY; direction = 0;
-  } else direction = e.button === 2 ? -1 : 1;
-  markInteraction();
-  requestRender();
-  e.preventDefault();
+  pointer(e); canvas.setPointerCapture(e.pointerId);
+  if (e.button === 1) { panning = true; panPointer = e.pointerId; panX = e.clientX; panY = e.clientY; direction = 0; }
+  else direction = e.button === 2 ? -1 : 1;
+  markInteraction(); requestRender(); e.preventDefault();
 });
 function endPointer(e: PointerEvent): void {
   if (e.pointerId === panPointer) { panning = false; panPointer = -1; }
-  direction = 0;
-  lastInteraction = performance.now() - SETTLE_MS;
-  clearRefinementTimers();
-  renderStage = 'refining';
-  refineStep = 1;
-  requestRender();
+  direction = 0; lastInteraction = performance.now() - SETTLE_MS; clearRefinementTimers();
+  renderStage = 'refining'; refineStep = 1; requestRender();
   if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 }
 canvas.addEventListener('pointerup', endPointer);
@@ -538,25 +452,12 @@ canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('auxclick', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
-  const r = canvas.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width;
-  const y = (e.clientY - r.top) / r.height;
-  const a = r.width / r.height;
-  const ax = centerX + (x - .5) * a * scale;
-  const ay = centerY + (y - .5) * scale;
-  const k = Math.exp(e.deltaY * .0012);
-  scale *= k;
-  centerX = ax + (centerX - ax) * k;
-  centerY = ay + (centerY - ay) * k;
-  markInteraction();
-  requestRender();
-  e.preventDefault();
+  pointer(e);
+  zoomAboutPointer(Math.exp(e.deltaY * .0012), canvas.clientWidth / canvas.clientHeight);
+  markInteraction(); requestRender(); e.preventDefault();
 }, { passive: false });
 for (const input of [speed, iterations, palette]) input.addEventListener('input', () => {
-  if (input === iterations) {
-    resetController();
-    orbitCache = null;
-  }
+  if (input === iterations) { resetController(); orbitCache = null; }
   if (input !== speed) { renderStage = 'full-quality'; refineStep = 0; }
   requestRender();
 });
@@ -564,21 +465,11 @@ new ResizeObserver(() => { resetController(); requestRender(); }).observe(canvas
 
 let last = performance.now();
 function tick(now: number): void {
-  const dt = Math.min(.05, (now - last) / 1000);
-  last = now;
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
   if (direction) {
-    const a = canvas.clientWidth / canvas.clientHeight;
-    const ax = centerX + (px - .5) * a * scale;
-    const ay = centerY + (py - .5) * scale;
-    const k = Math.exp(-direction * Number(speed.value) * dt);
-    scale *= k;
-    centerX = ax + (centerX - ax) * k;
-    centerY = ay + (centerY - ay) * k;
-    markInteraction();
-    requestRender();
+    zoomAboutPointer(Math.exp(-direction * Number(speed.value) * dt), canvas.clientWidth / canvas.clientHeight);
+    markInteraction(); requestRender();
   }
   requestAnimationFrame(tick);
 }
-updateReadouts();
-requestRender();
-requestAnimationFrame(tick);
+updateReadouts(); requestRender(); requestAnimationFrame(tick);
