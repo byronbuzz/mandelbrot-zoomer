@@ -22,6 +22,14 @@ const REPAIR_LOCAL_OFFSETS = [
   [-0.035, 0], [0.035, 0], [0, -0.035], [0, 0.035],
   [-0.025, -0.025], [0.025, -0.025], [-0.025, 0.025], [0.025, 0.025]
 ] as const;
+const GLOBAL_REPAIR_COLUMNS = 11;
+const GLOBAL_REPAIR_ROWS = 9;
+const GLOBAL_REPAIR_PHASES = [
+  [0, 0],
+  [0.5, 0.5],
+  [0.25, 0.75],
+  [0.75, 0.25]
+] as const;
 const STALE_PROVISIONAL_MS = 260;
 
 export class ReferenceManager {
@@ -67,6 +75,35 @@ export class ReferenceManager {
     );
   }
 
+  requestGlobalRepair(
+    camera: CameraSnapshot,
+    iterations: number,
+    aspect: number,
+    pass: number
+  ): boolean {
+    const phase = GLOBAL_REPAIR_PHASES[pass % GLOBAL_REPAIR_PHASES.length];
+    const candidates: ReferenceCandidate[] = [this.candidateAt(camera, 0, 0)];
+    for (let row = 0; row < GLOBAL_REPAIR_ROWS; row++) {
+      const normalizedY = ((row + 0.5 + phase[1]) % GLOBAL_REPAIR_ROWS) / GLOBAL_REPAIR_ROWS;
+      for (let column = 0; column < GLOBAL_REPAIR_COLUMNS; column++) {
+        const normalizedX = ((column + 0.5 + phase[0]) % GLOBAL_REPAIR_COLUMNS) / GLOBAL_REPAIR_COLUMNS;
+        candidates.push(this.candidateAt(
+          camera,
+          (normalizedX - 0.5) * aspect,
+          normalizedY - 0.5
+        ));
+      }
+    }
+    return this.enqueue(
+      camera,
+      iterations,
+      'repair',
+      candidates,
+      Math.min(iterations, 8192),
+      `${camera.generation}:${iterations}:repair:global:${pass}`
+    );
+  }
+
   requestRepair(
     camera: CameraSnapshot,
     iterations: number,
@@ -79,7 +116,7 @@ export class ReferenceManager {
     const candidates = REPAIR_LOCAL_OFFSETS.map(([dx, dy]) =>
       this.candidateAt(camera, targetX + dx * aspect, targetY + dy)
     );
-    const key = `${camera.generation}:${iterations}:repair:${normalizedX.toFixed(4)}:${normalizedY.toFixed(4)}`;
+    const key = `${camera.generation}:${iterations}:repair:tile:${normalizedX.toFixed(4)}:${normalizedY.toFixed(4)}`;
     return this.enqueue(
       camera,
       iterations,
