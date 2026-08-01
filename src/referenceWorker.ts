@@ -4,6 +4,8 @@ import type { ReferenceRequest, ReferenceResponse } from './referenceProtocol';
 
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 const NUMBER_MANTISSA_BITS = 53;
+const YIELD_INTERVAL = 64;
+let newestRequestId = 0;
 
 function fixedToNumber(raw: bigint, bits: number): number {
   if (raw === 0n) return 0;
@@ -26,8 +28,11 @@ function multiplyFixed(a: bigint, b: bigint, bits: number): bigint {
   return product >= 0n ? (product + half) >> shift : -((-product + half) >> shift);
 }
 
-worker.addEventListener('message', event => {
-  const request = event.data as ReferenceRequest;
+function nextTask(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function buildReference(request: ReferenceRequest): Promise<void> {
   const started = performance.now();
   const bits = Math.max(request.centerX.bits, request.centerY.bits);
   const align = (raw: bigint, sourceBits: number): bigint => sourceBits === bits
@@ -38,6 +43,7 @@ worker.addEventListener('message', event => {
 
   const cx = align(BigInt(request.centerX.raw), request.centerX.bits);
   const cy = align(BigInt(request.centerY.raw), request.centerY.bits);
+  const escapeComponent = 16n << BigInt(bits);
   let zx = 0n;
   let zy = 0n;
   let length = 0;
@@ -45,6 +51,11 @@ worker.addEventListener('message', event => {
   const orbit = new Float32Array((request.iterations + 1) * 4);
 
   for (let i = 0; i <= request.iterations; i++) {
+    if ((i & (YIELD_INTERVAL - 1)) === 0) {
+      await nextTask();
+      if (request.id !== newestRequestId) return;
+    }
+
     const zxNumber = fixedToNumber(zx, bits);
     const zyNumber = fixedToNumber(zy, bits);
     const [zxHi, zxLo] = splitF32(zxNumber);
@@ -63,13 +74,13 @@ worker.addEventListener('message', event => {
     zx = zx2 - zy2 + cx;
     zy = (zxy << 1n) + cy;
 
-    const radius = fixedToNumber(zx, bits) ** 2 + fixedToNumber(zy, bits) ** 2;
-    if (!Number.isFinite(radius) || radius > 256) {
+    if (zx > escapeComponent || zx < -escapeComponent || zy > escapeComponent || zy < -escapeComponent) {
       escaped = true;
       break;
     }
   }
 
+  if (request.id !== newestRequestId) return;
   const response: ReferenceResponse = {
     id: request.id,
     bits,
@@ -79,4 +90,10 @@ worker.addEventListener('message', event => {
     orbit: orbit.slice(0, length * 4)
   };
   worker.postMessage(response, [response.orbit.buffer]);
+}
+
+worker.addEventListener('message', event => {
+  const request = event.data as ReferenceRequest;
+  newestRequestId = request.id;
+  void buildReference(request);
 });
