@@ -2,7 +2,7 @@ import type { BigFixed } from '../bigFixed';
 import type { BinaryScale } from '../binaryScale';
 
 export type RenderStage = 'interactive' | 'refining' | 'full-quality';
-export type ReferencePurpose = 'provisional' | 'settled';
+export type ReferencePurpose = 'provisional' | 'settled' | 'repair';
 export type PrecisionMode = 'f32' | 'double-float' | 'perturbation';
 
 export type CameraSnapshot = Readonly<{
@@ -77,12 +77,16 @@ export type RenderSnapshot = Readonly<{
   devicePixelRatio: number;
   reference: GpuReference | null;
   precision: PrecisionMode;
+  repairPass: number;
 }>;
 
 export type RenderTelemetry = Readonly<{
   unresolvedPixels: number;
   exhaustedPixels: number;
   totalPixels: number;
+  tileColumns: number;
+  tileRows: number;
+  tileUnresolved: readonly number[];
 }>;
 
 export type PreparedFrame = Readonly<{
@@ -94,4 +98,6 @@ export type PreparedFrame = Readonly<{
   displayHeight: number;
   computeMs: number;
   telemetry: RenderTelemetry | null;
+  retainAsSettled: boolean;
+  accumulationKey: string;
 }>;
