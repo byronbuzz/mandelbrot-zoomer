@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { ReferenceRequest, ReferenceResponse } from './referenceProtocol';
+import type { ReferenceRequest, ReferenceResponse, SerializedFixed } from './referenceProtocol';
 
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 const NUMBER_MANTISSA_BITS = 53;
@@ -38,6 +38,11 @@ function fixedToDD(raw: bigint, bits: number): DD {
   const hi = fixedToNumber(raw, bits);
   const residual = raw - numberToFixed(hi, bits);
   return [hi, fixedToNumber(residual, bits)];
+}
+
+function ddToSerializedFixed(value: DD, bits: number): SerializedFixed {
+  const raw = numberToFixed(value[0], bits) + numberToFixed(value[1], bits);
+  return { raw: raw.toString(), bits };
 }
 
 function quickTwoSum(a: number, b: number): DD {
@@ -132,6 +137,8 @@ function buildReference(request: ReferenceRequest): void {
     length,
     escaped,
     generationMs: performance.now() - started,
+    referenceCenterX: ddToSerializedFixed(cx, request.centerX.bits),
+    referenceCenterY: ddToSerializedFixed(cy, request.centerY.bits),
     orbit: trimmed
   };
   worker.postMessage(response, [trimmed.buffer]);
