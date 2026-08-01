@@ -4,7 +4,15 @@ import { scaleToNumber } from './binaryScale';
 import { CameraModel } from './v4/camera';
 import { ReferenceManager } from './v4/referenceManager';
 import { RenderCoordinator, type PresentedFrame } from './v4/renderCoordinator';
-import type { CpuReference, GpuReference, PrecisionMode, RenderQuality, RenderSnapshot, RenderStage } from './v4/types';
+import type {
+  CpuReference,
+  GpuReference,
+  PrecisionMode,
+  RenderQuality,
+  RenderSnapshot,
+  RenderStage,
+  RenderTelemetry
+} from './v4/types';
 import { createUi, iterationCount } from './v4/ui';
 import { WebGpuRenderer } from './v4/webGpuRenderer';
 
@@ -26,9 +34,6 @@ const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.52;
 const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.42;
 const PERTURBATION_INTERACTIVE_RESOLUTION = 0.72;
 
-// The presentation epoch changes only when an in-flight frame must become
-// ineligible for display. Camera revisions may advance continuously inside one
-// interaction epoch, allowing the GPU to present at its natural completed rate.
 let presentationEpoch = 1;
 let stage: RenderStage = 'full-quality';
 let refineStep = 0;
@@ -46,6 +51,7 @@ let settleTimer = 0;
 let refineTimer = 0;
 let activeReference: GpuReference | null = null;
 let lastSnapshot: RenderSnapshot | null = null;
+let lastTelemetry: RenderTelemetry | null = null;
 let deferredReference: CpuReference | null = null;
 const retiredReferences: GpuReference[] = [];
 
@@ -62,6 +68,7 @@ function clearTimers(): void {
 
 function invalidatePresentation(): void {
   presentationEpoch++;
+  lastTelemetry = null;
 }
 
 function setStage(next: RenderStage, nextRefineStep = 0): void {
@@ -79,6 +86,7 @@ function beginInteraction(autoSettle: boolean): void {
 
 function finishInteraction(): void {
   clearTimers();
+  references.cancelOlderThan(camera.generation);
   setStage('refining', 1);
   tryActivateDeferredReference();
   requestCurrentRender();
@@ -127,24 +135,28 @@ function referenceIsWeak(reference: GpuReference, iterations: number): boolean {
     || (reference.escaped && reference.length < Math.min(iterations, 4096));
 }
 
+function requestLatestProvisional(cameraSnapshot: ReturnType<CameraModel['snapshot']>, iterations: number): void {
+  references.request(
+    cameraSnapshot,
+    Math.min(iterations, 4096),
+    'provisional',
+    aspect(),
+    true
+  );
+}
+
 function manageReferenceRequests(cameraSnapshot: ReturnType<CameraModel['snapshot']>, iterations: number): void {
   const depth = camera.log10Magnification();
   if (depth < REFERENCE_PREFETCH_LOG10) return;
   const weak = !activeReference || referenceIsWeak(activeReference, iterations);
 
-  // Warm a provisional orbit before perturbation becomes mandatory. This avoids
-  // a full-resolution double-float cliff at the transition near 10^4.5–10^5.
   if (depth < PERTURBATION_THRESHOLD_LOG10) {
-    if (weak && references.pendingCount === 0) {
-      references.request(cameraSnapshot, Math.min(iterations, 4096), 'provisional', aspect());
-    }
+    if (weak) requestLatestProvisional(cameraSnapshot, iterations);
     return;
   }
 
   if (stage === 'interactive') {
-    if (weak && references.pendingCount === 0) {
-      references.request(cameraSnapshot, Math.min(iterations, 4096), 'provisional', aspect());
-    }
+    if (weak) requestLatestProvisional(cameraSnapshot, iterations);
     return;
   }
   const currentSettled = Boolean(
@@ -205,6 +217,7 @@ function updateController(frameMs: number, renderedStage: RenderStage): void {
 
 function onPresented(frame: PresentedFrame): void {
   updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
+  if (frame.telemetry) lastTelemetry = frame.telemetry;
   updateReadouts(frame.snapshot);
   if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === presentationEpoch) scheduleNextRefinement();
 }
@@ -271,6 +284,16 @@ function updateReadouts(snapshot: RenderSnapshot): void {
   ui.orbitOut.value = reference
     ? `~${reference.bits}-bit ${reference.purpose} · ${reference.length - 1} stored · ${offset.toFixed(2)} view offset${ended}${pending}`
     : `inactive${pending}`;
+  if (snapshot.precision !== 'perturbation') {
+    ui.healthOut.value = 'inactive';
+  } else if (!lastTelemetry) {
+    ui.healthOut.value = snapshot.stage === 'full-quality' ? 'measuring…' : 'measured on full-quality frames';
+  } else {
+    const percentage = lastTelemetry.totalPixels > 0
+      ? (lastTelemetry.unresolvedPixels / lastTelemetry.totalPixels) * 100
+      : 0;
+    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted`;
+  }
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(snapshot.camera.scale.exponent);
   ui.stateOut.value = snapshot.stage;
@@ -357,7 +380,7 @@ new ResizeObserver(() => {
 }).observe(ui.canvas);
 
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.1`;
+ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.2`;
 
 let previousTick = performance.now();
 function tick(now: number): void {
