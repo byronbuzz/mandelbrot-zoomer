@@ -1,10 +1,11 @@
-import type { PreparedFrame, RenderSnapshot } from './types';
+import type { PreparedFrame, RenderSnapshot, RenderTelemetry } from './types';
 import type { WebGpuRenderer } from './webGpuRenderer';
 
 export type PresentedFrame = Readonly<{
   snapshot: RenderSnapshot;
   computeMs: number;
   presentMs: number;
+  telemetry: RenderTelemetry | null;
 }>;
 
 export class RenderCoordinator {
@@ -42,9 +43,10 @@ export class RenderCoordinator {
             continue;
           }
           const computeMs = frame.computeMs;
+          const telemetry = frame.telemetry;
           const presentMs = await this.renderer.present(frame);
           frame = null;
-          this.onPresented({ snapshot, computeMs, presentMs });
+          this.onPresented({ snapshot, computeMs, presentMs, telemetry });
         } catch (error) {
           if (frame) this.renderer.discard(frame);
           this.onError(error);
