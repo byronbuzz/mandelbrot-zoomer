@@ -20,9 +20,16 @@ const SETTLE_MS = 180;
 const REFINE_DELAY_MS = 100;
 const MIN_RESOLUTION = 0.28;
 const DOUBLE_FLOAT_THRESHOLD_LOG10 = 4;
+const REFERENCE_PREFETCH_LOG10 = 4;
 const PERTURBATION_THRESHOLD_LOG10 = 4.5;
+const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.52;
+const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.42;
+const PERTURBATION_INTERACTIVE_RESOLUTION = 0.72;
 
-let sceneGeneration = 1;
+// The presentation epoch changes only when an in-flight frame must become
+// ineligible for display. Camera revisions may advance continuously inside one
+// interaction epoch, allowing the GPU to present at its natural completed rate.
+let presentationEpoch = 1;
 let stage: RenderStage = 'full-quality';
 let refineStep = 0;
 let adaptiveResolution = 1;
@@ -53,11 +60,15 @@ function clearTimers(): void {
   refineTimer = 0;
 }
 
+function invalidatePresentation(): void {
+  presentationEpoch++;
+}
+
 function setStage(next: RenderStage, nextRefineStep = 0): void {
   if (stage === next && refineStep === nextRefineStep) return;
   stage = next;
   refineStep = nextRefineStep;
-  sceneGeneration++;
+  invalidatePresentation();
 }
 
 function beginInteraction(autoSettle: boolean): void {
@@ -86,7 +97,18 @@ function scheduleNextRefinement(): void {
 
 function effectiveQuality(): RenderQuality {
   const iterations = requestedIterations();
-  if (stage === 'interactive') return { iterations, resolution: adaptiveResolution };
+  if (stage === 'interactive') {
+    const depth = camera.log10Magnification();
+    let resolution = adaptiveResolution;
+    if (depth >= PERTURBATION_THRESHOLD_LOG10 && !activeReference) {
+      resolution = Math.min(resolution, REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION);
+    } else if (depth >= PERTURBATION_THRESHOLD_LOG10) {
+      resolution = Math.min(resolution, PERTURBATION_INTERACTIVE_RESOLUTION);
+    } else if (depth >= DOUBLE_FLOAT_THRESHOLD_LOG10) {
+      resolution = Math.min(resolution, DOUBLE_FLOAT_INTERACTIVE_RESOLUTION);
+    }
+    return { iterations, resolution: Math.max(MIN_RESOLUTION, resolution) };
+  }
   if (stage === 'refining') return { iterations, resolution: refineStep === 1 ? 0.65 : 0.85 };
   return { iterations, resolution: 1 };
 }
@@ -106,8 +128,19 @@ function referenceIsWeak(reference: GpuReference, iterations: number): boolean {
 }
 
 function manageReferenceRequests(cameraSnapshot: ReturnType<CameraModel['snapshot']>, iterations: number): void {
-  if (camera.log10Magnification() < PERTURBATION_THRESHOLD_LOG10) return;
+  const depth = camera.log10Magnification();
+  if (depth < REFERENCE_PREFETCH_LOG10) return;
   const weak = !activeReference || referenceIsWeak(activeReference, iterations);
+
+  // Warm a provisional orbit before perturbation becomes mandatory. This avoids
+  // a full-resolution double-float cliff at the transition near 10^4.5–10^5.
+  if (depth < PERTURBATION_THRESHOLD_LOG10) {
+    if (weak && references.pendingCount === 0) {
+      references.request(cameraSnapshot, Math.min(iterations, 4096), 'provisional', aspect());
+    }
+    return;
+  }
+
   if (stage === 'interactive') {
     if (weak && references.pendingCount === 0) {
       references.request(cameraSnapshot, Math.min(iterations, 4096), 'provisional', aspect());
@@ -137,7 +170,7 @@ function buildSnapshot(): RenderSnapshot {
   const quality = effectiveQuality();
   manageReferenceRequests(cameraSnapshot, quality.iterations);
   return {
-    generation: sceneGeneration,
+    generation: presentationEpoch,
     camera: cameraSnapshot,
     stage,
     quality,
@@ -158,7 +191,7 @@ function requestCurrentRender(): void {
 }
 
 function invalidateAndRender(): void {
-  sceneGeneration++;
+  invalidatePresentation();
   requestCurrentRender();
 }
 
@@ -166,14 +199,14 @@ function updateController(frameMs: number, renderedStage: RenderStage): void {
   smoothedFrameMs = smoothedFrameMs * 0.78 + frameMs * 0.22;
   lastCompletedFps = 1000 / smoothedFrameMs;
   if (renderedStage !== 'interactive') return;
-  if (frameMs > TARGET_FRAME_MS * 1.08) adaptiveResolution = Math.max(MIN_RESOLUTION, adaptiveResolution * 0.88);
+  if (frameMs > TARGET_FRAME_MS * 1.08) adaptiveResolution = Math.max(MIN_RESOLUTION, adaptiveResolution * 0.82);
   else if (frameMs < TARGET_FRAME_MS * 0.78) adaptiveResolution = Math.min(1, adaptiveResolution * 1.06 + 0.01);
 }
 
 function onPresented(frame: PresentedFrame): void {
   updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
   updateReadouts(frame.snapshot);
-  if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === sceneGeneration) scheduleNextRefinement();
+  if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === presentationEpoch) scheduleNextRefinement();
 }
 
 function onCoordinatorIdle(): void {
@@ -182,7 +215,7 @@ function onCoordinatorIdle(): void {
 
 const coordinator = new RenderCoordinator(
   renderer,
-  () => sceneGeneration,
+  () => presentationEpoch,
   onPresented,
   error => {
     ui.status.textContent = error instanceof Error ? error.message : String(error);
@@ -207,7 +240,7 @@ function activateReference(candidate: CpuReference): void {
   const next = renderer.createReference(candidate);
   if (activeReference) retiredReferences.push(activeReference);
   activeReference = next;
-  sceneGeneration++;
+  invalidatePresentation();
   requestCurrentRender();
 }
 
@@ -220,7 +253,8 @@ function tryActivateDeferredReference(): void {
 
 references.onReference(candidate => {
   if (!candidateIsUseful(candidate)) return;
-  if (isInteracting() && activeReference) {
+  const currentHealthy = activeReference && !referenceIsWeak(activeReference, requestedIterations());
+  if (isInteracting() && currentHealthy) {
     if (!deferredReference || candidate.length > deferredReference.length) deferredReference = candidate;
     return;
   }
@@ -260,7 +294,6 @@ ui.canvas.addEventListener('pointermove', event => {
   camera.panByCssPixels(event.clientX - panX, event.clientY - panY, bounds.height);
   panX = event.clientX;
   panY = event.clientY;
-  sceneGeneration++;
   requestCurrentRender();
 });
 
@@ -277,7 +310,7 @@ ui.canvas.addEventListener('pointerdown', event => {
     direction = event.button === 2 ? -1 : 1;
   }
   beginInteraction(false);
-  invalidateAndRender();
+  requestCurrentRender();
   event.preventDefault();
 });
 
@@ -299,7 +332,6 @@ ui.canvas.addEventListener('wheel', event => {
   updatePointer(event);
   camera.zoomAbout(pointerX, pointerY, Math.exp(event.deltaY * 0.0012), aspect());
   beginInteraction(true);
-  sceneGeneration++;
   requestCurrentRender();
   event.preventDefault();
 }, { passive: false });
@@ -325,7 +357,7 @@ new ResizeObserver(() => {
 }).observe(ui.canvas);
 
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.0`;
+ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.1`;
 
 let previousTick = performance.now();
 function tick(now: number): void {
@@ -333,7 +365,6 @@ function tick(now: number): void {
   previousTick = now;
   if (direction !== 0) {
     camera.zoomAbout(pointerX, pointerY, Math.exp(-direction * Number(ui.speed.value) * deltaSeconds), aspect());
-    sceneGeneration++;
     requestCurrentRender();
   }
   requestAnimationFrame(tick);

@@ -46,7 +46,7 @@ export function createUi(app: HTMLElement): UiElements {
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>Last completed render rate <output id="fpsOut">0.0 FPS</output></label>
     <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
-    <p><b>Numerical core V4.0:</b> immutable camera/reference snapshots, offscreen compute, stale-frame rejection and conditional presentation.</p>
+    <p><b>Numerical core V4.1:</b> interaction epochs, continuous completed-frame presentation, deep-reference prewarming and predictive navigation quality.</p>
   </aside>
 </section>`;
   return {
