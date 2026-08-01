@@ -15,9 +15,14 @@ struct Params {
   scaleExponent: i32,
   _pad0: u32,
 }
+struct Telemetry {
+  unresolved: atomic<u32>,
+  exhausted: atomic<u32>,
+}
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var outTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<storage, read> referenceOrbit: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> telemetry: Telemetry;
 
 fn twoSum(a: f32, b: f32) -> vec2f {
   let s = a + b;
@@ -53,8 +58,23 @@ fn writeResult(id: vec2u, escaped: bool, iteration: u32, radius: f32) {
   let smoothValue = f32(iteration) + 1.0 - log2(log2(sqrt(max(radius, 1.0001))));
   textureStore(outTex, vec2i(id), vec4f(paletteColour(fract(.018 * smoothValue)), 1));
 }
+fn writeUnresolved(id: vec2u, exhausted: bool) {
+  atomicAdd(&telemetry.unresolved, 1u);
+  if (exhausted) { atomicAdd(&telemetry.exhausted, 1u); }
+  let checker = f32(((id.x / 8u) + (id.y / 8u)) & 1u);
+  let level = .025 + checker * .015;
+  textureStore(outTex, vec2i(id), vec4f(level, level, level, 1));
+}
 fn pixelDelta(value: f32) -> vec2f {
   return vec2f(ldexp(value * p.scaleMantissa, p.scaleExponent), 0.0);
+}
+fn scaleByViewport(value: vec2f) -> vec2f {
+  let scaled = dsScale(value, p.scaleMantissa);
+  return vec2f(ldexp(scaled.x, p.scaleExponent), ldexp(scaled.y, p.scaleExponent));
+}
+fn divideByViewport(value: vec2f) -> vec2f {
+  let scaled = dsScale(value, 1.0 / p.scaleMantissa);
+  return vec2f(ldexp(scaled.x, -p.scaleExponent), ldexp(scaled.y, -p.scaleExponent));
 }
 
 @compute @workgroup_size(8, 8)
@@ -62,8 +82,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let id = gid.xy;
   if (id.x >= p.width || id.y >= p.height) { return; }
   let uv = (vec2f(id) + .5) / vec2f(f32(p.width), f32(p.height));
-  let pixelX = pixelDelta((uv.x - .5) * p.aspect);
-  let pixelY = pixelDelta(uv.y - .5);
+  let normalizedX = (uv.x - .5) * p.aspect;
+  let normalizedY = uv.y - .5;
+  let pixelX = pixelDelta(normalizedX);
+  let pixelY = pixelDelta(normalizedY);
 
   if (p.mode == 0u) {
     let c = vec2f(p.centerX.x, p.centerY.x) + vec2f(pixelX.x, pixelY.x);
@@ -99,60 +121,67 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  let dcx = dsAdd(p.referenceOffsetX, pixelX);
-  let dcy = dsAdd(p.referenceOffsetY, pixelY);
-  var dzx = vec2f(0.0);
-  var dzy = vec2f(0.0);
-  var currentX = vec2f(0.0);
-  var currentY = vec2f(0.0);
+  // Store perturbations in viewport units: u = dz / viewportScale. Pixel
+  // deltas and reference offsets therefore remain order-one even when the
+  // physical viewport scale enters the f32 subnormal range.
+  let dcx = dsAdd(p.referenceOffsetX, vec2f(normalizedX, 0.0));
+  let dcy = dsAdd(p.referenceOffsetY, vec2f(normalizedY, 0.0));
+  var ux = vec2f(0.0);
+  var uy = vec2f(0.0);
   var iteration = 0u;
   var refIndex = 0u;
   var radius = 0.0;
-  var direct = false;
+  var unresolved = false;
+  var referenceExhausted = false;
+
   loop {
     let parts = referenceOrbit[refIndex];
     let rx = vec2f(parts.x, parts.y);
     let ry = vec2f(parts.z, parts.w);
-    currentX = dsAdd(rx, dzx);
-    currentY = dsAdd(ry, dzy);
+    let deltaX = scaleByViewport(ux);
+    let deltaY = scaleByViewport(uy);
+    let currentX = dsAdd(rx, deltaX);
+    let currentY = dsAdd(ry, deltaY);
     let currentXf = dsValue(currentX);
     let currentYf = dsValue(currentY);
     radius = currentXf * currentXf + currentYf * currentYf;
     if (iteration >= p.iterations || radius > 256.0) { break; }
-    if (refIndex + 1u >= p.orbitLength) { direct = true; break; }
+    if (refIndex + 1u >= p.orbitLength) {
+      unresolved = true;
+      referenceExhausted = true;
+      break;
+    }
 
-    let deltaRadius = dsValue(dzx) * dsValue(dzx) + dsValue(dzy) * dsValue(dzy);
+    let deltaRadius = dsValue(deltaX) * dsValue(deltaX) + dsValue(deltaY) * dsValue(deltaY);
     if (refIndex > 0u && radius < deltaRadius) {
-      dzx = currentX;
-      dzy = currentY;
+      ux = divideByViewport(currentX);
+      uy = divideByViewport(currentY);
+      if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
+        unresolved = true;
+        break;
+      }
       refIndex = 0u;
       continue;
     }
 
-    let dzSquared = complexSquare(dzx, dzy);
-    let crossX = dsScale(dsSub(dsMul(rx, dzx), dsMul(ry, dzy)), 2.0);
-    let crossY = dsScale(dsAdd(dsMul(rx, dzy), dsMul(ry, dzx)), 2.0);
-    dzx = dsAdd(dsAdd(crossX, dzSquared[0]), dcx);
-    dzy = dsAdd(dsAdd(crossY, dzSquared[1]), dcy);
-    if (abs(dsValue(dzx)) > 1e12 || abs(dsValue(dzy)) > 1e12) {
-      direct = true;
+    let uSquared = complexSquare(ux, uy);
+    let quadraticX = scaleByViewport(uSquared[0]);
+    let quadraticY = scaleByViewport(uSquared[1]);
+    let crossX = dsScale(dsSub(dsMul(rx, ux), dsMul(ry, uy)), 2.0);
+    let crossY = dsScale(dsAdd(dsMul(rx, uy), dsMul(ry, ux)), 2.0);
+    ux = dsAdd(dsAdd(crossX, quadraticX), dcx);
+    uy = dsAdd(dsAdd(crossY, quadraticY), dcy);
+    if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
+      unresolved = true;
       break;
     }
     iteration++;
     refIndex++;
   }
 
-  if (direct && iteration < p.iterations && radius <= 256.0) {
-    var zx = currentX;
-    var zy = currentY;
-    loop {
-      radius = dsValue(zx) * dsValue(zx) + dsValue(zy) * dsValue(zy);
-      if (iteration >= p.iterations || radius > 256.0) { break; }
-      let squared = complexSquare(zx, zy);
-      zx = dsAdd(squared[0], cx);
-      zy = dsAdd(squared[1], cy);
-      iteration++;
-    }
+  if (unresolved) {
+    writeUnresolved(id, referenceExhausted);
+    return;
   }
   writeResult(id, iteration < p.iterations, iteration, radius);
 }`;

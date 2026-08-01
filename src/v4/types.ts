@@ -26,6 +26,7 @@ export type ReferenceRequest = Readonly<{
   centerX: SerializedFixed;
   centerY: SerializedFixed;
   iterations: number;
+  probeIterations: number;
   candidates: readonly ReferenceCandidate[];
 }>;
 
@@ -78,6 +79,12 @@ export type RenderSnapshot = Readonly<{
   precision: PrecisionMode;
 }>;
 
+export type RenderTelemetry = Readonly<{
+  unresolvedPixels: number;
+  exhaustedPixels: number;
+  totalPixels: number;
+}>;
+
 export type PreparedFrame = Readonly<{
   snapshot: RenderSnapshot;
   texture: GPUTexture;
@@ -86,4 +93,5 @@ export type PreparedFrame = Readonly<{
   displayWidth: number;
   displayHeight: number;
   computeMs: number;
+  telemetry: RenderTelemetry | null;
 }>;
