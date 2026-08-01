@@ -29,6 +29,13 @@ main = replaceExact(
   "status.textContent = `${adapter.info.vendor || 'GPU'} · WebGPU · numerical core V3.5`;"
 );
 
+main = replaceExact(
+  main,
+  'remove obsolete reference reuse constant',
+  'const REFERENCE_REUSE_VIEWPORTS = 2.5;\n',
+  ''
+);
+
 main = main.replaceAll("new URL('./referenceWorker.ts', import.meta.url)", "new URL('./referenceWorkerV35.generated.ts', import.meta.url)");
 
 main = replaceExact(
