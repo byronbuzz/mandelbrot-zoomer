@@ -67,8 +67,7 @@ function twoProduct(a: number, b: number): DD {
 
 function ddAdd(a: DD, b: DD): DD {
   const [s, e0] = twoSum(a[0], b[0]);
-  const e = e0 + a[1] + b[1];
-  return quickTwoSum(s, e);
+  return quickTwoSum(s, e0 + a[1] + b[1]);
 }
 
 function ddSub(a: DD, b: DD): DD {
@@ -77,33 +76,19 @@ function ddSub(a: DD, b: DD): DD {
 
 function ddMul(a: DD, b: DD): DD {
   const [p, e0] = twoProduct(a[0], b[0]);
-  const e = e0 + a[0] * b[1] + a[1] * b[0] + a[1] * b[1];
-  return quickTwoSum(p, e);
+  return quickTwoSum(p, e0 + a[0] * b[1] + a[1] * b[0] + a[1] * b[1]);
 }
 
 function ddScale(a: DD, scale: number): DD {
   return ddMul(a, [scale, 0]);
 }
 
-function ddValue(a: DD): number {
-  return a[0] + a[1];
-}
-
 function splitF32(value: DD): [number, number] {
   const hi = Math.fround(value[0]);
-  const residual = (value[0] - hi) + value[1];
-  return [hi, Math.fround(residual)];
+  return [hi, Math.fround((value[0] - hi) + value[1])];
 }
 
-let newestRequestId = 0;
-
-worker.addEventListener('message', event => {
-  const request = event.data as ReferenceRequest;
-  newestRequestId = Math.max(newestRequestId, request.id);
-  void buildReference(request);
-});
-
-async function buildReference(request: ReferenceRequest): Promise<void> {
+function buildReference(request: ReferenceRequest): void {
   const started = performance.now();
   const bits = Math.max(request.centerX.bits, request.centerY.bits);
   const cx = fixedToDD(BigInt(request.centerX.raw), request.centerX.bits);
@@ -114,21 +99,16 @@ async function buildReference(request: ReferenceRequest): Promise<void> {
   let escaped = false;
   const orbit = new Float32Array((request.iterations + 1) * 4);
 
-  for (let i = 0; i <= request.iterations; i++) {
-    if ((i & 1023) === 0) {
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
-      if (request.id !== newestRequestId) return;
-    }
-
+  for (let index = 0; index <= request.iterations; index++) {
     const [zxHi, zxLo] = splitF32(zx);
     const [zyHi, zyLo] = splitF32(zy);
-    const offset = i * 4;
+    const offset = index * 4;
     orbit[offset] = zxHi;
     orbit[offset + 1] = zxLo;
     orbit[offset + 2] = zyHi;
     orbit[offset + 3] = zyLo;
-    length = i + 1;
-    if (i === request.iterations) break;
+    length = index + 1;
+    if (index === request.iterations) break;
 
     const zx2 = ddMul(zx, zx);
     const zy2 = ddMul(zy, zy);
@@ -136,8 +116,8 @@ async function buildReference(request: ReferenceRequest): Promise<void> {
     zx = ddAdd(ddSub(zx2, zy2), cx);
     zy = ddAdd(ddScale(zxy, 2), cy);
 
-    const x = ddValue(zx);
-    const y = ddValue(zy);
+    const x = zx[0] + zx[1];
+    const y = zy[0] + zy[1];
     const radius = x * x + y * y;
     if (!Number.isFinite(radius) || radius > 256) {
       escaped = true;
@@ -145,7 +125,6 @@ async function buildReference(request: ReferenceRequest): Promise<void> {
     }
   }
 
-  if (request.id !== newestRequestId) return;
   const trimmed = orbit.slice(0, length * 4) as Float32Array<ArrayBuffer>;
   const response: ReferenceResponse = {
     id: request.id,
@@ -157,3 +136,7 @@ async function buildReference(request: ReferenceRequest): Promise<void> {
   };
   worker.postMessage(response, [trimmed.buffer]);
 }
+
+worker.addEventListener('message', event => {
+  buildReference(event.data as ReferenceRequest);
+});
