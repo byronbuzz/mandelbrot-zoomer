@@ -9,18 +9,23 @@ app.innerHTML = `
   <header><strong>Mandelbrot Zoomer</strong><span id="status">Initialising WebGPU…</span></header>
   <aside>
     <h2>Render</h2>
+    <label>Zoom depth <output id="zoomOut">1.00× · 10^0.00</output></label>
+    <label>Zoom speed <output id="speedOut">2.50×/s</output><input id="speed" type="range" min="0.25" max="8" step="0.25" value="2.5"></label>
     <label>Iterations <output id="iterOut">500</output><input id="iterations" type="range" min="50" max="3000" step="50" value="500"></label>
     <label>Internal resolution <output id="resOut">100%</output><input id="resolution" type="range" min="0.35" max="1" step="0.05" value="1"></label>
     <label>Palette phase <output id="palOut">0.00</output><input id="palette" type="range" min="0" max="1" step="0.005" value="0"></label>
-    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out. Use the wheel for discrete zooming.</p>
+    <p><b>XaoS-style navigation:</b> hold left mouse to zoom toward the pointer; hold right mouse to zoom out; middle-drag to pan. Use the wheel for discrete zooming.</p>
   </aside>
 </section>`;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#fractal')!;
 const status = document.querySelector<HTMLElement>('#status')!;
+const speed = document.querySelector<HTMLInputElement>('#speed')!;
 const iterations = document.querySelector<HTMLInputElement>('#iterations')!;
 const resolution = document.querySelector<HTMLInputElement>('#resolution')!;
 const palette = document.querySelector<HTMLInputElement>('#palette')!;
+const zoomOut = document.querySelector<HTMLOutputElement>('#zoomOut')!;
+const speedOut = document.querySelector<HTMLOutputElement>('#speedOut')!;
 const iterOut = document.querySelector<HTMLOutputElement>('#iterOut')!;
 const resOut = document.querySelector<HTMLOutputElement>('#resOut')!;
 const palOut = document.querySelector<HTMLOutputElement>('#palOut')!;
@@ -66,6 +71,18 @@ const info = adapter.info;
 status.textContent = `${info.vendor || 'GPU'} · WebGPU${device.features.has('timestamp-query') ? ' · GPU timing' : ''}`;
 
 let centerX = -0.5, centerY = 0, scale = 3, direction = 0, px = .5, py = .5, queued = false;
+let panning = false, panPointer = -1, panX = 0, panY = 0;
+
+function updateReadouts(rs: number){
+ const magnification = 3 / scale;
+ const orders = Math.log10(magnification);
+ zoomOut.value = `${magnification < 1000 ? magnification.toFixed(2) : magnification.toExponential(2)}× · 10^${orders.toFixed(2)}`;
+ speedOut.value = `${Number(speed.value).toFixed(2)}×/s`;
+ iterOut.value = iterations.value;
+ resOut.value = `${Math.round(rs*100)}%`;
+ palOut.value = Number(palette.value).toFixed(2);
+}
+
 function render(){
  queued=false;
  const rs=Number(resolution.value);
@@ -81,17 +98,39 @@ function render(){
  pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(w/8),Math.ceil(h/8));pass.end();
  encoder.copyTextureToTexture({texture},{texture:gpuContext.getCurrentTexture()},{width:w,height:h});
  device.queue.submit([encoder.finish()]);texture.destroy();
- iterOut.value=iterations.value;resOut.value=`${Math.round(rs*100)}%`;palOut.value=Number(palette.value).toFixed(2);
+ updateReadouts(rs);
 }
 function queue(){if(!queued){queued=true;requestAnimationFrame(render);}}
 function pointer(e:PointerEvent){const r=canvas.getBoundingClientRect();px=(e.clientX-r.left)/r.width;py=(e.clientY-r.top)/r.height;}
-canvas.addEventListener('pointermove',pointer);
-canvas.addEventListener('pointerdown',e=>{pointer(e);direction=e.button===2?-1:1;canvas.setPointerCapture(e.pointerId);e.preventDefault();});
-canvas.addEventListener('pointerup',e=>{direction=0;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);});
+
+canvas.addEventListener('pointermove',e=>{
+ pointer(e);
+ if(!panning || e.pointerId!==panPointer) return;
+ const r=canvas.getBoundingClientRect();
+ const dx=e.clientX-panX, dy=e.clientY-panY;
+ centerX-=dx/r.width*(r.width/r.height)*scale;
+ centerY-=dy/r.height*scale;
+ panX=e.clientX;panY=e.clientY;queue();
+});
+canvas.addEventListener('pointerdown',e=>{
+ pointer(e);
+ canvas.setPointerCapture(e.pointerId);
+ if(e.button===1){panning=true;panPointer=e.pointerId;panX=e.clientX;panY=e.clientY;direction=0;}
+ else direction=e.button===2?-1:1;
+ e.preventDefault();
+});
+function endPointer(e:PointerEvent){
+ if(e.pointerId===panPointer){panning=false;panPointer=-1;}
+ direction=0;
+ if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
+}
+canvas.addEventListener('pointerup',endPointer);
+canvas.addEventListener('pointercancel',endPointer);
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('auxclick',e=>e.preventDefault());
 canvas.addEventListener('wheel',e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,a=r.width/r.height,ax=centerX+(x-.5)*a*scale,ay=centerY+(y-.5)*scale,k=Math.exp(e.deltaY*.0012);scale*=k;centerX=ax+(centerX-ax)*k;centerY=ay+(centerY-ay)*k;queue();e.preventDefault();},{passive:false});
-for(const el of [iterations,resolution,palette])el.addEventListener('input',queue);
+for(const el of [speed,iterations,resolution,palette])el.addEventListener('input',queue);
 new ResizeObserver(queue).observe(canvas);
 let last=performance.now();
-function tick(now:number){const dt=Math.min(.05,(now-last)/1000);last=now;if(direction){const a=canvas.clientWidth/canvas.clientHeight,ax=centerX+(px-.5)*a*scale,ay=centerY+(py-.5)*scale,k=Math.exp(-direction*2.5*dt);scale*=k;centerX=ax+(centerX-ax)*k;centerY=ay+(centerY-ay)*k;queue();}requestAnimationFrame(tick);}
+function tick(now:number){const dt=Math.min(.05,(now-last)/1000);last=now;if(direction){const a=canvas.clientWidth/canvas.clientHeight,ax=centerX+(px-.5)*a*scale,ay=centerY+(py-.5)*scale,k=Math.exp(-direction*Number(speed.value)*dt);scale*=k;centerX=ax+(centerX-ax)*k;centerY=ay+(centerY-ay)*k;queue();}requestAnimationFrame(tick);}
 queue();requestAnimationFrame(tick);
