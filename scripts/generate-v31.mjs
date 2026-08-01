@@ -18,7 +18,7 @@ function replaceBetween(label, start, end, replacement) {
   if (startIndex < 0) throw new Error(`V3.1 generator could not find start: ${label}`);
   const endIndex = source.indexOf(end, startIndex + start.length);
   if (endIndex < 0) throw new Error(`V3.1 generator could not find end: ${label}`);
-  source = source.slice(0, startIndex) + replacement + source.slice(endIndex);
+  source = source.slice(0, startIndex) + replacement + source.slice(endIndex + end.length);
 }
 
 replaceExact(
