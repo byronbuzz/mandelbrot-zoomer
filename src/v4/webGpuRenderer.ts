@@ -1,10 +1,14 @@
 import { fixedDifferenceToNumber, fixedSplitF32 } from '../bigFixed';
 import { scaleToNumber } from '../binaryScale';
-import { computeShader, presentShader } from './shaders';
+import { composeShader, computeShader, presentShader } from './shaders';
 import type { CpuReference, GpuReference, PreparedFrame, RenderSnapshot, RenderTelemetry } from './types';
 
 const PARAMETER_BYTES = 80;
-const TELEMETRY_BYTES = 16;
+const COMPOSE_PARAMETER_BYTES = 16;
+const TILE_COLUMNS = 16;
+const TILE_ROWS = 16;
+const TELEMETRY_VALUES = 2 + TILE_COLUMNS * TILE_ROWS;
+const TELEMETRY_BYTES = TELEMETRY_VALUES * Uint32Array.BYTES_PER_ELEMENT;
 const COMPUTE_TEXTURE_FORMAT: GPUTextureFormat = 'rgba8unorm';
 
 export class WebGpuRenderer {
@@ -13,12 +17,15 @@ export class WebGpuRenderer {
   private readonly context: GPUCanvasContext;
   private readonly canvasFormat: GPUTextureFormat;
   private readonly computePipeline: GPUComputePipeline;
+  private readonly composePipeline: GPUComputePipeline;
   private readonly presentPipeline: GPURenderPipeline;
   private readonly sampler: GPUSampler;
   private readonly fallbackOrbit: GPUBuffer;
   private readonly label: string;
   private displayWidth = 1;
   private displayHeight = 1;
+  private settledTexture: GPUTexture | null = null;
+  private settledKey = '';
 
   private constructor(
     canvas: HTMLCanvasElement,
@@ -26,6 +33,7 @@ export class WebGpuRenderer {
     context: GPUCanvasContext,
     canvasFormat: GPUTextureFormat,
     computePipeline: GPUComputePipeline,
+    composePipeline: GPUComputePipeline,
     presentPipeline: GPURenderPipeline,
     label: string
   ) {
@@ -34,6 +42,7 @@ export class WebGpuRenderer {
     this.context = context;
     this.canvasFormat = canvasFormat;
     this.computePipeline = computePipeline;
+    this.composePipeline = composePipeline;
     this.presentPipeline = presentPipeline;
     this.label = label;
     this.sampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest' });
@@ -53,12 +62,18 @@ export class WebGpuRenderer {
 
     const computeModule = device.createShaderModule({ code: computeShader });
     await WebGpuRenderer.assertShaderValid(computeModule, 'compute');
+    const composeModule = device.createShaderModule({ code: composeShader });
+    await WebGpuRenderer.assertShaderValid(composeModule, 'compose');
     const presentModule = device.createShaderModule({ code: presentShader });
     await WebGpuRenderer.assertShaderValid(presentModule, 'present');
 
     const computePipeline = await device.createComputePipelineAsync({
       layout: 'auto',
       compute: { module: computeModule, entryPoint: 'main' }
+    });
+    const composePipeline = await device.createComputePipelineAsync({
+      layout: 'auto',
+      compute: { module: composeModule, entryPoint: 'main' }
     });
     const presentPipeline = await device.createRenderPipelineAsync({
       layout: 'auto',
@@ -67,7 +82,16 @@ export class WebGpuRenderer {
       primitive: { topology: 'triangle-list' }
     });
     const vendor = adapter.info.vendor || adapter.info.description || 'GPU';
-    return new WebGpuRenderer(canvas, device, context, canvasFormat, computePipeline, presentPipeline, vendor);
+    return new WebGpuRenderer(
+      canvas,
+      device,
+      context,
+      canvasFormat,
+      computePipeline,
+      composePipeline,
+      presentPipeline,
+      vendor
+    );
   }
 
   get adapterLabel(): string { return this.label; }
@@ -106,11 +130,21 @@ export class WebGpuRenderer {
     this.resizeCanvas(displayWidth, displayHeight);
     const computeWidth = Math.max(1, Math.floor(displayWidth * snapshot.quality.resolution));
     const computeHeight = Math.max(1, Math.floor(displayHeight * snapshot.quality.resolution));
-    const texture = this.device.createTexture({
-      size: [computeWidth, computeHeight],
-      format: COMPUTE_TEXTURE_FORMAT,
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
-    });
+    const accumulationKey = this.accumulationKey(snapshot, computeWidth, computeHeight);
+    const captureTelemetry = snapshot.stage === 'full-quality' && snapshot.precision === 'perturbation';
+    const repairRequested = snapshot.repairPass > 0;
+    const canRepair = Boolean(
+      repairRequested
+      && captureTelemetry
+      && this.settledTexture
+      && this.settledKey === accumulationKey
+    );
+    if (repairRequested && !canRepair) {
+      throw new Error('Secondary-reference repair base is no longer current');
+    }
+
+    const candidateTexture = this.createComputeTexture(computeWidth, computeHeight);
+    const outputTexture = canRepair ? this.createComputeTexture(computeWidth, computeHeight) : candidateTexture;
     const uniform = this.device.createBuffer({
       size: PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -119,27 +153,54 @@ export class WebGpuRenderer {
       size: TELEMETRY_BYTES,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
     });
-    const captureTelemetry = snapshot.stage === 'full-quality' && snapshot.precision === 'perturbation';
     const telemetryReadback = captureTelemetry
       ? this.device.createBuffer({ size: TELEMETRY_BYTES, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
       : null;
     this.device.queue.writeBuffer(uniform, 0, this.createParameterData(snapshot, computeWidth, computeHeight));
-    this.device.queue.writeBuffer(telemetryBuffer, 0, new Uint32Array(4));
-    const bindGroup = this.device.createBindGroup({
+    this.device.queue.writeBuffer(telemetryBuffer, 0, new Uint32Array(TELEMETRY_VALUES));
+
+    const computeBindGroup = this.device.createBindGroup({
       layout: this.computePipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: uniform } },
-        { binding: 1, resource: texture.createView() },
+        { binding: 1, resource: candidateTexture.createView() },
         { binding: 2, resource: { buffer: snapshot.reference?.buffer ?? this.fallbackOrbit } },
         { binding: 3, resource: { buffer: telemetryBuffer } }
       ]
     });
+
     const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(this.computePipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
-    pass.end();
+    const computePass = encoder.beginComputePass();
+    computePass.setPipeline(this.computePipeline);
+    computePass.setBindGroup(0, computeBindGroup);
+    computePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
+    computePass.end();
+
+    let composeUniform: GPUBuffer | null = null;
+    if (canRepair && this.settledTexture) {
+      encoder.clearBuffer(telemetryBuffer);
+      composeUniform = this.device.createBuffer({
+        size: COMPOSE_PARAMETER_BYTES,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+      this.device.queue.writeBuffer(composeUniform, 0, new Uint32Array([computeWidth, computeHeight, 0, 0]));
+      const composeBindGroup = this.device.createBindGroup({
+        layout: this.composePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: composeUniform } },
+          { binding: 1, resource: this.settledTexture.createView() },
+          { binding: 2, resource: candidateTexture.createView() },
+          { binding: 3, resource: outputTexture.createView() },
+          { binding: 4, resource: { buffer: telemetryBuffer } }
+        ]
+      });
+      const composePass = encoder.beginComputePass();
+      composePass.setPipeline(this.composePipeline);
+      composePass.setBindGroup(0, composeBindGroup);
+      composePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
+      composePass.end();
+    }
+
     if (telemetryReadback) encoder.copyBufferToBuffer(telemetryBuffer, 0, telemetryReadback, 0, TELEMETRY_BYTES);
     const started = performance.now();
     this.device.queue.submit([encoder.finish()]);
@@ -149,21 +210,27 @@ export class WebGpuRenderer {
         ? await this.readTelemetry(telemetryReadback, computeWidth * computeHeight)
         : null;
       uniform.destroy();
+      composeUniform?.destroy();
       telemetryBuffer.destroy();
       telemetryReadback?.destroy();
+      if (canRepair) candidateTexture.destroy();
       return {
         snapshot,
-        texture,
+        texture: outputTexture,
         computeWidth,
         computeHeight,
         displayWidth,
         displayHeight,
         computeMs: Math.max(0.1, performance.now() - started),
-        telemetry
+        telemetry,
+        retainAsSettled: captureTelemetry,
+        accumulationKey
       };
     } catch (error) {
-      texture.destroy();
+      candidateTexture.destroy();
+      if (outputTexture !== candidateTexture) outputTexture.destroy();
       uniform.destroy();
+      composeUniform?.destroy();
       telemetryBuffer.destroy();
       telemetryReadback?.destroy();
       throw error;
@@ -194,11 +261,46 @@ export class WebGpuRenderer {
     const started = performance.now();
     this.device.queue.submit([encoder.finish()]);
     await this.device.queue.onSubmittedWorkDone();
-    frame.texture.destroy();
+
+    if (frame.retainAsSettled) {
+      const previous = this.settledTexture;
+      this.settledTexture = frame.texture;
+      this.settledKey = frame.accumulationKey;
+      if (previous && previous !== frame.texture) previous.destroy();
+    } else {
+      frame.texture.destroy();
+      if (frame.snapshot.stage === 'full-quality' && frame.snapshot.precision !== 'perturbation') {
+        this.clearSettledTexture();
+      }
+    }
     return Math.max(0.1, performance.now() - started);
   }
 
   discard(frame: PreparedFrame): void { frame.texture.destroy(); }
+
+  private createComputeTexture(width: number, height: number): GPUTexture {
+    return this.device.createTexture({
+      size: [width, height],
+      format: COMPUTE_TEXTURE_FORMAT,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+    });
+  }
+
+  private accumulationKey(snapshot: RenderSnapshot, width: number, height: number): string {
+    return [
+      snapshot.generation,
+      snapshot.camera.generation,
+      `${width}x${height}`,
+      snapshot.quality.iterations,
+      snapshot.palettePhase.toFixed(6)
+    ].join(':');
+  }
+
+  private clearSettledTexture(): void {
+    this.settledTexture?.destroy();
+    this.settledTexture = null;
+    this.settledKey = '';
+  }
 
   private resizeCanvas(width: number, height: number): void {
     if (this.displayWidth === width && this.displayHeight === height) return;
@@ -248,10 +350,14 @@ export class WebGpuRenderer {
   private async readTelemetry(buffer: GPUBuffer, totalPixels: number): Promise<RenderTelemetry> {
     await buffer.mapAsync(GPUMapMode.READ);
     const values = new Uint32Array(buffer.getMappedRange());
+    const tileUnresolved = Array.from(values.slice(2, 2 + TILE_COLUMNS * TILE_ROWS));
     const telemetry: RenderTelemetry = {
       unresolvedPixels: values[0] ?? 0,
       exhaustedPixels: values[1] ?? 0,
-      totalPixels
+      totalPixels,
+      tileColumns: TILE_COLUMNS,
+      tileRows: TILE_ROWS,
+      tileUnresolved
     };
     buffer.unmap();
     return telemetry;

@@ -1,5 +1,5 @@
 import { deserializeFixed, fixedAddScaled, serializeFixed } from '../bigFixed';
-import type { CameraSnapshot, CpuReference, ReferencePurpose, ReferenceRequest, ReferenceResponse } from './types';
+import type { CameraSnapshot, CpuReference, ReferenceCandidate, ReferencePurpose, ReferenceRequest, ReferenceResponse } from './types';
 
 type PendingRequest = Readonly<{
   cameraGeneration: number;
@@ -17,6 +17,11 @@ const SETTLED_CANDIDATE_OFFSETS = [
   [-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]
 ] as const;
 const PROVISIONAL_CANDIDATE_OFFSETS = [[0, 0]] as const;
+const REPAIR_LOCAL_OFFSETS = [
+  [0, 0],
+  [-0.035, 0], [0.035, 0], [0, -0.035], [0, 0.035],
+  [-0.025, -0.025], [0.025, -0.025], [-0.025, 0.025], [0.025, 0.025]
+] as const;
 const STALE_PROVISIONAL_MS = 260;
 
 export class ReferenceManager {
@@ -40,7 +45,7 @@ export class ReferenceManager {
   request(
     camera: CameraSnapshot,
     iterations: number,
-    purpose: ReferencePurpose,
+    purpose: Exclude<ReferencePurpose, 'repair'>,
     aspect: number,
     replaceStaleProvisional = false
   ): boolean {
@@ -50,34 +55,39 @@ export class ReferenceManager {
       this.restartWorker();
     }
 
-    const key = `${camera.generation}:${iterations}:${purpose}`;
-    if (this.pendingKeys.has(key)) return false;
-    const id = ++this.nextRequestId;
     const offsets = purpose === 'provisional' ? PROVISIONAL_CANDIDATE_OFFSETS : SETTLED_CANDIDATE_OFFSETS;
-    const candidates = offsets.map(([dx, dy]) => ({
-      centerX: serializeFixed(fixedAddScaled(camera.centerX, dx * aspect * camera.scale.mantissa, camera.scale.exponent)),
-      centerY: serializeFixed(fixedAddScaled(camera.centerY, dy * camera.scale.mantissa, camera.scale.exponent))
-    }));
-    const request: ReferenceRequest = {
-      id,
-      cameraGeneration: camera.generation,
-      purpose,
-      centerX: serializeFixed(camera.centerX),
-      centerY: serializeFixed(camera.centerY),
+    const candidates = offsets.map(([dx, dy]) => this.candidateAt(camera, dx * aspect, dy));
+    return this.enqueue(
+      camera,
       iterations,
-      probeIterations: purpose === 'provisional' ? 0 : 2048,
-      candidates
-    };
-    this.pending.set(id, {
-      cameraGeneration: camera.generation,
       purpose,
-      requestedIterations: iterations,
-      key,
-      startedAt: performance.now()
-    });
-    this.pendingKeys.add(key);
-    this.worker.postMessage(request);
-    return true;
+      candidates,
+      purpose === 'provisional' ? 0 : Math.min(iterations, 2048),
+      `${camera.generation}:${iterations}:${purpose}`
+    );
+  }
+
+  requestRepair(
+    camera: CameraSnapshot,
+    iterations: number,
+    aspect: number,
+    normalizedX: number,
+    normalizedY: number
+  ): boolean {
+    const targetX = (normalizedX - 0.5) * aspect;
+    const targetY = normalizedY - 0.5;
+    const candidates = REPAIR_LOCAL_OFFSETS.map(([dx, dy]) =>
+      this.candidateAt(camera, targetX + dx * aspect, targetY + dy)
+    );
+    const key = `${camera.generation}:${iterations}:repair:${normalizedX.toFixed(4)}:${normalizedY.toFixed(4)}`;
+    return this.enqueue(
+      camera,
+      iterations,
+      'repair',
+      candidates,
+      Math.min(iterations, 8192),
+      key
+    );
   }
 
   cancelOlderThan(cameraGeneration: number): void {
@@ -96,6 +106,53 @@ export class ReferenceManager {
     this.pending.clear();
     this.pendingKeys.clear();
     this.listeners.clear();
+  }
+
+  private candidateAt(camera: CameraSnapshot, xMultiplier: number, yMultiplier: number): ReferenceCandidate {
+    return {
+      centerX: serializeFixed(fixedAddScaled(
+        camera.centerX,
+        xMultiplier * camera.scale.mantissa,
+        camera.scale.exponent
+      )),
+      centerY: serializeFixed(fixedAddScaled(
+        camera.centerY,
+        yMultiplier * camera.scale.mantissa,
+        camera.scale.exponent
+      ))
+    };
+  }
+
+  private enqueue(
+    camera: CameraSnapshot,
+    iterations: number,
+    purpose: ReferencePurpose,
+    candidates: readonly ReferenceCandidate[],
+    probeIterations: number,
+    key: string
+  ): boolean {
+    if (this.pendingKeys.has(key)) return false;
+    const id = ++this.nextRequestId;
+    const request: ReferenceRequest = {
+      id,
+      cameraGeneration: camera.generation,
+      purpose,
+      centerX: serializeFixed(camera.centerX),
+      centerY: serializeFixed(camera.centerY),
+      iterations,
+      probeIterations,
+      candidates
+    };
+    this.pending.set(id, {
+      cameraGeneration: camera.generation,
+      purpose,
+      requestedIterations: iterations,
+      key,
+      startedAt: performance.now()
+    });
+    this.pendingKeys.add(key);
+    this.worker.postMessage(request);
+    return true;
   }
 
   private createWorker(): Worker {
