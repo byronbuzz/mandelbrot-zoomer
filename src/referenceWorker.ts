@@ -5,8 +5,10 @@ import type { ReferenceRequest, ReferenceResponse, SerializedFixed } from './ref
 const worker = self as unknown as DedicatedWorkerGlobalScope;
 const NUMBER_MANTISSA_BITS = 53;
 const SPLITTER = 134_217_729;
+const TRIPLE_DOUBLE_THRESHOLD_BITS = 192;
 
 type DD = readonly [number, number];
+type TD = readonly [number, number, number];
 
 function shiftRounded(value: bigint, shift: number): bigint {
   if (shift >= 0) return value << BigInt(shift);
@@ -40,8 +42,21 @@ function fixedToDD(raw: bigint, bits: number): DD {
   return [hi, fixedToNumber(residual, bits)];
 }
 
+function fixedToTD(raw: bigint, bits: number): TD {
+  const hi = fixedToNumber(raw, bits);
+  const residual1 = raw - numberToFixed(hi, bits);
+  const mid = fixedToNumber(residual1, bits);
+  const residual2 = residual1 - numberToFixed(mid, bits);
+  return [hi, mid, fixedToNumber(residual2, bits)];
+}
+
 function ddToSerializedFixed(value: DD, bits: number): SerializedFixed {
   const raw = numberToFixed(value[0], bits) + numberToFixed(value[1], bits);
+  return { raw: raw.toString(), bits };
+}
+
+function tdToSerializedFixed(value: TD, bits: number): SerializedFixed {
+  const raw = numberToFixed(value[0], bits) + numberToFixed(value[1], bits) + numberToFixed(value[2], bits);
   return { raw: raw.toString(), bits };
 }
 
@@ -88,14 +103,62 @@ function ddScale(a: DD, scale: number): DD {
   return ddMul(a, [scale, 0]);
 }
 
-function splitF32(value: DD): [number, number] {
+function growExpansion(expansion: number[], value: number): number[] {
+  let q = value;
+  const result: number[] = [];
+  for (const component of expansion) {
+    const [sum, error] = twoSum(q, component);
+    if (error !== 0) result.push(error);
+    q = sum;
+  }
+  if (q !== 0 || result.length === 0) result.push(q);
+  return result;
+}
+
+function tdFromTerms(terms: readonly number[]): TD {
+  const ordered = terms.filter(value => value !== 0 && Number.isFinite(value)).sort((a, b) => Math.abs(a) - Math.abs(b));
+  if (ordered.length === 0) return [0, 0, 0];
+  let expansion: number[] = [];
+  for (const term of ordered) expansion = growExpansion(expansion, term);
+  const largest = expansion.slice(-3).reverse();
+  return [largest[0] ?? 0, largest[1] ?? 0, largest[2] ?? 0];
+}
+
+function tdAdd(a: TD, b: TD): TD {
+  return tdFromTerms([a[0], a[1], a[2], b[0], b[1], b[2]]);
+}
+
+function tdSub(a: TD, b: TD): TD {
+  return tdFromTerms([a[0], a[1], a[2], -b[0], -b[1], -b[2]]);
+}
+
+function tdMul(a: TD, b: TD): TD {
+  const terms: number[] = [];
+  for (const left of a) {
+    for (const right of b) {
+      const [product, error] = twoProduct(left, right);
+      terms.push(error, product);
+    }
+  }
+  return tdFromTerms(terms);
+}
+
+function tdScale(a: TD, scale: number): TD {
+  return tdMul(a, [scale, 0, 0]);
+}
+
+function splitF32DD(value: DD): [number, number] {
   const hi = Math.fround(value[0]);
   return [hi, Math.fround((value[0] - hi) + value[1])];
 }
 
-function buildReference(request: ReferenceRequest): void {
+function splitF32TD(value: TD): [number, number] {
+  const hi = Math.fround(value[0]);
+  return [hi, Math.fround((value[0] - hi) + value[1] + value[2])];
+}
+
+function buildDoubleDoubleReference(request: ReferenceRequest, bits: number): ReferenceResponse {
   const started = performance.now();
-  const bits = Math.max(request.centerX.bits, request.centerY.bits);
   const cx = fixedToDD(BigInt(request.centerX.raw), request.centerX.bits);
   const cy = fixedToDD(BigInt(request.centerY.raw), request.centerY.bits);
   let zx: DD = [0, 0];
@@ -105,8 +168,8 @@ function buildReference(request: ReferenceRequest): void {
   const orbit = new Float32Array((request.iterations + 1) * 4);
 
   for (let index = 0; index <= request.iterations; index++) {
-    const [zxHi, zxLo] = splitF32(zx);
-    const [zyHi, zyLo] = splitF32(zy);
+    const [zxHi, zxLo] = splitF32DD(zx);
+    const [zyHi, zyLo] = splitF32DD(zy);
     const offset = index * 4;
     orbit[offset] = zxHi;
     orbit[offset + 1] = zxLo;
@@ -131,7 +194,7 @@ function buildReference(request: ReferenceRequest): void {
   }
 
   const trimmed = orbit.slice(0, length * 4) as Float32Array<ArrayBuffer>;
-  const response: ReferenceResponse = {
+  return {
     id: request.id,
     bits: Math.min(bits, 106),
     length,
@@ -141,7 +204,63 @@ function buildReference(request: ReferenceRequest): void {
     referenceCenterY: ddToSerializedFixed(cy, request.centerY.bits),
     orbit: trimmed
   };
-  worker.postMessage(response, [trimmed.buffer]);
+}
+
+function buildTripleDoubleReference(request: ReferenceRequest, bits: number): ReferenceResponse {
+  const started = performance.now();
+  const cx = fixedToTD(BigInt(request.centerX.raw), request.centerX.bits);
+  const cy = fixedToTD(BigInt(request.centerY.raw), request.centerY.bits);
+  let zx: TD = [0, 0, 0];
+  let zy: TD = [0, 0, 0];
+  let length = 0;
+  let escaped = false;
+  const orbit = new Float32Array((request.iterations + 1) * 4);
+
+  for (let index = 0; index <= request.iterations; index++) {
+    const [zxHi, zxLo] = splitF32TD(zx);
+    const [zyHi, zyLo] = splitF32TD(zy);
+    const offset = index * 4;
+    orbit[offset] = zxHi;
+    orbit[offset + 1] = zxLo;
+    orbit[offset + 2] = zyHi;
+    orbit[offset + 3] = zyLo;
+    length = index + 1;
+    if (index === request.iterations) break;
+
+    const zx2 = tdMul(zx, zx);
+    const zy2 = tdMul(zy, zy);
+    const zxy = tdMul(zx, zy);
+    zx = tdAdd(tdSub(zx2, zy2), cx);
+    zy = tdAdd(tdScale(zxy, 2), cy);
+
+    const x = zx[0] + zx[1] + zx[2];
+    const y = zy[0] + zy[1] + zy[2];
+    const radius = x * x + y * y;
+    if (!Number.isFinite(radius) || radius > 256) {
+      escaped = true;
+      break;
+    }
+  }
+
+  const trimmed = orbit.slice(0, length * 4) as Float32Array<ArrayBuffer>;
+  return {
+    id: request.id,
+    bits: Math.min(bits, 159),
+    length,
+    escaped,
+    generationMs: performance.now() - started,
+    referenceCenterX: tdToSerializedFixed(cx, request.centerX.bits),
+    referenceCenterY: tdToSerializedFixed(cy, request.centerY.bits),
+    orbit: trimmed
+  };
+}
+
+function buildReference(request: ReferenceRequest): void {
+  const bits = Math.max(request.centerX.bits, request.centerY.bits);
+  const response = bits > TRIPLE_DOUBLE_THRESHOLD_BITS
+    ? buildTripleDoubleReference(request, bits)
+    : buildDoubleDoubleReference(request, bits);
+  worker.postMessage(response, [response.orbit.buffer]);
 }
 
 worker.addEventListener('message', event => {
