@@ -1,7 +1,9 @@
+export type SerializedFixed = { raw: string; bits: number };
+
 export type ReferenceRequest = {
   id: number;
-  centerX: { raw: string; bits: number };
-  centerY: { raw: string; bits: number };
+  centerX: SerializedFixed;
+  centerY: SerializedFixed;
   iterations: number;
 };
 
@@ -11,5 +13,7 @@ export type ReferenceResponse = {
   length: number;
   escaped: boolean;
   generationMs: number;
+  referenceCenterX: SerializedFixed;
+  referenceCenterY: SerializedFixed;
   orbit: Float32Array<ArrayBuffer>;
 };
