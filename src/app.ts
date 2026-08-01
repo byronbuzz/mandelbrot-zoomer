@@ -33,10 +33,14 @@ const PERTURBATION_THRESHOLD_LOG10 = 4.5;
 const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.52;
 const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.42;
 const PERTURBATION_INTERACTIVE_RESOLUTION = 0.72;
-const MAX_REPAIR_PASSES = 6;
+const MAX_GLOBAL_REPAIR_PASSES = 4;
+const MAX_TILE_REPAIR_PASSES = 8;
+const GLOBAL_REPAIR_THRESHOLD_FRACTION = 0.15;
 const REPAIR_TARGET_FRACTION = 0.0005;
-const MIN_REPAIR_RELATIVE_IMPROVEMENT = 0.01;
-const MAX_STALLED_REPAIR_PASSES = 2;
+const MIN_TILE_REPAIR_RELATIVE_IMPROVEMENT = 0.005;
+const MAX_STALLED_TILE_REPAIR_PASSES = 2;
+
+type RepairMode = 'global' | 'tile';
 
 let presentationEpoch = 1;
 let stage: RenderStage = 'full-quality';
@@ -59,10 +63,14 @@ let lastSnapshot: RenderSnapshot | null = null;
 let lastTelemetry: RenderTelemetry | null = null;
 let deferredReference: CpuReference | null = null;
 let repairPass = 0;
+let globalRepairPass = 0;
+let tileRepairPass = 0;
 let repairRequestEpoch = -1;
 let repairRequestCameraGeneration = -1;
-let lastRepairUnresolved = Number.POSITIVE_INFINITY;
-let stalledRepairPasses = 0;
+let repairRequestMode: RepairMode | null = null;
+let activeRepairMode: RepairMode | null = null;
+let lastTileRepairUnresolved = Number.POSITIVE_INFINITY;
+let stalledTileRepairPasses = 0;
 const retiredReferences: GpuReference[] = [];
 
 function requestedIterations(): number { return iterationCount(ui.iterations.value); }
@@ -78,10 +86,14 @@ function clearTimers(): void {
 
 function resetRepairState(): void {
   repairPass = 0;
+  globalRepairPass = 0;
+  tileRepairPass = 0;
   repairRequestEpoch = -1;
   repairRequestCameraGeneration = -1;
-  lastRepairUnresolved = Number.POSITIVE_INFINITY;
-  stalledRepairPasses = 0;
+  repairRequestMode = null;
+  activeRepairMode = null;
+  lastTileRepairUnresolved = Number.POSITIVE_INFINITY;
+  stalledTileRepairPasses = 0;
   if (repairReference) retiredReferences.push(repairReference);
   repairReference = null;
 }
@@ -265,34 +277,50 @@ function worstUnresolvedTile(telemetry: RenderTelemetry): { x: number; y: number
   };
 }
 
+function markRepairRequest(mode: RepairMode): void {
+  repairRequestEpoch = presentationEpoch;
+  repairRequestCameraGeneration = camera.generation;
+  repairRequestMode = mode;
+}
+
+function clearRepairRequest(): void {
+  repairRequestEpoch = -1;
+  repairRequestCameraGeneration = -1;
+  repairRequestMode = null;
+}
+
 function maybeScheduleRepair(frame: PresentedFrame): void {
   const telemetry = frame.telemetry;
   const snapshot = frame.snapshot;
   if (!telemetry || snapshot.stage !== 'full-quality' || snapshot.precision !== 'perturbation') return;
   if (snapshot.generation !== presentationEpoch || snapshot.camera.generation !== camera.generation) return;
   if (snapshot.repairPass === 0 && snapshot.reference?.purpose !== 'settled') return;
-  if (repairRequestEpoch >= 0 || repairPass >= MAX_REPAIR_PASSES) return;
+  if (repairRequestEpoch >= 0) return;
 
   const unresolvedFraction = telemetry.totalPixels > 0
     ? telemetry.unresolvedPixels / telemetry.totalPixels
     : 0;
   if (unresolvedFraction <= REPAIR_TARGET_FRACTION) return;
 
-  if (Number.isFinite(lastRepairUnresolved)) {
-    const relativeImprovement = (lastRepairUnresolved - telemetry.unresolvedPixels)
-      / Math.max(1, lastRepairUnresolved);
-    if (relativeImprovement < MIN_REPAIR_RELATIVE_IMPROVEMENT) stalledRepairPasses++;
-    else stalledRepairPasses = 0;
-    if (stalledRepairPasses >= MAX_STALLED_REPAIR_PASSES) return;
+  if (unresolvedFraction > GLOBAL_REPAIR_THRESHOLD_FRACTION && globalRepairPass < MAX_GLOBAL_REPAIR_PASSES) {
+    markRepairRequest('global');
+    const requested = references.requestGlobalRepair(
+      camera.snapshot(),
+      requestedIterations(),
+      aspect(),
+      globalRepairPass
+    );
+    if (!requested) clearRepairRequest();
+    return;
   }
-  lastRepairUnresolved = telemetry.unresolvedPixels;
 
+  if (tileRepairPass >= MAX_TILE_REPAIR_PASSES || stalledTileRepairPasses >= MAX_STALLED_TILE_REPAIR_PASSES) return;
+  if (!Number.isFinite(lastTileRepairUnresolved)) lastTileRepairUnresolved = telemetry.unresolvedPixels;
   const tile = worstUnresolvedTile(telemetry);
   if (!tile) return;
   const normalizedX = (tile.x + 0.5) / telemetry.tileColumns;
   const normalizedY = (tile.y + 0.5) / telemetry.tileRows;
-  repairRequestEpoch = presentationEpoch;
-  repairRequestCameraGeneration = camera.generation;
+  markRepairRequest('tile');
   const requested = references.requestRepair(
     camera.snapshot(),
     requestedIterations(),
@@ -300,15 +328,21 @@ function maybeScheduleRepair(frame: PresentedFrame): void {
     normalizedX,
     normalizedY
   );
-  if (!requested) {
-    repairRequestEpoch = -1;
-    repairRequestCameraGeneration = -1;
-  }
+  if (!requested) clearRepairRequest();
 }
 
 function onPresented(frame: PresentedFrame): void {
   updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
   if (frame.telemetry) lastTelemetry = frame.telemetry;
+
+  if (frame.snapshot.repairPass > 0 && activeRepairMode === 'tile' && frame.telemetry) {
+    const relativeImprovement = (lastTileRepairUnresolved - frame.telemetry.unresolvedPixels)
+      / Math.max(1, lastTileRepairUnresolved);
+    if (relativeImprovement < MIN_TILE_REPAIR_RELATIVE_IMPROVEMENT) stalledTileRepairPasses++;
+    else stalledTileRepairPasses = 0;
+    lastTileRepairUnresolved = frame.telemetry.unresolvedPixels;
+  }
+
   updateReadouts(frame.snapshot);
   if (frame.snapshot.stage === 'refining' && frame.snapshot.generation === presentationEpoch) {
     scheduleNextRefinement();
@@ -317,6 +351,7 @@ function onPresented(frame: PresentedFrame): void {
     retiredReferences.push(repairReference);
     repairReference = null;
   }
+  activeRepairMode = null;
   maybeScheduleRepair(frame);
 }
 
@@ -366,10 +401,11 @@ references.onReference(candidate => {
   if (candidate.purpose === 'repair') {
     const expectedEpoch = repairRequestEpoch;
     const expectedCameraGeneration = repairRequestCameraGeneration;
-    repairRequestEpoch = -1;
-    repairRequestCameraGeneration = -1;
+    const mode = repairRequestMode;
+    clearRepairRequest();
     if (
-      expectedEpoch < 0
+      !mode
+      || expectedEpoch < 0
       || expectedEpoch !== presentationEpoch
       || expectedCameraGeneration !== camera.generation
       || candidate.cameraGeneration !== camera.generation
@@ -378,6 +414,9 @@ references.onReference(candidate => {
     if (repairReference) retiredReferences.push(repairReference);
     repairReference = renderer.createReference(candidate);
     repairPass++;
+    if (mode === 'global') globalRepairPass++;
+    else tileRepairPass++;
+    activeRepairMode = mode;
     requestRepairRender(repairReference);
     return;
   }
@@ -409,12 +448,15 @@ function updateReadouts(snapshot: RenderSnapshot): void {
     const percentage = lastTelemetry.totalPixels > 0
       ? (lastTelemetry.unresolvedPixels / lastTelemetry.totalPixels) * 100
       : 0;
-    const repairStatus = repairRequestEpoch >= 0
-      ? ` · repair ${Math.min(repairPass + 1, MAX_REPAIR_PASSES)}/${MAX_REPAIR_PASSES} queued`
-      : repairPass > 0
-        ? ` · ${repairPass}/${MAX_REPAIR_PASSES} repair passes`
+    const queued = repairRequestMode === 'global'
+      ? ` · global rescue ${globalRepairPass + 1}/${MAX_GLOBAL_REPAIR_PASSES} queued`
+      : repairRequestMode === 'tile'
+        ? ` · tile repair ${tileRepairPass + 1}/${MAX_TILE_REPAIR_PASSES} queued`
         : '';
-    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted${repairStatus}`;
+    const completed = globalRepairPass > 0 || tileRepairPass > 0
+      ? ` · ${globalRepairPass} global + ${tileRepairPass} tile repairs`
+      : '';
+    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted${queued}${completed}`;
   }
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(snapshot.camera.scale.exponent);
@@ -502,7 +544,7 @@ new ResizeObserver(() => {
 }).observe(ui.canvas);
 
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.3`;
+ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.4`;
 
 let previousTick = performance.now();
 function tick(now: number): void {

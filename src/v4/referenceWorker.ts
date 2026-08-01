@@ -6,7 +6,8 @@ const worker = self as unknown as DedicatedWorkerGlobalScope;
 const NUMBER_MANTISSA_BITS = 53;
 const SPLITTER = 134_217_729;
 const TRIPLE_DOUBLE_THRESHOLD_BITS = 192;
-const PROBE_ITERATIONS = 2048;
+const DENSE_COARSE_PROBE_ITERATIONS = 1024;
+const DENSE_FINALIST_COUNT = 8;
 
 type DD = readonly [number, number];
 type TD = readonly [number, number, number];
@@ -185,19 +186,38 @@ function probeTripleDouble(candidate: ReferenceCandidate, iterations: number): n
   return iterations + 1;
 }
 
+function probeCandidate(candidate: ReferenceCandidate, iterations: number, bits: number): number {
+  return bits >= TRIPLE_DOUBLE_THRESHOLD_BITS
+    ? probeTripleDouble(candidate, iterations)
+    : probeDoubleDouble(candidate, iterations);
+}
+
 function selectCandidate(request: ReferenceRequest, bits: number): ReferenceCandidate {
-  const probeIterations = Math.min(request.iterations, PROBE_ITERATIONS);
-  let selected = request.candidates[0] ?? { centerX: request.centerX, centerY: request.centerY };
+  const candidates = request.candidates.length > 0
+    ? request.candidates
+    : [{ centerX: request.centerX, centerY: request.centerY }];
+  const requestedProbe = Math.max(0, Math.min(request.iterations, request.probeIterations));
+  if (requestedProbe === 0 || candidates.length === 1) return candidates[0];
+
+  const coarseProbe = candidates.length > 16
+    ? Math.min(requestedProbe, DENSE_COARSE_PROBE_ITERATIONS)
+    : requestedProbe;
+  const ranked = candidates
+    .map(candidate => ({ candidate, score: probeCandidate(candidate, coarseProbe, bits) }))
+    .sort((left, right) => right.score - left.score);
+
+  if (coarseProbe === requestedProbe) return ranked[0].candidate;
+
+  const finalists = ranked.slice(0, Math.min(DENSE_FINALIST_COUNT, ranked.length));
+  let selected = finalists[0].candidate;
   let bestScore = -1;
-  for (const candidate of request.candidates) {
-    const score = bits >= TRIPLE_DOUBLE_THRESHOLD_BITS
-      ? probeTripleDouble(candidate, probeIterations)
-      : probeDoubleDouble(candidate, probeIterations);
+  for (const finalist of finalists) {
+    const score = probeCandidate(finalist.candidate, requestedProbe, bits);
     if (score > bestScore) {
-      selected = candidate;
+      selected = finalist.candidate;
       bestScore = score;
     }
-    if (score > probeIterations) break;
+    if (score > requestedProbe) break;
   }
   return selected;
 }
