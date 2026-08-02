@@ -4,7 +4,11 @@ import { scaleToNumber } from './binaryScale';
 import { BUILD_LABEL } from './v4/build';
 import { CameraModel } from './v4/camera';
 import { ReferenceManager } from './v4/referenceManager';
-import { RenderCoordinator, type PresentedFrame } from './v4/renderCoordinator';
+import {
+  RenderCoordinator,
+  type DroppedInteractiveFrame,
+  type PresentedFrame
+} from './v4/renderCoordinator';
 import type {
   CpuReference,
   GpuReference,
@@ -16,6 +20,10 @@ import type {
 } from './v4/types';
 import { createUi, iterationCount, resetControlValues } from './v4/ui';
 import { WebGpuRenderer } from './v4/webGpuRenderer';
+import {
+  NavigationQualityController,
+  PresentationRateMeter
+} from './v5/navigationQualityController';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing app root');
@@ -23,11 +31,11 @@ const ui = createUi(app);
 const camera = new CameraModel();
 const renderer = await WebGpuRenderer.create(ui.canvas);
 const references = new ReferenceManager();
+const navigationQuality = new NavigationQualityController();
+const presentationRate = new PresentationRateMeter();
 
-const TARGET_FRAME_MS = 1000 / 12;
 const SETTLE_MS = 180;
 const REFINE_DELAY_MS = 100;
-const MIN_RESOLUTION = 0.5;
 const DOUBLE_FLOAT_THRESHOLD_LOG10 = 4;
 const REFERENCE_PREFETCH_LOG10 = 4;
 const PERTURBATION_THRESHOLD_LOG10 = 4.5;
@@ -46,11 +54,11 @@ type RepairMode = 'global' | 'tile';
 let presentationEpoch = 1;
 let stage: RenderStage = 'full-quality';
 let refineStep = 0;
-let adaptiveResolution = 1;
-let smoothedFrameMs = TARGET_FRAME_MS;
-let lastCompletedFps = 0;
+let lastAnchorFps = 0;
+let lastDisplayFps = 0;
 let lastComputeMs = 0;
 let lastPresentMs = 0;
+let lastComputeBatches = 0;
 let lastReferenceAnchorMovePixels = 0;
 let direction = 0;
 let pointerX = 0.5;
@@ -76,11 +84,14 @@ let repairRequestMode: RepairMode | null = null;
 let activeRepairMode: RepairMode | null = null;
 let lastTileRepairUnresolved = Number.POSITIVE_INFINITY;
 let stalledTileRepairPasses = 0;
+let lastRateUiUpdate = 0;
 const retiredReferences: GpuReference[] = [];
 
 function requestedIterations(): number { return iterationCount(ui.iterations.value); }
 function aspect(): number { return Math.max(1, ui.canvas.clientWidth) / Math.max(1, ui.canvas.clientHeight); }
 function isInteracting(): boolean { return stage === 'interactive'; }
+
+navigationQuality.reset(requestedIterations());
 
 function clearTimers(): void {
   if (settleTimer) window.clearTimeout(settleTimer);
@@ -141,19 +152,20 @@ function scheduleNextRefinement(): void {
   }, REFINE_DELAY_MS);
 }
 
+function interactiveResolutionCap(): number {
+  const depth = camera.log10Magnification();
+  if (depth >= PERTURBATION_THRESHOLD_LOG10 && !activeReference) {
+    return REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION;
+  }
+  if (depth >= PERTURBATION_THRESHOLD_LOG10) return PERTURBATION_INTERACTIVE_RESOLUTION;
+  if (depth >= DOUBLE_FLOAT_THRESHOLD_LOG10) return DOUBLE_FLOAT_INTERACTIVE_RESOLUTION;
+  return 1;
+}
+
 function effectiveQuality(): RenderQuality {
   const iterations = requestedIterations();
   if (stage === 'interactive') {
-    const depth = camera.log10Magnification();
-    let resolution = adaptiveResolution;
-    if (depth >= PERTURBATION_THRESHOLD_LOG10 && !activeReference) {
-      resolution = Math.min(resolution, REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION);
-    } else if (depth >= PERTURBATION_THRESHOLD_LOG10) {
-      resolution = Math.min(resolution, PERTURBATION_INTERACTIVE_RESOLUTION);
-    } else if (depth >= DOUBLE_FLOAT_THRESHOLD_LOG10) {
-      resolution = Math.min(resolution, DOUBLE_FLOAT_INTERACTIVE_RESOLUTION);
-    }
-    return { iterations, resolution: Math.max(MIN_RESOLUTION, resolution) };
+    return navigationQuality.quality(iterations, interactiveResolutionCap());
   }
   if (stage === 'refining') return { iterations, resolution: refineStep === 1 ? 0.65 : 0.85 };
   return { iterations, resolution: 1 };
@@ -238,38 +250,28 @@ function buildSnapshot(
   };
 }
 
+function notePresentation(): void {
+  presentationRate.note();
+  lastDisplayFps = presentationRate.rate();
+}
+
 function requestCurrentRender(): void {
   const snapshot = buildSnapshot();
   lastSnapshot = snapshot;
-  coordinator.request(snapshot);
+  if (coordinator.request(snapshot)) notePresentation();
   updateReadouts(snapshot);
 }
 
 function requestRepairRender(reference: GpuReference): void {
   const snapshot = buildSnapshot(reference, repairPass, false);
   lastSnapshot = snapshot;
-  coordinator.request(snapshot);
+  if (coordinator.request(snapshot)) notePresentation();
   updateReadouts(snapshot);
 }
 
 function invalidateAndRender(): void {
   invalidatePresentation();
   requestCurrentRender();
-}
-
-function updateController(frameMs: number, renderedStage: RenderStage): void {
-  smoothedFrameMs = smoothedFrameMs * 0.78 + frameMs * 0.22;
-  lastCompletedFps = 1000 / smoothedFrameMs;
-  if (renderedStage !== 'interactive') return;
-
-  const ratio = TARGET_FRAME_MS / Math.max(1, frameMs);
-  if (frameMs > TARGET_FRAME_MS * 1.1) {
-    const adjustment = Math.max(0.75, Math.sqrt(ratio));
-    adaptiveResolution = Math.max(MIN_RESOLUTION, adaptiveResolution * adjustment);
-  } else if (frameMs < TARGET_FRAME_MS * 0.72) {
-    const adjustment = Math.min(1.12, Math.sqrt(ratio));
-    adaptiveResolution = Math.min(1, adaptiveResolution * adjustment + 0.015);
-  }
 }
 
 function worstUnresolvedTile(telemetry: RenderTelemetry): { x: number; y: number; count: number } | null {
@@ -346,7 +348,18 @@ function maybeScheduleRepair(frame: PresentedFrame): void {
 function onPresented(frame: PresentedFrame): void {
   lastComputeMs = frame.computeMs;
   lastPresentMs = frame.presentMs;
-  updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
+  lastComputeBatches = frame.computeBatches;
+  notePresentation();
+
+  if (frame.snapshot.stage === 'interactive') {
+    navigationQuality.observeCompleted(
+      frame.computeMs + frame.presentMs,
+      frame.snapshot.quality,
+      requestedIterations(),
+      interactiveResolutionCap()
+    );
+    lastAnchorFps = navigationQuality.anchorFps;
+  }
   if (frame.telemetry) lastTelemetry = frame.telemetry;
 
   if (frame.snapshot.repairPass > 0 && activeRepairMode === 'tile' && frame.telemetry) {
@@ -369,6 +382,13 @@ function onPresented(frame: PresentedFrame): void {
   maybeScheduleRepair(frame);
 }
 
+function onInteractiveDropped(frame: DroppedInteractiveFrame): void {
+  navigationQuality.observeDropped(frame.snapshot.quality, requestedIterations());
+  lastComputeMs = frame.elapsedMs;
+  lastComputeBatches = 0;
+  if (lastSnapshot) updateReadouts(lastSnapshot);
+}
+
 function onCoordinatorIdle(): void {
   while (retiredReferences.length) renderer.destroyReference(retiredReferences.shift()!);
 }
@@ -377,6 +397,7 @@ const coordinator = new RenderCoordinator(
   renderer,
   () => presentationEpoch,
   onPresented,
+  onInteractiveDropped,
   error => {
     ui.status.textContent = error instanceof Error ? error.message : String(error);
     console.error(error);
@@ -456,6 +477,12 @@ references.onReference(candidate => {
   activateReference(candidate);
 });
 
+function updateRateReadouts(): void {
+  ui.displayFpsOut.value = `${lastDisplayFps.toFixed(0)} Hz`;
+  ui.fpsOut.value = `${lastAnchorFps.toFixed(1)} FPS`;
+  ui.hudFpsOut.value = `${lastDisplayFps.toFixed(0)} Hz · ${lastAnchorFps.toFixed(1)} FPS`;
+}
+
 function updateReadouts(snapshot: RenderSnapshot): void {
   const reference = snapshot.reference;
   const offset = reference ? referenceOffsetInViewports(reference) : 0;
@@ -505,10 +532,10 @@ function updateReadouts(snapshot: RenderSnapshot): void {
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(snapshot.camera.scale.exponent);
   ui.stateOut.value = snapshot.stage;
-  ui.fpsOut.value = `${lastCompletedFps.toFixed(1)} FPS`;
-  ui.hudFpsOut.value = `${lastCompletedFps.toFixed(1)} FPS`;
+  updateRateReadouts();
   ui.qualityOut.value = `${snapshot.quality.iterations} / ${requestedIterations()} iter · ${Math.round(snapshot.quality.resolution * 100)}%`;
   ui.timingOut.value = `${lastComputeMs.toFixed(1)} + ${lastPresentMs.toFixed(1)} ms`;
+  ui.batchesOut.value = String(lastComputeBatches);
   ui.anchorMoveOut.value = `${lastReferenceAnchorMovePixels.toFixed(2)} px`;
   ui.referenceTimeOut.value = reference ? `${reference.generationMs.toFixed(1)} ms` : 'inactive';
   ui.adapterOut.value = renderer.adapterLabel;
@@ -537,8 +564,10 @@ function diagnosticsReport(): string {
     `Stage: ${snapshot.stage}`,
     `Requested iterations: ${requestedIterations()}`,
     `Effective quality: ${snapshot.quality.iterations} iterations at ${(snapshot.quality.resolution * 100).toFixed(1)}%`,
-    `Completed rate: ${lastCompletedFps.toFixed(2)} FPS`,
+    `Anchor-frame rate: ${lastAnchorFps.toFixed(2)} FPS`,
+    `Display presentation rate: ${lastDisplayFps.toFixed(2)} Hz`,
     `Compute/present: ${lastComputeMs.toFixed(2)} / ${lastPresentMs.toFixed(2)} ms`,
+    `GPU batches: ${lastComputeBatches}`,
     `Reference-anchor move: ${lastReferenceAnchorMovePixels.toFixed(4)} px`
   ];
 
@@ -650,8 +679,7 @@ ui.speed.addEventListener('input', () => {
   if (lastSnapshot) updateReadouts(lastSnapshot);
 });
 ui.iterations.addEventListener('input', () => {
-  adaptiveResolution = 1;
-  smoothedFrameMs = TARGET_FRAME_MS;
+  navigationQuality.reset(requestedIterations());
   clearTimers();
   setStage('full-quality');
   invalidateAndRender();
@@ -663,8 +691,7 @@ ui.palette.addEventListener('input', () => {
 });
 ui.resetControls.addEventListener('click', () => {
   resetControlValues(ui);
-  adaptiveResolution = 1;
-  smoothedFrameMs = TARGET_FRAME_MS;
+  navigationQuality.reset(requestedIterations());
   clearTimers();
   setStage('full-quality');
   invalidateAndRender();
@@ -682,8 +709,7 @@ ui.resetLocation.addEventListener('click', () => {
   if (activeReference) retiredReferences.push(activeReference);
   activeReference = null;
   lastReferenceAnchorMovePixels = 0;
-  adaptiveResolution = 1;
-  smoothedFrameMs = TARGET_FRAME_MS;
+  navigationQuality.reset(requestedIterations());
   stage = 'full-quality';
   refineStep = 0;
   invalidatePresentation();
@@ -699,7 +725,7 @@ ui.copyDiagnostics.addEventListener('click', () => {
 });
 
 new ResizeObserver(() => {
-  adaptiveResolution = 1;
+  navigationQuality.reset(requestedIterations());
   invalidateAndRender();
 }).observe(ui.canvas);
 
@@ -741,6 +767,11 @@ function tick(now: number): void {
   if (direction !== 0) {
     camera.zoomAbout(pointerX, pointerY, Math.exp(-direction * Number(ui.speed.value) * deltaSeconds), aspect());
     requestCurrentRender();
+  }
+  lastDisplayFps = presentationRate.rate(now);
+  if (now - lastRateUiUpdate >= 250) {
+    lastRateUiUpdate = now;
+    updateRateReadouts();
   }
   requestAnimationFrame(tick);
 }
