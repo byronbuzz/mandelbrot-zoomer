@@ -48,7 +48,7 @@ export function createUi(app: HTMLElement): UiElements {
     <label>Render state <output id="stateOut">full-quality</output></label>
     <label>Last completed render rate <output id="fpsOut">0.0 FPS</output></label>
     <label>Effective quality <output id="qualityOut">500 / 500 iter · 100%</output></label>
-    <p><b>Numerical core V4.5:</b> four-limb GPU reference orbits, cancellation-safe reconstruction and survivor-preserving reference search.</p>
+    <p><b>Numerical core V4.6:</b> overflow-safe viewport-normalized perturbation with four-limb reference orbits and explicit failure repair.</p>
   </aside>
 </section>`;
   return {
