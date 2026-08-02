@@ -136,7 +136,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       if (localX >= p.blockSize || blockOriginX + localX >= tileEndX) { break; }
       textureStore(
         resultTexture,
-        vec2i(blockOriginX + localX, blockOriginY + localY),
+        vec2i(i32(blockOriginX + localX), i32(blockOriginY + localY)),
         result
       );
       localX++;
