@@ -1,6 +1,12 @@
 import type { CameraSnapshot } from '../v4/types';
 
 export type ProgressivePhase = 'coarse' | 'medium' | 'fine' | 'complete';
+export type V6NumericalMode =
+  | 'f32-direct'
+  | 'double-float-direct'
+  | 'perturbation-pending'
+  | 'perturbation';
+export type V6ReferenceState = 'inactive' | 'deferred' | 'generating' | 'ready' | 'failed';
 
 export type ProgressiveTileJob = Readonly<{
   generation: number;
@@ -32,10 +38,16 @@ export type ProgressiveRendererStats = Readonly<{
   completedJobs: number;
   totalJobs: number;
   lastBlockSize: number;
+  lastIterationLimit: number;
   lastTileMs: number;
   tileRate: number;
   anchorGeneration: number;
   analyticInteriorEnabled: boolean;
+  numericalMode: V6NumericalMode;
+  referenceState: V6ReferenceState;
+  referenceOrbitLength: number;
+  referenceBits: number;
+  referenceGenerationMs: number;
 }>;
 
 export type BenchmarkScene = Readonly<{
