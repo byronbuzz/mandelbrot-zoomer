@@ -35,10 +35,13 @@ type Surface = {
   colourTexture: GPUTexture;
   numericalMode: V6NumericalMode;
   referenceState: V6ReferenceState;
+  referenceError: string | null;
   reference: DeepReference | null;
   referencePromise: Promise<DeepReference> | null;
   stateBuffer: GPUBuffer | null;
   metaBuffer: GPUBuffer | null;
+  preferCurrent: boolean;
+  publishedJobs: number;
 };
 
 export class ProgressiveRenderer {
@@ -60,7 +63,6 @@ export class ProgressiveRenderer {
   private lastIterationLimit = 0;
   private completedJobs = 0;
   private totalJobs = 0;
-  private deepMotionDeferred = false;
   private readonly tileTimestamps: number[] = [];
 
   private constructor(
@@ -159,26 +161,34 @@ export class ProgressiveRenderer {
 
   startAnchor(snapshot: ProgressiveSurfaceSnapshot): void {
     const deep = this.needsPerturbation(snapshot.camera);
-    if (deep && snapshot.motionPressure > 0.2 && this.current) {
-      this.deepMotionDeferred = true;
-      this.referenceService.cancel();
-      this.scheduler.clear();
-      this.resetProgress();
-      return;
-    }
-    this.deepMotionDeferred = false;
+    const deepMotionPreview = deep && snapshot.motionPressure > 0.2;
     this.referenceService.cancel();
 
-    if (this.current) this.releaseRecurrence(this.current);
-    const retired = this.stable;
-    this.stable = this.current;
-    const dimensions = this.surfaceDimensions(snapshot, deep);
-    this.current = this.createSurface(snapshot, dimensions.width, dimensions.height, deep);
-    if (retired) this.retireSurface(retired);
+    const dimensions = this.surfaceDimensions(snapshot, deep && !deepMotionPreview);
+    const next = this.createSurface(
+      snapshot,
+      dimensions.width,
+      dimensions.height,
+      deep && !deepMotionPreview,
+      deepMotionPreview
+    );
+    this.replaceCurrent(next);
 
     const surface = this.current;
-    if (deep) {
-      surface.referenceState = 'generating';
+    if (!surface) return;
+    if (deepMotionPreview) {
+      this.scheduler.reset(
+        snapshot.generation,
+        surface.width,
+        surface.height,
+        snapshot.iterations,
+        snapshot.focusX,
+        snapshot.focusY,
+        snapshot.motionPressure,
+        undefined,
+        true
+      );
+    } else if (deep) {
       surface.referencePromise = this.referenceService.request(snapshot, surface.width, surface.height);
       this.scheduler.reset(
         snapshot.generation,
@@ -210,24 +220,28 @@ export class ProgressiveRenderer {
     let surface = this.current;
     if (!surface) return false;
     if (surface.numericalMode === 'perturbation-pending') {
-      try {
-        const pendingReference = surface.referencePromise;
-        if (!pendingReference) return false;
-        const reference = await pendingReference;
-        if (surface !== this.current) {
-          reference.buffer.destroy();
-          return false;
+      const pendingReference = surface.referencePromise;
+      if (!pendingReference) {
+        this.activateDirectFallback(surface, 'reference promise missing');
+      } else {
+        try {
+          const reference = await pendingReference;
+          if (surface !== this.current) {
+            reference.buffer.destroy();
+            return false;
+          }
+          this.activatePerturbation(surface, reference);
+        } catch (error) {
+          if (surface !== this.current) return false;
+          const message = error instanceof Error ? error.message : String(error);
+          this.activateDirectFallback(surface, message);
+          if (message !== 'Reference request superseded') {
+            console.error('Unable to generate V6 perturbation reference; using direct fallback', error);
+          }
         }
-        this.activatePerturbation(surface, reference);
-      } catch (error) {
-        if (surface === this.current) surface.referenceState = 'failed';
-        if (!(error instanceof Error && error.message === 'Reference request superseded')) {
-          console.error('Unable to generate V6 perturbation reference', error);
-        }
-        return false;
       }
       surface = this.current;
-      if (!surface || surface.numericalMode !== 'perturbation') return false;
+      if (!surface) return false;
     }
 
     const job = this.scheduler.next();
@@ -279,6 +293,7 @@ export class ProgressiveRenderer {
       this.lastTileMs = Math.max(0.1, performance.now() - started);
       this.lastBlockSize = job.blockSize;
       this.lastIterationLimit = job.iterations;
+      surface.publishedJobs++;
       this.noteTileCompletion();
     }
     return true;
@@ -327,6 +342,7 @@ export class ProgressiveRenderer {
       stableTransform.offsetY
     ]);
     unsigned[8] = stable ? 1 : 0;
+    unsigned[9] = current.preferCurrent ? 1 : 0;
     this.device.queue.writeBuffer(this.presentUniform, 0, data);
 
     const bindGroup = this.device.createBindGroup({
@@ -394,12 +410,13 @@ export class ProgressiveRenderer {
   get precisionLabel(): string {
     const surface = this.current;
     if (!surface) return 'waiting';
-    if (this.deepMotionDeferred) return 'perturbation deferred during motion';
+    if (surface.referenceState === 'deferred') return 'deep motion preview · double-float direct';
     if (surface.numericalMode === 'perturbation-pending') return 'perturbation reference generating';
     if (surface.numericalMode === 'perturbation') {
       const reference = surface.reference;
       return `perturbation · ${reference?.bits ?? 0}-bit ref · ${reference?.length ?? 0} orbit · ${(reference?.generationMs ?? 0).toFixed(1)} ms`;
     }
+    if (surface.referenceState === 'failed') return 'double-float direct fallback';
     return surface.numericalMode === 'double-float-direct' ? 'double-float direct' : 'f32 direct';
   }
 
@@ -417,11 +434,14 @@ export class ProgressiveRenderer {
       tileRate: this.tileTimestamps.length,
       anchorGeneration: this.anchorGeneration,
       analyticInteriorEnabled: true,
-      numericalMode: this.deepMotionDeferred ? 'perturbation-pending' : surface?.numericalMode ?? 'f32-direct',
-      referenceState: this.deepMotionDeferred ? 'deferred' : surface?.referenceState ?? 'inactive',
+      numericalMode: surface?.numericalMode ?? 'f32-direct',
+      referenceState: surface?.referenceState ?? 'inactive',
       referenceOrbitLength: surface?.reference?.length ?? 0,
       referenceBits: surface?.reference?.bits ?? 0,
-      referenceGenerationMs: surface?.reference?.generationMs ?? 0
+      referenceGenerationMs: surface?.reference?.generationMs ?? 0,
+      referenceError: surface?.referenceError ?? null,
+      previewActive: surface?.preferCurrent ?? false,
+      publishedJobs: surface?.publishedJobs ?? 0
     };
   }
 
@@ -429,7 +449,8 @@ export class ProgressiveRenderer {
     snapshot: ProgressiveSurfaceSnapshot,
     width: number,
     height: number,
-    deep: boolean
+    perturbationPending: boolean,
+    preferCurrent: boolean
   ): Surface {
     const resultTexture = this.device.createTexture({
       size: [width, height],
@@ -450,29 +471,75 @@ export class ProgressiveRenderer {
       height,
       resultTexture,
       colourTexture,
-      numericalMode: deep ? 'perturbation-pending' : directMode,
-      referenceState: deep ? 'generating' : 'inactive',
+      numericalMode: perturbationPending ? 'perturbation-pending' : directMode,
+      referenceState: perturbationPending ? 'generating' : preferCurrent ? 'deferred' : 'inactive',
+      referenceError: null,
       reference: null,
       referencePromise: null,
       stateBuffer: null,
-      metaBuffer: null
+      metaBuffer: null,
+      preferCurrent,
+      publishedJobs: 0
     };
+  }
+
+  private replaceCurrent(next: Surface): void {
+    const previous = this.current;
+    if (previous) {
+      if (previous.publishedJobs > 0) {
+        this.releaseRecurrence(previous);
+        const retiredStable = this.stable;
+        this.stable = previous;
+        if (retiredStable && retiredStable !== previous) this.retireSurface(retiredStable);
+      } else {
+        this.retireSurface(previous);
+      }
+    }
+    this.current = next;
   }
 
   private activatePerturbation(surface: Surface, reference: DeepReference): void {
     const pixelCount = surface.width * surface.height;
-    surface.stateBuffer = this.device.createBuffer({
+    const stateBuffer = this.device.createBuffer({
       size: align4(pixelCount * STATE_BYTES_PER_PIXEL),
-      usage: GPUBufferUsage.STORAGE
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
-    surface.metaBuffer = this.device.createBuffer({
+    const metaBuffer = this.device.createBuffer({
       size: align4(pixelCount * META_BYTES_PER_PIXEL),
-      usage: GPUBufferUsage.STORAGE
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
+    const encoder = this.device.createCommandEncoder();
+    encoder.clearBuffer(stateBuffer);
+    encoder.clearBuffer(metaBuffer);
+    this.device.queue.submit([encoder.finish()]);
+
+    surface.stateBuffer = stateBuffer;
+    surface.metaBuffer = metaBuffer;
     surface.reference = reference;
     surface.referencePromise = null;
     surface.referenceState = 'ready';
+    surface.referenceError = null;
     surface.numericalMode = 'perturbation';
+    surface.preferCurrent = false;
+  }
+
+  private activateDirectFallback(surface: Surface, reason: string): void {
+    surface.referencePromise = null;
+    surface.referenceState = 'failed';
+    surface.referenceError = reason;
+    surface.numericalMode = 'double-float-direct';
+    surface.preferCurrent = true;
+    this.scheduler.reset(
+      surface.snapshot.generation,
+      surface.width,
+      surface.height,
+      surface.snapshot.iterations,
+      surface.snapshot.focusX,
+      surface.snapshot.focusY,
+      0
+    );
+    this.resetProgress();
+    this.totalJobs = this.scheduler.totalJobs;
   }
 
   private createOrbitData(surface: Surface, job: ProgressiveTileJob): ArrayBuffer {
@@ -519,21 +586,21 @@ export class ProgressiveRenderer {
 
   private surfaceDimensions(
     snapshot: ProgressiveSurfaceSnapshot,
-    deep: boolean
+    perturbation: boolean
   ): { width: number; height: number } {
     const cssWidth = Math.max(1, snapshot.cssWidth);
     const cssHeight = Math.max(1, snapshot.cssHeight);
     let pixelRatio = snapshot.devicePixelRatio;
-    if (deep) {
+    if (perturbation) {
       const maxPixels = Math.max(
         1,
         Math.floor(Number(this.device.limits.maxStorageBufferBindingSize) * 0.9 / STATE_BYTES_PER_PIXEL)
       );
-      pixelRatio = Math.max(0.5, Math.min(pixelRatio, Math.sqrt(maxPixels / (cssWidth * cssHeight))));
+      pixelRatio = Math.min(pixelRatio, Math.sqrt(maxPixels / (cssWidth * cssHeight)));
     }
     return {
-      width: Math.max(1, Math.floor(cssWidth * pixelRatio)),
-      height: Math.max(1, Math.floor(cssHeight * pixelRatio))
+      width: Math.max(1, Math.floor(cssWidth * Math.max(pixelRatio, 1 / cssWidth))),
+      height: Math.max(1, Math.floor(cssHeight * Math.max(pixelRatio, 1 / cssHeight)))
     };
   }
 
@@ -587,6 +654,8 @@ export class ProgressiveRenderer {
   private retireSurface(surface: Surface): void {
     this.releaseRecurrence(surface);
     const reference = surface.reference?.buffer;
+    surface.reference = null;
+    surface.referencePromise = null;
     void this.device.queue.onSubmittedWorkDone().then(() => {
       if (surface !== this.current && surface !== this.stable) {
         surface.resultTexture.destroy();

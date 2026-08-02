@@ -27,6 +27,11 @@ struct OrbitPoint {
   y: vec4f,
 }
 
+struct Expansion8 {
+  values: array<f32, 8>,
+  length: u32,
+}
+
 @group(0) @binding(0) var<uniform> p: OrbitParams;
 @group(0) @binding(1) var resultTexture: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<storage, read_write> recurrenceState: array<vec4f>;
@@ -103,6 +108,60 @@ fn analyticInteriorDs(cx: vec2f, cy: vec2f) -> bool {
     || dsLessEqual(bulbRadius, vec2f(0.0625, 0.0));
 }
 
+fn growExpansion(expansion: Expansion8, value: f32) -> Expansion8 {
+  var result: Expansion8;
+  var accumulator = value;
+  var outputLength = 0u;
+  var index = 0u;
+  loop {
+    if (index >= expansion.length) { break; }
+    let sum = twoSum(accumulator, expansion.values[index]);
+    if (sum.y != 0.0 && outputLength < 8u) {
+      result.values[outputLength] = sum.y;
+      outputLength++;
+    }
+    accumulator = sum.x;
+    index++;
+  }
+  if ((accumulator != 0.0 || outputLength == 0u) && outputLength < 8u) {
+    result.values[outputLength] = accumulator;
+    outputLength++;
+  }
+  result.length = outputLength;
+  return result;
+}
+
+fn expansionToDs(expansion: Expansion8) -> vec2f {
+  var result = vec2f(0.0);
+  var index = 0u;
+  loop {
+    if (index >= expansion.length) { break; }
+    result = dsAdd(result, vec2f(expansion.values[index], 0.0));
+    index++;
+  }
+  return result;
+}
+
+fn referencePlusDelta(reference: vec4f, delta: vec2f) -> vec2f {
+  var expansion: Expansion8;
+  expansion.length = 0u;
+  expansion = growExpansion(expansion, reference.w);
+  expansion = growExpansion(expansion, reference.z);
+  expansion = growExpansion(expansion, reference.y);
+  expansion = growExpansion(expansion, reference.x);
+  expansion = growExpansion(expansion, delta.y);
+  expansion = growExpansion(expansion, delta.x);
+  return expansionToDs(expansion);
+}
+
+fn referenceTimesDs(reference: vec4f, value: vec2f) -> vec2f {
+  var result = vec2f(0.0);
+  result = dsAdd(result, dsMul(vec2f(reference.w, 0.0), value));
+  result = dsAdd(result, dsMul(vec2f(reference.z, 0.0), value));
+  result = dsAdd(result, dsMul(vec2f(reference.y, 0.0), value));
+  return dsAdd(result, dsMul(vec2f(reference.x, 0.0), value));
+}
+
 fn smoothEscape(iteration: u32, radiusSquared: f32) -> f32 {
   let magnitude = sqrt(max(radiusSquared, 4.000001));
   return f32(iteration) + 1.0 - log2(log2(magnitude));
@@ -122,14 +181,6 @@ fn mapCoordinate(pixelX: u32, pixelY: u32) -> array<vec2f, 2> {
     dsAdd(p.centerX, vec2f(pixelScaleX, 0.0)),
     dsAdd(p.centerY, vec2f(pixelScaleY, 0.0))
   );
-}
-
-fn expansionToDs(value: vec4f) -> vec2f {
-  var result = vec2f(0.0);
-  result = dsAdd(result, vec2f(value.x, 0.0));
-  result = dsAdd(result, vec2f(value.y, 0.0));
-  result = dsAdd(result, vec2f(value.z, 0.0));
-  return dsAdd(result, vec2f(value.w, 0.0));
 }
 
 fn packMeta(iteration: u32, status: u32) -> u32 {
@@ -220,10 +271,8 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
     }
 
     let point = referenceOrbit[iteration];
-    let referenceX = expansionToDs(point.x);
-    let referenceY = expansionToDs(point.y);
-    let zx = dsAdd(referenceX, dx);
-    let zy = dsAdd(referenceY, dy);
+    let zx = referencePlusDelta(point.x, dx);
+    let zy = referencePlusDelta(point.y, dy);
     let x = dsValue(zx);
     let y = dsValue(zy);
     radiusSquared = x * x + y * y;
@@ -237,8 +286,14 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
     let dxSquared = dsMul(dx, dx);
     let dySquared = dsMul(dy, dy);
     let dxdy = dsMul(dx, dy);
-    let crossX = dsScale(dsSub(dsMul(referenceX, dx), dsMul(referenceY, dy)), 2.0);
-    let crossY = dsScale(dsAdd(dsMul(referenceX, dy), dsMul(referenceY, dx)), 2.0);
+    let crossX = dsScale(
+      dsSub(referenceTimesDs(point.x, dx), referenceTimesDs(point.y, dy)),
+      2.0
+    );
+    let crossY = dsScale(
+      dsAdd(referenceTimesDs(point.x, dy), referenceTimesDs(point.y, dx)),
+      2.0
+    );
     dx = dsAdd(dsAdd(crossX, dsSub(dxSquared, dySquared)), dcx);
     dy = dsAdd(dsAdd(crossY, dsScale(dxdy, 2.0)), dcy);
     iteration++;
@@ -356,7 +411,8 @@ struct PresentParams {
   stableScale: vec2f,
   stableOffset: vec2f,
   hasStable: u32,
-  _pad0: vec3u,
+  preferCurrent: u32,
+  _pad0: vec2u,
 }
 
 struct VertexOutput {
@@ -411,7 +467,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
     0.0
   );
 
-  if (currentInside && current.a >= 0.5) {
+  if (currentInside && (current.a >= 0.5 || (p.preferCurrent != 0u && current.a > 0.0))) {
     return vec4f(current.rgb, 1.0);
   }
   if (stableInside && stable.a > 0.0) {
