@@ -1,7 +1,10 @@
 export const computeShader = /* wgsl */ `
 const TILE_COLUMNS = 16u;
 const TILE_ROWS = 16u;
-const TILE_COUNT = 256u;
+const REASON_EXHAUSTED = 1u;
+const REASON_MAGNITUDE = 2u;
+const REASON_NON_FINITE = 3u;
+const REASON_REBASE = 4u;
 
 struct Params {
   centerX: vec2f,
@@ -22,7 +25,11 @@ struct Params {
 struct Telemetry {
   unresolved: atomic<u32>,
   exhausted: atomic<u32>,
+  magnitudeGuard: atomic<u32>,
+  nonFinite: atomic<u32>,
+  rebaseFailures: atomic<u32>,
   tiles: array<atomic<u32>, 256>,
+  maxExponentBits: atomic<u32>,
 }
 struct OrbitPoint {
   x: vec4f,
@@ -122,17 +129,39 @@ fn writeResult(id: vec2u, escaped: bool, iteration: u32, radius: f32) {
   let smoothValue = f32(iteration) + 1.0 - log2(log2(sqrt(max(radius, 1.0001))));
   textureStore(outTex, vec2i(id), vec4f(paletteColour(fract(.018 * smoothValue)), 1));
 }
-fn recordUnresolved(id: vec2u, exhausted: bool) {
+fn finiteF32(value: f32) -> bool {
+  return value == value && abs(value) <= 3.402823e38;
+}
+fn finiteDs(value: vec2f) -> bool {
+  return finiteF32(value.x) && finiteF32(value.y) && finiteF32(dsValue(value));
+}
+fn exponentBits(value: f32) -> u32 {
+  if (value == 0.0 || !finiteF32(value)) { return 0u; }
+  return (bitcast<u32>(abs(value)) >> 23u) & 255u;
+}
+fn recordPerturbationMagnitude(x: vec2f, y: vec2f) {
+  let exponent = max(exponentBits(dsValue(x)), exponentBits(dsValue(y)));
+  atomicMax(&telemetry.maxExponentBits, exponent);
+}
+fn recordUnresolved(id: vec2u, reason: u32) {
   atomicAdd(&telemetry.unresolved, 1u);
-  if (exhausted) { atomicAdd(&telemetry.exhausted, 1u); }
+  if (reason == REASON_EXHAUSTED) { atomicAdd(&telemetry.exhausted, 1u); }
+  if (reason == REASON_MAGNITUDE) { atomicAdd(&telemetry.magnitudeGuard, 1u); }
+  if (reason == REASON_NON_FINITE) { atomicAdd(&telemetry.nonFinite, 1u); }
+  if (reason == REASON_REBASE) { atomicAdd(&telemetry.rebaseFailures, 1u); }
   let tileX = min((id.x * TILE_COLUMNS) / max(p.width, 1u), TILE_COLUMNS - 1u);
   let tileY = min((id.y * TILE_ROWS) / max(p.height, 1u), TILE_ROWS - 1u);
   atomicAdd(&telemetry.tiles[tileY * TILE_COLUMNS + tileX], 1u);
 }
-fn writeUnresolved(id: vec2u, exhausted: bool) {
-  recordUnresolved(id, exhausted);
-  let markerAlpha = select(.25, 0.0, exhausted);
-  textureStore(outTex, vec2i(id), vec4f(0, 0, 0, markerAlpha));
+fn unresolvedAlpha(reason: u32) -> f32 {
+  if (reason == REASON_EXHAUSTED) { return 0.0; }
+  if (reason == REASON_MAGNITUDE) { return .125; }
+  if (reason == REASON_NON_FINITE) { return .25; }
+  return .375;
+}
+fn writeUnresolved(id: vec2u, reason: u32) {
+  recordUnresolved(id, reason);
+  textureStore(outTex, vec2i(id), vec4f(0, 0, 0, unresolvedAlpha(reason)));
 }
 fn pixelDelta(value: f32) -> vec2f {
   return vec2f(ldexp(value * p.scaleMantissa, p.scaleExponent), 0.0);
@@ -211,8 +240,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var iteration = 0u;
   var refIndex = 0u;
   var radius = 0.0;
-  var unresolved = false;
-  var referenceExhausted = false;
+  var unresolvedReason = 0u;
 
   loop {
     let point = referenceOrbit[refIndex];
@@ -220,22 +248,37 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let deltaY = scaleByViewport(uy);
     let currentX = referencePlusDelta(point.x, deltaX);
     let currentY = referencePlusDelta(point.y, deltaY);
+    if (!finiteDs(currentX) || !finiteDs(currentY)) {
+      unresolvedReason = REASON_NON_FINITE;
+      break;
+    }
     let currentXf = dsValue(currentX);
     let currentYf = dsValue(currentY);
     radius = currentXf * currentXf + currentYf * currentYf;
+    if (!finiteF32(radius)) {
+      unresolvedReason = REASON_NON_FINITE;
+      break;
+    }
     if (iteration >= p.iterations || radius > 256.0) { break; }
     if (refIndex + 1u >= p.orbitLength) {
-      unresolved = true;
-      referenceExhausted = true;
+      unresolvedReason = REASON_EXHAUSTED;
       break;
     }
 
-    let deltaRadius = dsValue(deltaX) * dsValue(deltaX) + dsValue(deltaY) * dsValue(deltaY);
+    let deltaXf = dsValue(deltaX);
+    let deltaYf = dsValue(deltaY);
+    let deltaRadius = deltaXf * deltaXf + deltaYf * deltaYf;
+    if (!finiteF32(deltaRadius)) {
+      unresolvedReason = REASON_NON_FINITE;
+      break;
+    }
     if (refIndex > 0u && radius < deltaRadius) {
       ux = divideByViewport(currentX);
       uy = divideByViewport(currentY);
-      if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
-        unresolved = true;
+      recordPerturbationMagnitude(ux, uy);
+      if (!finiteDs(ux) || !finiteDs(uy)
+          || abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
+        unresolvedReason = REASON_REBASE;
         break;
       }
       refIndex = 0u;
@@ -247,16 +290,21 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let crossY = dsScale(dsAdd(referenceTimesDs(point.x, uy), referenceTimesDs(point.y, ux)), 2.0);
     ux = dsAdd(dsAdd(crossX, quadratic[0]), dcx);
     uy = dsAdd(dsAdd(crossY, quadratic[1]), dcy);
+    recordPerturbationMagnitude(ux, uy);
+    if (!finiteDs(ux) || !finiteDs(uy)) {
+      unresolvedReason = REASON_NON_FINITE;
+      break;
+    }
     if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
-      unresolved = true;
+      unresolvedReason = REASON_MAGNITUDE;
       break;
     }
     iteration++;
     refIndex++;
   }
 
-  if (unresolved) {
-    writeUnresolved(id, referenceExhausted);
+  if (unresolvedReason != 0u) {
+    writeUnresolved(id, unresolvedReason);
     return;
   }
   writeResult(id, iteration < p.iterations, iteration, radius);
@@ -265,6 +313,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 export const composeShader = /* wgsl */ `
 const TILE_COLUMNS = 16u;
 const TILE_ROWS = 16u;
+const REASON_EXHAUSTED = 1u;
+const REASON_MAGNITUDE = 2u;
+const REASON_NON_FINITE = 3u;
+const REASON_REBASE = 4u;
 
 struct ComposeParams {
   width: u32,
@@ -273,7 +325,11 @@ struct ComposeParams {
 struct Telemetry {
   unresolved: atomic<u32>,
   exhausted: atomic<u32>,
+  magnitudeGuard: atomic<u32>,
+  nonFinite: atomic<u32>,
+  rebaseFailures: atomic<u32>,
   tiles: array<atomic<u32>, 256>,
+  maxExponentBits: atomic<u32>,
 }
 @group(0) @binding(0) var<uniform> p: ComposeParams;
 @group(0) @binding(1) var baseTex: texture_2d<f32>;
@@ -281,9 +337,18 @@ struct Telemetry {
 @group(0) @binding(3) var outTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(4) var<storage, read_write> telemetry: Telemetry;
 
-fn recordUnresolved(id: vec2u, exhausted: bool) {
+fn reasonFromAlpha(alpha: f32) -> u32 {
+  if (alpha < .0625) { return REASON_EXHAUSTED; }
+  if (alpha < .1875) { return REASON_MAGNITUDE; }
+  if (alpha < .3125) { return REASON_NON_FINITE; }
+  return REASON_REBASE;
+}
+fn recordUnresolved(id: vec2u, reason: u32) {
   atomicAdd(&telemetry.unresolved, 1u);
-  if (exhausted) { atomicAdd(&telemetry.exhausted, 1u); }
+  if (reason == REASON_EXHAUSTED) { atomicAdd(&telemetry.exhausted, 1u); }
+  if (reason == REASON_MAGNITUDE) { atomicAdd(&telemetry.magnitudeGuard, 1u); }
+  if (reason == REASON_NON_FINITE) { atomicAdd(&telemetry.nonFinite, 1u); }
+  if (reason == REASON_REBASE) { atomicAdd(&telemetry.rebaseFailures, 1u); }
   let tileX = min((id.x * TILE_COLUMNS) / max(p.width, 1u), TILE_COLUMNS - 1u);
   let tileY = min((id.y * TILE_ROWS) / max(p.height, 1u), TILE_ROWS - 1u);
   atomicAdd(&telemetry.tiles[tileY * TILE_COLUMNS + tileX], 1u);
@@ -297,7 +362,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let repair = textureLoad(repairTex, vec2i(id), 0);
   let result = select(base, repair, repair.a >= .5);
   textureStore(outTex, vec2i(id), result);
-  if (result.a < .5) { recordUnresolved(id, result.a < .125); }
+  if (result.a < .5) { recordUnresolved(id, reasonFromAlpha(result.a)); }
 }`;
 
 export const presentShader = /* wgsl */ `
