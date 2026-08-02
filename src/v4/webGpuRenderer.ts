@@ -46,8 +46,8 @@ export class WebGpuRenderer {
     this.presentPipeline = presentPipeline;
     this.label = label;
     this.sampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest' });
-    this.fallbackOrbit = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    device.queue.writeBuffer(this.fallbackOrbit, 0, new Float32Array(4));
+    this.fallbackOrbit = device.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(this.fallbackOrbit, 0, new Float32Array(8));
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<WebGpuRenderer> {
