@@ -24,6 +24,7 @@ export class RenderCoordinator {
 
   request(snapshot: RenderSnapshot): void {
     this.latest = snapshot;
+    this.renderer.reproject(snapshot);
     if (!this.running) void this.pump();
   }
 
@@ -46,6 +47,7 @@ export class RenderCoordinator {
           const telemetry = frame.telemetry;
           const presentMs = await this.renderer.present(frame);
           frame = null;
+          if (this.latest) this.renderer.reproject(this.latest);
           this.onPresented({ snapshot, computeMs, presentMs, telemetry });
         } catch (error) {
           if (frame) this.renderer.discard(frame);
