@@ -1,8 +1,9 @@
 import type { ProgressivePhase, ProgressiveTileJob } from './types';
 
-const DEFAULT_TILE_SIZE = 96;
-const MOVING_BLOCK_SIZES = [8, 4] as const;
+const DEFAULT_TILE_SIZE = 384;
+const MOVING_BLOCK_SIZES = [8] as const;
 const SETTLED_BLOCK_SIZES = [8, 4, 2, 1] as const;
+const FULL_COVERAGE_BLOCK_SIZE = 8;
 
 export class ProgressiveTileScheduler {
   private jobs: ProgressiveTileJob[] = [];
@@ -21,7 +22,7 @@ export class ProgressiveTileScheduler {
   ): void {
     const safeWidth = Math.max(1, Math.floor(width));
     const safeHeight = Math.max(1, Math.floor(height));
-    const safeTileSize = Math.max(32, Math.floor(tileSize / 8) * 8);
+    const safeTileSize = Math.max(128, Math.floor(tileSize / 8) * 8);
     const blocks = motionPressure > 0.2 ? MOVING_BLOCK_SIZES : SETTLED_BLOCK_SIZES;
     const focusPixelX = Math.min(1, Math.max(0, focusX)) * safeWidth;
     const focusPixelY = Math.min(1, Math.max(0, focusY)) * safeHeight;
@@ -30,6 +31,24 @@ export class ProgressiveTileScheduler {
 
     for (let level = 0; level < blocks.length; level++) {
       const blockSize = blocks[level];
+
+      // Every anchor first establishes complete viewport coverage in one dispatch.
+      // This prevents centre-out partial shapes from being repeatedly exposed when
+      // moving anchors supersede one another.
+      if (blockSize === FULL_COVERAGE_BLOCK_SIZE) {
+        queued.push({
+          generation,
+          x: 0,
+          y: 0,
+          width: safeWidth,
+          height: safeHeight,
+          blockSize,
+          iterations,
+          priority: level * 1_000_000
+        });
+        continue;
+      }
+
       for (let y = 0; y < safeHeight; y += safeTileSize) {
         const tileHeight = Math.min(safeTileSize, safeHeight - y);
         for (let x = 0; x < safeWidth; x += safeTileSize) {
@@ -37,7 +56,7 @@ export class ProgressiveTileScheduler {
           const centerX = x + tileWidth * 0.5;
           const centerY = y + tileHeight * 0.5;
           const distance = Math.hypot(centerX - focusPixelX, centerY - focusPixelY) / diagonal;
-          const edgePenalty = Math.min(
+          const edgeDistance = Math.min(
             centerX / safeWidth,
             centerY / safeHeight,
             1 - centerX / safeWidth,
@@ -51,7 +70,7 @@ export class ProgressiveTileScheduler {
             height: tileHeight,
             blockSize,
             iterations,
-            priority: level * 1_000_000 + distance * 10_000 - edgePenalty * 100
+            priority: level * 1_000_000 + distance * 10_000 - edgeDistance * 100
           });
         }
       }
