@@ -6,11 +6,14 @@ const worker = self as unknown as DedicatedWorkerGlobalScope;
 const NUMBER_MANTISSA_BITS = 53;
 const SPLITTER = 134_217_729;
 const TRIPLE_DOUBLE_THRESHOLD_BITS = 192;
+const PROBE_TRIPLE_DOUBLE_THRESHOLD_BITS = 224;
 const DENSE_COARSE_PROBE_ITERATIONS = 1024;
-const DENSE_FINALIST_COUNT = 8;
+const DENSE_MIDDLE_PROBE_ITERATIONS = 3072;
+const ORBIT_FLOATS_PER_POINT = 8;
 
 type DD = readonly [number, number];
 type TD = readonly [number, number, number];
+type FloatExpansion4 = [number, number, number, number];
 
 function shiftRounded(value: bigint, shift: number): bigint {
   if (shift >= 0) return value << BigInt(shift);
@@ -140,14 +143,26 @@ function tdMul(a: TD, b: TD): TD {
 
 function tdScale(value: TD, scale: number): TD { return tdMul(value, [scale, 0, 0]); }
 
-function splitF32DD(value: DD): [number, number] {
-  const hi = Math.fround(value[0]);
-  return [hi, Math.fround((value[0] - hi) + value[1])];
+function splitF32ExpansionDD(value: DD): FloatExpansion4 {
+  let remaining = value;
+  const result: FloatExpansion4 = [0, 0, 0, 0];
+  for (let index = 0; index < result.length; index++) {
+    const limb = Math.fround(remaining[0] + remaining[1]);
+    result[index] = limb;
+    remaining = ddSub(remaining, [limb, 0]);
+  }
+  return result;
 }
 
-function splitF32TD(value: TD): [number, number] {
-  const hi = Math.fround(value[0]);
-  return [hi, Math.fround((value[0] - hi) + value[1] + value[2])];
+function splitF32ExpansionTD(value: TD): FloatExpansion4 {
+  let remaining = value;
+  const result: FloatExpansion4 = [0, 0, 0, 0];
+  for (let index = 0; index < result.length; index++) {
+    const limb = Math.fround(remaining[0] + remaining[1] + remaining[2]);
+    result[index] = limb;
+    remaining = tdSub(remaining, [limb, 0, 0]);
+  }
+  return result;
 }
 
 function probeDoubleDouble(candidate: ReferenceCandidate, iterations: number): number {
@@ -187,39 +202,42 @@ function probeTripleDouble(candidate: ReferenceCandidate, iterations: number): n
 }
 
 function probeCandidate(candidate: ReferenceCandidate, iterations: number, bits: number): number {
-  return bits >= TRIPLE_DOUBLE_THRESHOLD_BITS
+  return bits >= PROBE_TRIPLE_DOUBLE_THRESHOLD_BITS
     ? probeTripleDouble(candidate, iterations)
     : probeDoubleDouble(candidate, iterations);
 }
 
 function selectCandidate(request: ReferenceRequest, bits: number): ReferenceCandidate {
   const candidates = request.candidates.length > 0
-    ? request.candidates
+    ? [...request.candidates]
     : [{ centerX: request.centerX, centerY: request.centerY }];
   const requestedProbe = Math.max(0, Math.min(request.iterations, request.probeIterations));
   if (requestedProbe === 0 || candidates.length === 1) return candidates[0];
 
-  const coarseProbe = candidates.length > 16
-    ? Math.min(requestedProbe, DENSE_COARSE_PROBE_ITERATIONS)
-    : requestedProbe;
-  const ranked = candidates
-    .map(candidate => ({ candidate, score: probeCandidate(candidate, coarseProbe, bits) }))
-    .sort((left, right) => right.score - left.score);
+  const stages = [
+    Math.min(requestedProbe, DENSE_COARSE_PROBE_ITERATIONS),
+    Math.min(requestedProbe, DENSE_MIDDLE_PROBE_ITERATIONS),
+    requestedProbe
+  ].filter((stage, index, all) => stage > 0 && all.indexOf(stage) === index);
 
-  if (coarseProbe === requestedProbe) return ranked[0].candidate;
-
-  const finalists = ranked.slice(0, Math.min(DENSE_FINALIST_COUNT, ranked.length));
-  let selected = finalists[0].candidate;
-  let bestScore = -1;
-  for (const finalist of finalists) {
-    const score = probeCandidate(finalist.candidate, requestedProbe, bits);
-    if (score > bestScore) {
-      selected = finalist.candidate;
-      bestScore = score;
+  let contenders = candidates;
+  for (const stage of stages) {
+    let bestCandidate = contenders[0];
+    let bestScore = -1;
+    const survivors: ReferenceCandidate[] = [];
+    for (const candidate of contenders) {
+      const score = probeCandidate(candidate, stage, bits);
+      if (score > bestScore) {
+        bestCandidate = candidate;
+        bestScore = score;
+      }
+      if (score > stage) survivors.push(candidate);
     }
-    if (score > requestedProbe) break;
+    if (survivors.length === 0) return bestCandidate;
+    if (stage === requestedProbe) return survivors[0];
+    contenders = survivors;
   }
-  return selected;
+  return contenders[0];
 }
 
 function buildDoubleDoubleReference(request: ReferenceRequest, candidate: ReferenceCandidate, bits: number): ReferenceResponse {
@@ -230,15 +248,13 @@ function buildDoubleDoubleReference(request: ReferenceRequest, candidate: Refere
   let zy: DD = [0, 0];
   let length = 0;
   let escaped = false;
-  const orbit = new Float32Array((request.iterations + 1) * 4);
+  const orbit = new Float32Array((request.iterations + 1) * ORBIT_FLOATS_PER_POINT);
   for (let index = 0; index <= request.iterations; index++) {
-    const [zxHi, zxLo] = splitF32DD(zx);
-    const [zyHi, zyLo] = splitF32DD(zy);
-    const offset = index * 4;
-    orbit[offset] = zxHi;
-    orbit[offset + 1] = zxLo;
-    orbit[offset + 2] = zyHi;
-    orbit[offset + 3] = zyLo;
+    const x = splitF32ExpansionDD(zx);
+    const y = splitF32ExpansionDD(zy);
+    const offset = index * ORBIT_FLOATS_PER_POINT;
+    orbit.set(x, offset);
+    orbit.set(y, offset + 4);
     length = index + 1;
     if (index === request.iterations) break;
     const zx2 = ddMul(zx, zx);
@@ -246,19 +262,19 @@ function buildDoubleDoubleReference(request: ReferenceRequest, candidate: Refere
     const zxy = ddMul(zx, zy);
     zx = ddAdd(ddSub(zx2, zy2), cx);
     zy = ddAdd(ddScale(zxy, 2), cy);
-    const x = zx[0] + zx[1];
-    const y = zy[0] + zy[1];
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x * x + y * y > 256) {
+    const approximateX = zx[0] + zx[1];
+    const approximateY = zy[0] + zy[1];
+    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY) || approximateX * approximateX + approximateY * approximateY > 256) {
       escaped = true;
       break;
     }
   }
-  const trimmed = orbit.slice(0, length * 4) as Float32Array<ArrayBuffer>;
+  const trimmed = orbit.slice(0, length * ORBIT_FLOATS_PER_POINT) as Float32Array<ArrayBuffer>;
   return {
     id: request.id,
     cameraGeneration: request.cameraGeneration,
     purpose: request.purpose,
-    bits: Math.min(bits, 106),
+    bits: Math.min(bits, 96),
     length,
     escaped,
     generationMs: performance.now() - started,
@@ -276,15 +292,13 @@ function buildTripleDoubleReference(request: ReferenceRequest, candidate: Refere
   let zy: TD = [0, 0, 0];
   let length = 0;
   let escaped = false;
-  const orbit = new Float32Array((request.iterations + 1) * 4);
+  const orbit = new Float32Array((request.iterations + 1) * ORBIT_FLOATS_PER_POINT);
   for (let index = 0; index <= request.iterations; index++) {
-    const [zxHi, zxLo] = splitF32TD(zx);
-    const [zyHi, zyLo] = splitF32TD(zy);
-    const offset = index * 4;
-    orbit[offset] = zxHi;
-    orbit[offset + 1] = zxLo;
-    orbit[offset + 2] = zyHi;
-    orbit[offset + 3] = zyLo;
+    const x = splitF32ExpansionTD(zx);
+    const y = splitF32ExpansionTD(zy);
+    const offset = index * ORBIT_FLOATS_PER_POINT;
+    orbit.set(x, offset);
+    orbit.set(y, offset + 4);
     length = index + 1;
     if (index === request.iterations) break;
     const zx2 = tdMul(zx, zx);
@@ -292,19 +306,19 @@ function buildTripleDoubleReference(request: ReferenceRequest, candidate: Refere
     const zxy = tdMul(zx, zy);
     zx = tdAdd(tdSub(zx2, zy2), cx);
     zy = tdAdd(tdScale(zxy, 2), cy);
-    const x = zx[0] + zx[1] + zx[2];
-    const y = zy[0] + zy[1] + zy[2];
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x * x + y * y > 256) {
+    const approximateX = zx[0] + zx[1] + zx[2];
+    const approximateY = zy[0] + zy[1] + zy[2];
+    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY) || approximateX * approximateX + approximateY * approximateY > 256) {
       escaped = true;
       break;
     }
   }
-  const trimmed = orbit.slice(0, length * 4) as Float32Array<ArrayBuffer>;
+  const trimmed = orbit.slice(0, length * ORBIT_FLOATS_PER_POINT) as Float32Array<ArrayBuffer>;
   return {
     id: request.id,
     cameraGeneration: request.cameraGeneration,
     purpose: request.purpose,
-    bits: Math.min(bits, 159),
+    bits: Math.min(bits, 96),
     length,
     escaped,
     generationMs: performance.now() - started,
