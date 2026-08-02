@@ -1,6 +1,7 @@
 import './style.css';
 import { fixedDifferenceToNumber } from './bigFixed';
 import { scaleToNumber } from './binaryScale';
+import { BUILD_LABEL } from './v4/build';
 import { CameraModel } from './v4/camera';
 import { ReferenceManager } from './v4/referenceManager';
 import { RenderCoordinator, type PresentedFrame } from './v4/renderCoordinator';
@@ -13,7 +14,7 @@ import type {
   RenderStage,
   RenderTelemetry
 } from './v4/types';
-import { createUi, iterationCount } from './v4/ui';
+import { createUi, iterationCount, resetControlValues } from './v4/ui';
 import { WebGpuRenderer } from './v4/webGpuRenderer';
 
 const app = document.querySelector<HTMLElement>('#app');
@@ -48,6 +49,9 @@ let refineStep = 0;
 let adaptiveResolution = 1;
 let smoothedFrameMs = TARGET_FRAME_MS;
 let lastCompletedFps = 0;
+let lastComputeMs = 0;
+let lastPresentMs = 0;
+let lastReferenceAnchorMovePixels = 0;
 let direction = 0;
 let pointerX = 0.5;
 let pointerY = 0.5;
@@ -57,6 +61,7 @@ let panX = 0;
 let panY = 0;
 let settleTimer = 0;
 let refineTimer = 0;
+let copyFeedbackTimer = 0;
 let activeReference: GpuReference | null = null;
 let repairReference: GpuReference | null = null;
 let lastSnapshot: RenderSnapshot | null = null;
@@ -332,6 +337,8 @@ function maybeScheduleRepair(frame: PresentedFrame): void {
 }
 
 function onPresented(frame: PresentedFrame): void {
+  lastComputeMs = frame.computeMs;
+  lastPresentMs = frame.presentMs;
   updateController(frame.computeMs + frame.presentMs, frame.snapshot.stage);
   if (frame.telemetry) lastTelemetry = frame.telemetry;
 
@@ -383,6 +390,18 @@ function candidateIsUseful(candidate: CpuReference): boolean {
 
 function activateReference(candidate: CpuReference): void {
   if (!candidateIsUseful(candidate)) return;
+  const cameraSnapshot = camera.snapshot();
+  const viewportScale = Math.max(scaleToNumber(cameraSnapshot.scale), Number.MIN_VALUE);
+  if (activeReference) {
+    const dx = fixedDifferenceToNumber(candidate.centerX, activeReference.centerX);
+    const dy = fixedDifferenceToNumber(candidate.centerY, activeReference.centerY);
+    lastReferenceAnchorMovePixels = Math.hypot(dx, dy)
+      / viewportScale
+      * Math.max(1, ui.canvas.clientHeight);
+  } else {
+    lastReferenceAnchorMovePixels = 0;
+  }
+
   const next = renderer.createReference(candidate);
   if (activeReference) retiredReferences.push(activeReference);
   activeReference = next;
@@ -435,15 +454,23 @@ function updateReadouts(snapshot: RenderSnapshot): void {
   const offset = reference ? referenceOffsetInViewports(reference) : 0;
   const ended = reference?.escaped ? ` · escaped at ${reference.length - 1}` : '';
   const pending = references.pendingCount ? ` · ${references.pendingCount} reference queued` : '';
-  ui.zoomOut.value = `10^${camera.log10Magnification().toFixed(2)}`;
+  const zoomLabel = `10^${camera.log10Magnification().toFixed(2)}`;
+
+  ui.zoomOut.value = zoomLabel;
+  ui.hudZoomOut.value = zoomLabel;
   ui.precisionOut.value = snapshot.precision;
   ui.orbitOut.value = reference
     ? `~${reference.bits}-bit ${reference.purpose} · ${reference.length - 1} stored · ${offset.toFixed(2)} view offset${ended}${pending}`
     : `inactive${pending}`;
+
   if (snapshot.precision !== 'perturbation') {
     ui.healthOut.value = 'inactive';
+    ui.failureOut.value = 'inactive';
+    ui.maxExponentOut.value = 'inactive';
   } else if (!lastTelemetry) {
     ui.healthOut.value = snapshot.stage === 'full-quality' ? 'measuring…' : 'measured on full-quality frames';
+    ui.failureOut.value = 'measuring…';
+    ui.maxExponentOut.value = 'measuring…';
   } else {
     const percentage = lastTelemetry.totalPixels > 0
       ? (lastTelemetry.unresolvedPixels / lastTelemetry.totalPixels) * 100
@@ -456,16 +483,104 @@ function updateReadouts(snapshot: RenderSnapshot): void {
     const completed = globalRepairPass > 0 || tileRepairPass > 0
       ? ` · ${globalRepairPass} global + ${tileRepairPass} tile repairs`
       : '';
-    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%) · ${lastTelemetry.exhaustedPixels.toLocaleString()} orbit-exhausted${queued}${completed}`;
+    ui.healthOut.value = `${lastTelemetry.unresolvedPixels.toLocaleString()} unresolved (${percentage.toFixed(3)}%)${queued}${completed}`;
+    ui.failureOut.value = [
+      `${lastTelemetry.exhaustedPixels.toLocaleString()} exhausted`,
+      `${lastTelemetry.magnitudeGuardPixels.toLocaleString()} magnitude`,
+      `${lastTelemetry.nonFinitePixels.toLocaleString()} non-finite`,
+      `${lastTelemetry.rebaseFailurePixels.toLocaleString()} rebase`
+    ].join(' · ');
+    ui.maxExponentOut.value = lastTelemetry.maxPerturbationExponent === null
+      ? 'below normal range'
+      : `2^${lastTelemetry.maxPerturbationExponent}`;
   }
+
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(snapshot.camera.scale.exponent);
   ui.stateOut.value = snapshot.stage;
   ui.fpsOut.value = `${lastCompletedFps.toFixed(1)} FPS`;
+  ui.hudFpsOut.value = `${lastCompletedFps.toFixed(1)} FPS`;
   ui.qualityOut.value = `${snapshot.quality.iterations} / ${requestedIterations()} iter · ${Math.round(snapshot.quality.resolution * 100)}%`;
+  ui.timingOut.value = `${lastComputeMs.toFixed(1)} + ${lastPresentMs.toFixed(1)} ms`;
+  ui.anchorMoveOut.value = `${lastReferenceAnchorMovePixels.toFixed(2)} px`;
+  ui.referenceTimeOut.value = reference ? `${reference.generationMs.toFixed(1)} ms` : 'inactive';
+  ui.adapterOut.value = renderer.adapterLabel;
+  ui.buildOut.value = BUILD_LABEL;
   ui.speedOut.value = `${Number(ui.speed.value).toFixed(2)}×/s`;
   ui.iterOut.value = requestedIterations().toLocaleString();
   ui.palOut.value = Number(ui.palette.value).toFixed(2);
+  ui.setStatsWarning(Boolean(lastTelemetry?.unresolvedPixels));
+}
+
+function diagnosticsReport(): string {
+  const snapshot = lastSnapshot ?? buildSnapshot(activeReference, 0, false);
+  const cameraSnapshot = camera.snapshot();
+  const reference = snapshot.reference;
+  const telemetry = lastTelemetry;
+  const lines = [
+    `Mandelbrot Zoomer ${BUILD_LABEL}`,
+    `Captured: ${new Date().toISOString()}`,
+    `GPU: ${renderer.adapterLabel}`,
+    `URL: ${location.href}`,
+    `Zoom depth: 10^${camera.log10Magnification().toFixed(6)}`,
+    `Center X raw: ${cameraSnapshot.centerX.raw.toString()} (bits ${cameraSnapshot.centerX.bits})`,
+    `Center Y raw: ${cameraSnapshot.centerY.raw.toString()} (bits ${cameraSnapshot.centerY.bits})`,
+    `Scale: ${cameraSnapshot.scale.mantissa} * 2^${cameraSnapshot.scale.exponent}`,
+    `Precision: ${snapshot.precision}`,
+    `Stage: ${snapshot.stage}`,
+    `Requested iterations: ${requestedIterations()}`,
+    `Effective quality: ${snapshot.quality.iterations} iterations at ${(snapshot.quality.resolution * 100).toFixed(1)}%`,
+    `Completed rate: ${lastCompletedFps.toFixed(2)} FPS`,
+    `Compute/present: ${lastComputeMs.toFixed(2)} / ${lastPresentMs.toFixed(2)} ms`,
+    `Reference-anchor move: ${lastReferenceAnchorMovePixels.toFixed(4)} px`
+  ];
+
+  if (reference) {
+    lines.push(
+      `Reference: ${reference.purpose}, ${reference.bits} bits, ${reference.length - 1} stored, escaped=${reference.escaped}`,
+      `Reference offset: ${referenceOffsetInViewports(reference).toFixed(8)} viewports`,
+      `Reference generation: ${reference.generationMs.toFixed(3)} ms`
+    );
+  } else {
+    lines.push('Reference: inactive');
+  }
+
+  if (telemetry) {
+    const unresolvedPercentage = telemetry.totalPixels > 0
+      ? telemetry.unresolvedPixels / telemetry.totalPixels * 100
+      : 0;
+    lines.push(
+      `Unresolved: ${telemetry.unresolvedPixels}/${telemetry.totalPixels} (${unresolvedPercentage.toFixed(6)}%)`,
+      `Failure causes: exhausted=${telemetry.exhaustedPixels}, magnitude=${telemetry.magnitudeGuardPixels}, non-finite=${telemetry.nonFinitePixels}, rebase=${telemetry.rebaseFailurePixels}`,
+      `Maximum perturbation exponent: ${telemetry.maxPerturbationExponent ?? 'below normal range'}`,
+      `Repairs: global=${globalRepairPass}, tile=${tileRepairPass}`
+    );
+  } else {
+    lines.push('Perturbation telemetry: inactive');
+  }
+
+  return lines.join('\n');
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
+function showCopyFeedback(message: string): void {
+  if (copyFeedbackTimer) window.clearTimeout(copyFeedbackTimer);
+  ui.copyFeedback.textContent = message;
+  copyFeedbackTimer = window.setTimeout(() => { ui.copyFeedback.textContent = ''; }, 2200);
 }
 
 function updatePointer(event: { clientX: number; clientY: number }): void {
@@ -485,6 +600,7 @@ ui.canvas.addEventListener('pointermove', event => {
 });
 
 ui.canvas.addEventListener('pointerdown', event => {
+  ui.canvas.focus({ preventScroll: true });
   updatePointer(event);
   ui.canvas.setPointerCapture(event.pointerId);
   if (event.button === 1) {
@@ -538,13 +654,78 @@ ui.palette.addEventListener('input', () => {
   setStage('full-quality');
   invalidateAndRender();
 });
+ui.resetControls.addEventListener('click', () => {
+  resetControlValues(ui);
+  adaptiveResolution = 1;
+  smoothedFrameMs = TARGET_FRAME_MS;
+  clearTimers();
+  setStage('full-quality');
+  invalidateAndRender();
+});
+ui.resetLocation.addEventListener('click', () => {
+  clearTimers();
+  direction = 0;
+  panning = false;
+  panPointer = -1;
+  pointerX = 0.5;
+  pointerY = 0.5;
+  camera.reset();
+  references.cancelOlderThan(camera.generation);
+  deferredReference = null;
+  if (activeReference) retiredReferences.push(activeReference);
+  activeReference = null;
+  lastReferenceAnchorMovePixels = 0;
+  adaptiveResolution = 1;
+  smoothedFrameMs = TARGET_FRAME_MS;
+  stage = 'full-quality';
+  refineStep = 0;
+  invalidatePresentation();
+  requestCurrentRender();
+});
+ui.copyDiagnostics.addEventListener('click', () => {
+  void copyText(diagnosticsReport())
+    .then(() => showCopyFeedback('Copied'))
+    .catch(error => {
+      console.error(error);
+      showCopyFeedback('Copy failed');
+    });
+});
+
 new ResizeObserver(() => {
   adaptiveResolution = 1;
   invalidateAndRender();
 }).observe(ui.canvas);
 
+document.addEventListener('keydown', event => {
+  if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    const active = document.activeElement;
+    const focusInsidePanel = active instanceof Node && ui.panel.contains(active);
+    if (!ui.panelVisible() || !focusInsidePanel) {
+      event.preventDefault();
+      ui.togglePanel();
+      if (ui.panelVisible()) ui.focusSelectedTab();
+      else ui.canvas.focus({ preventScroll: true });
+    }
+    return;
+  }
+
+  if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    ui.setPanelVisible(true);
+    ui.showTab('help');
+    ui.focusSelectedTab();
+    return;
+  }
+
+  if (event.key === 'Escape' && ui.panelVisible()) {
+    event.preventDefault();
+    ui.setPanelVisible(false);
+    ui.canvas.focus({ preventScroll: true });
+  }
+});
+
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · numerical core V4.4`;
+ui.status.textContent = `${renderer.adapterLabel} · ${BUILD_LABEL}`;
 
 let previousTick = performance.now();
 function tick(now: number): void {

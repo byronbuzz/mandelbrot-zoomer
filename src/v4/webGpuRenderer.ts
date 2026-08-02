@@ -7,8 +7,12 @@ const PARAMETER_BYTES = 80;
 const COMPOSE_PARAMETER_BYTES = 16;
 const TILE_COLUMNS = 16;
 const TILE_ROWS = 16;
-const TELEMETRY_VALUES = 2 + TILE_COLUMNS * TILE_ROWS;
+const TELEMETRY_COUNTER_VALUES = 5;
+const TELEMETRY_TILE_OFFSET = TELEMETRY_COUNTER_VALUES;
+const TELEMETRY_MAX_EXPONENT_INDEX = TELEMETRY_TILE_OFFSET + TILE_COLUMNS * TILE_ROWS;
+const TELEMETRY_VALUES = TELEMETRY_MAX_EXPONENT_INDEX + 1;
 const TELEMETRY_BYTES = TELEMETRY_VALUES * Uint32Array.BYTES_PER_ELEMENT;
+const COMPOSE_CLEAR_BYTES = TELEMETRY_MAX_EXPONENT_INDEX * Uint32Array.BYTES_PER_ELEMENT;
 const COMPUTE_TEXTURE_FORMAT: GPUTextureFormat = 'rgba8unorm';
 
 export class WebGpuRenderer {
@@ -103,7 +107,7 @@ export class WebGpuRenderer {
 
   createReference(reference: CpuReference): GpuReference {
     const buffer = this.device.createBuffer({
-      size: Math.max(16, reference.orbit.byteLength),
+      size: Math.max(32, reference.orbit.byteLength),
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
     this.device.queue.writeBuffer(buffer, 0, reference.orbit);
@@ -178,7 +182,7 @@ export class WebGpuRenderer {
 
     let composeUniform: GPUBuffer | null = null;
     if (canRepair && this.settledTexture) {
-      encoder.clearBuffer(telemetryBuffer);
+      encoder.clearBuffer(telemetryBuffer, 0, COMPOSE_CLEAR_BYTES);
       composeUniform = this.device.createBuffer({
         size: COMPOSE_PARAMETER_BYTES,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -350,10 +354,18 @@ export class WebGpuRenderer {
   private async readTelemetry(buffer: GPUBuffer, totalPixels: number): Promise<RenderTelemetry> {
     await buffer.mapAsync(GPUMapMode.READ);
     const values = new Uint32Array(buffer.getMappedRange());
-    const tileUnresolved = Array.from(values.slice(2, 2 + TILE_COLUMNS * TILE_ROWS));
+    const tileUnresolved = Array.from(values.slice(
+      TELEMETRY_TILE_OFFSET,
+      TELEMETRY_TILE_OFFSET + TILE_COLUMNS * TILE_ROWS
+    ));
+    const exponentBits = values[TELEMETRY_MAX_EXPONENT_INDEX] ?? 0;
     const telemetry: RenderTelemetry = {
       unresolvedPixels: values[0] ?? 0,
       exhaustedPixels: values[1] ?? 0,
+      magnitudeGuardPixels: values[2] ?? 0,
+      nonFinitePixels: values[3] ?? 0,
+      rebaseFailurePixels: values[4] ?? 0,
+      maxPerturbationExponent: exponentBits === 0 ? null : exponentBits - 127,
       totalPixels,
       tileColumns: TILE_COLUMNS,
       tileRows: TILE_ROWS,

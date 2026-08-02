@@ -83,6 +83,10 @@ export type RenderSnapshot = Readonly<{
 export type RenderTelemetry = Readonly<{
   unresolvedPixels: number;
   exhaustedPixels: number;
+  magnitudeGuardPixels: number;
+  nonFinitePixels: number;
+  rebaseFailurePixels: number;
+  maxPerturbationExponent: number | null;
   totalPixels: number;
   tileColumns: number;
   tileRows: number;
