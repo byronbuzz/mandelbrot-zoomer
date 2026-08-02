@@ -38,6 +38,20 @@ export class RenderCoordinator {
     return reprojected;
   }
 
+  private newerCameraWaiting(snapshot: RenderSnapshot): boolean {
+    return Boolean(
+      this.latest
+      && this.latest.camera.generation !== snapshot.camera.generation
+    );
+  }
+
+  private reportDropped(snapshot: RenderSnapshot, started: number): void {
+    this.onInteractiveDropped({
+      snapshot,
+      elapsedMs: Math.max(0.1, performance.now() - started)
+    });
+  }
+
   private async pump(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -53,11 +67,7 @@ export class RenderCoordinator {
             () => {
               if (snapshot.generation !== this.currentGeneration()) return true;
               if (snapshot.stage !== 'interactive') return false;
-              const newerCameraWaiting = Boolean(
-                this.latest
-                && this.latest.camera.generation !== snapshot.camera.generation
-              );
-              return newerCameraWaiting
+              return this.newerCameraWaiting(snapshot)
                 && performance.now() - started >= INTERACTIVE_FRAME_DEADLINE_MS;
             }
           );
@@ -66,10 +76,7 @@ export class RenderCoordinator {
               snapshot.stage === 'interactive'
               && snapshot.generation === this.currentGeneration()
             ) {
-              this.onInteractiveDropped({
-                snapshot,
-                elapsedMs: Math.max(0.1, performance.now() - started)
-              });
+              this.reportDropped(snapshot, started);
             }
             continue;
           }
@@ -78,6 +85,17 @@ export class RenderCoordinator {
             frame = null;
             continue;
           }
+
+          const missedInteractiveDeadline = snapshot.stage === 'interactive'
+            && this.newerCameraWaiting(snapshot)
+            && performance.now() - started >= INTERACTIVE_FRAME_DEADLINE_MS;
+          if (missedInteractiveDeadline) {
+            this.renderer.discard(frame);
+            frame = null;
+            this.reportDropped(snapshot, started);
+            continue;
+          }
+
           const presentedSnapshot = frame.snapshot;
           const computeMs = frame.computeMs;
           const computeBatches = frame.computeBatches;
