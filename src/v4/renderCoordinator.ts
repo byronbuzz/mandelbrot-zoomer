@@ -4,6 +4,7 @@ import type { WebGpuRenderer } from './webGpuRenderer';
 export type PresentedFrame = Readonly<{
   snapshot: RenderSnapshot;
   computeMs: number;
+  computeBatches: number;
   presentMs: number;
   telemetry: RenderTelemetry | null;
 }>;
@@ -37,18 +38,23 @@ export class RenderCoordinator {
         this.latest = null;
         let frame: PreparedFrame | null = null;
         try {
-          frame = await this.renderer.prepare(snapshot);
+          frame = await this.renderer.prepare(
+            snapshot,
+            () => snapshot.generation !== this.currentGeneration()
+          );
+          if (!frame) continue;
           if (snapshot.generation !== this.currentGeneration()) {
             this.renderer.discard(frame);
             frame = null;
             continue;
           }
           const computeMs = frame.computeMs;
+          const computeBatches = frame.computeBatches;
           const telemetry = frame.telemetry;
           const presentMs = await this.renderer.present(frame);
           frame = null;
           if (this.latest) this.renderer.reproject(this.latest);
-          this.onPresented({ snapshot, computeMs, presentMs, telemetry });
+          this.onPresented({ snapshot, computeMs, computeBatches, presentMs, telemetry });
         } catch (error) {
           if (frame) this.renderer.discard(frame);
           this.onError(error);
