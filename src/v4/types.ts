@@ -101,6 +101,7 @@ export type PreparedFrame = Readonly<{
   displayWidth: number;
   displayHeight: number;
   computeMs: number;
+  computeBatches: number;
   telemetry: RenderTelemetry | null;
   retainAsSettled: boolean;
   accumulationKey: string;
