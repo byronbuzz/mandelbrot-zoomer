@@ -11,7 +11,7 @@ import type {
 
 const ORBIT_PARAMETER_BYTES = 64;
 const COLOUR_PARAMETER_BYTES = 32;
-const PRESENT_PARAMETER_BYTES = 48;
+const PRESENT_PARAMETER_BYTES = 64;
 const RESULT_FORMAT: GPUTextureFormat = 'rgba32float';
 const COLOUR_FORMAT: GPUTextureFormat = 'rgba8unorm';
 const PALETTE_LENGTH = 64;
