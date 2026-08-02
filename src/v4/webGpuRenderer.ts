@@ -1,6 +1,7 @@
 import { fixedDifferenceToNumber, fixedSplitF32 } from '../bigFixed';
 import { scaleToNumber } from '../binaryScale';
 import { fluidPresentShader } from '../v5/fluidPresentShader';
+import { RenderBatchPolicy } from '../v5/renderBatchPolicy';
 import { composeShader, computeShader } from './shaders';
 import type { CpuReference, GpuReference, PreparedFrame, RenderSnapshot, RenderTelemetry } from './types';
 
@@ -16,6 +17,9 @@ const TELEMETRY_VALUES = TELEMETRY_MAX_EXPONENT_INDEX + 1;
 const TELEMETRY_BYTES = TELEMETRY_VALUES * Uint32Array.BYTES_PER_ELEMENT;
 const COMPOSE_CLEAR_BYTES = TELEMETRY_MAX_EXPONENT_INDEX * Uint32Array.BYTES_PER_ELEMENT;
 const COMPUTE_TEXTURE_FORMAT: GPUTextureFormat = 'rgba8unorm';
+const MAX_POOLED_TEXTURES = 6;
+const BATCH_ITERATION_THRESHOLD = 3000;
+const BATCH_NOMINAL_WORK_THRESHOLD = 12_000_000_000;
 
 export class WebGpuRenderer {
   private readonly canvas: HTMLCanvasElement;
@@ -27,8 +31,14 @@ export class WebGpuRenderer {
   private readonly presentPipeline: GPURenderPipeline;
   private readonly sampler: GPUSampler;
   private readonly fallbackOrbit: GPUBuffer;
+  private readonly computeUniform: GPUBuffer;
+  private readonly composeUniform: GPUBuffer;
+  private readonly telemetryBuffer: GPUBuffer;
+  private readonly telemetryReadback: GPUBuffer;
   private readonly presentationUniform: GPUBuffer;
   private readonly label: string;
+  private readonly texturePool = new Map<string, GPUTexture[]>();
+  private readonly textureKeys = new WeakMap<GPUTexture, string>();
   private displayWidth = 1;
   private displayHeight = 1;
   private settledTexture: GPUTexture | null = null;
@@ -62,6 +72,22 @@ export class WebGpuRenderer {
     });
     this.fallbackOrbit = device.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(this.fallbackOrbit, 0, new Float32Array(8));
+    this.computeUniform = device.createBuffer({
+      size: PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    this.composeUniform = device.createBuffer({
+      size: COMPOSE_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    this.telemetryBuffer = device.createBuffer({
+      size: TELEMETRY_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+    });
+    this.telemetryReadback = device.createBuffer({
+      size: TELEMETRY_BYTES,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+    });
     this.presentationUniform = device.createBuffer({
       size: PRESENT_PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -153,7 +179,10 @@ export class WebGpuRenderer {
     return true;
   }
 
-  async prepare(snapshot: RenderSnapshot): Promise<PreparedFrame> {
+  async prepare(
+    snapshot: RenderSnapshot,
+    shouldCancel: () => boolean = () => false
+  ): Promise<PreparedFrame | null> {
     const displayWidth = Math.max(1, Math.floor(snapshot.cssWidth * snapshot.devicePixelRatio));
     const displayHeight = Math.max(1, Math.floor(snapshot.cssHeight * snapshot.devicePixelRatio));
     this.resizeCanvas(displayWidth, displayHeight);
@@ -172,77 +201,101 @@ export class WebGpuRenderer {
       throw new Error('Secondary-reference repair base is no longer current');
     }
 
-    const candidateTexture = this.createComputeTexture(computeWidth, computeHeight);
-    const outputTexture = canRepair ? this.createComputeTexture(computeWidth, computeHeight) : candidateTexture;
-    const uniform = this.device.createBuffer({
-      size: PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const telemetryBuffer = this.device.createBuffer({
-      size: TELEMETRY_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-    });
-    const telemetryReadback = captureTelemetry
-      ? this.device.createBuffer({ size: TELEMETRY_BYTES, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
-      : null;
-    this.device.queue.writeBuffer(uniform, 0, this.createParameterData(snapshot, computeWidth, computeHeight));
-    this.device.queue.writeBuffer(telemetryBuffer, 0, new Uint32Array(TELEMETRY_VALUES));
+    const candidateTexture = this.acquireComputeTexture(computeWidth, computeHeight);
+    const outputTexture = canRepair
+      ? this.acquireComputeTexture(computeWidth, computeHeight)
+      : candidateTexture;
+    const parameterData = this.createParameterData(snapshot, computeWidth, computeHeight);
+    const parameterWords = new Uint32Array(parameterData);
+    this.device.queue.writeBuffer(this.telemetryBuffer, 0, new Uint32Array(TELEMETRY_VALUES));
 
     const computeBindGroup = this.device.createBindGroup({
       layout: this.computePipeline.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: uniform } },
+        { binding: 0, resource: { buffer: this.computeUniform } },
         { binding: 1, resource: candidateTexture.createView() },
         { binding: 2, resource: { buffer: snapshot.reference?.buffer ?? this.fallbackOrbit } },
-        { binding: 3, resource: { buffer: telemetryBuffer } }
+        { binding: 3, resource: { buffer: this.telemetryBuffer } }
       ]
     });
 
-    const encoder = this.device.createCommandEncoder();
-    const computePass = encoder.beginComputePass();
-    computePass.setPipeline(this.computePipeline);
-    computePass.setBindGroup(0, computeBindGroup);
-    computePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
-    computePass.end();
-
-    let composeUniform: GPUBuffer | null = null;
-    if (canRepair && this.settledTexture) {
-      encoder.clearBuffer(telemetryBuffer, 0, COMPOSE_CLEAR_BYTES);
-      composeUniform = this.device.createBuffer({
-        size: COMPOSE_PARAMETER_BYTES,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-      });
-      this.device.queue.writeBuffer(composeUniform, 0, new Uint32Array([computeWidth, computeHeight, 0, 0]));
-      const composeBindGroup = this.device.createBindGroup({
-        layout: this.composePipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: composeUniform } },
-          { binding: 1, resource: this.settledTexture.createView() },
-          { binding: 2, resource: candidateTexture.createView() },
-          { binding: 3, resource: outputTexture.createView() },
-          { binding: 4, resource: { buffer: telemetryBuffer } }
-        ]
-      });
-      const composePass = encoder.beginComputePass();
-      composePass.setPipeline(this.composePipeline);
-      composePass.setBindGroup(0, composeBindGroup);
-      composePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
-      composePass.end();
-    }
-
-    if (telemetryReadback) encoder.copyBufferToBuffer(telemetryBuffer, 0, telemetryReadback, 0, TELEMETRY_BYTES);
+    const nominalWork = computeWidth * computeHeight * snapshot.quality.iterations;
+    const useBatches = snapshot.quality.iterations >= BATCH_ITERATION_THRESHOLD
+      || nominalWork >= BATCH_NOMINAL_WORK_THRESHOLD;
+    const batchPolicy = new RenderBatchPolicy();
+    batchPolicy.reset(snapshot.quality.iterations, computeWidth);
+    let rowStart = 0;
+    let computeBatches = 0;
     const started = performance.now();
-    this.device.queue.submit([encoder.finish()]);
+
     try {
-      await this.device.queue.onSubmittedWorkDone();
-      const telemetry = telemetryReadback
-        ? await this.readTelemetry(telemetryReadback, computeWidth * computeHeight)
-        : null;
-      uniform.destroy();
-      composeUniform?.destroy();
-      telemetryBuffer.destroy();
-      telemetryReadback?.destroy();
-      if (canRepair) candidateTexture.destroy();
+      while (rowStart < computeHeight) {
+        if (shouldCancel()) {
+          this.releaseFrameTextures(candidateTexture, outputTexture);
+          return null;
+        }
+        const remainingRows = computeHeight - rowStart;
+        const rowCount = useBatches ? batchPolicy.currentRows(remainingRows) : remainingRows;
+        parameterWords[17] = rowStart;
+        this.device.queue.writeBuffer(this.computeUniform, 0, parameterData);
+
+        const encoder = this.device.createCommandEncoder();
+        const computePass = encoder.beginComputePass();
+        computePass.setPipeline(this.computePipeline);
+        computePass.setBindGroup(0, computeBindGroup);
+        computePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(rowCount / 8));
+        computePass.end();
+
+        const batchStarted = performance.now();
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+        batchPolicy.observe(performance.now() - batchStarted);
+        computeBatches++;
+        rowStart += rowCount;
+      }
+
+      if (shouldCancel()) {
+        this.releaseFrameTextures(candidateTexture, outputTexture);
+        return null;
+      }
+
+      if (canRepair && this.settledTexture) {
+        this.device.queue.writeBuffer(
+          this.composeUniform,
+          0,
+          new Uint32Array([computeWidth, computeHeight, 0, 0])
+        );
+        const composeBindGroup = this.device.createBindGroup({
+          layout: this.composePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.composeUniform } },
+            { binding: 1, resource: this.settledTexture.createView() },
+            { binding: 2, resource: candidateTexture.createView() },
+            { binding: 3, resource: outputTexture.createView() },
+            { binding: 4, resource: { buffer: this.telemetryBuffer } }
+          ]
+        });
+        const encoder = this.device.createCommandEncoder();
+        encoder.clearBuffer(this.telemetryBuffer, 0, COMPOSE_CLEAR_BYTES);
+        const composePass = encoder.beginComputePass();
+        composePass.setPipeline(this.composePipeline);
+        composePass.setBindGroup(0, composeBindGroup);
+        composePass.dispatchWorkgroups(Math.ceil(computeWidth / 8), Math.ceil(computeHeight / 8));
+        composePass.end();
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+      }
+
+      let telemetry: RenderTelemetry | null = null;
+      if (captureTelemetry) {
+        const encoder = this.device.createCommandEncoder();
+        encoder.copyBufferToBuffer(this.telemetryBuffer, 0, this.telemetryReadback, 0, TELEMETRY_BYTES);
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+        telemetry = await this.readTelemetry(this.telemetryReadback, computeWidth * computeHeight);
+      }
+
+      if (canRepair) this.releaseTexture(candidateTexture);
       return {
         snapshot,
         texture: outputTexture,
@@ -251,17 +304,13 @@ export class WebGpuRenderer {
         displayWidth,
         displayHeight,
         computeMs: Math.max(0.1, performance.now() - started),
+        computeBatches,
         telemetry,
         retainAsSettled: captureTelemetry,
         accumulationKey
       };
     } catch (error) {
-      candidateTexture.destroy();
-      if (outputTexture !== candidateTexture) outputTexture.destroy();
-      uniform.destroy();
-      composeUniform?.destroy();
-      telemetryBuffer.destroy();
-      telemetryReadback?.destroy();
+      this.retireTextures(new Set([candidateTexture, outputTexture]));
       throw error;
     }
   }
@@ -285,7 +334,9 @@ export class WebGpuRenderer {
     return Math.max(0.1, performance.now() - started);
   }
 
-  discard(frame: PreparedFrame): void { frame.texture.destroy(); }
+  discard(frame: PreparedFrame): void {
+    this.retireTextures(new Set([frame.texture]));
+  }
 
   private submitPresentation(newTexture: GPUTexture, historyTexture: GPUTexture, parameters: ArrayBuffer): void {
     this.device.queue.writeBuffer(this.presentationUniform, 0, parameters);
@@ -332,19 +383,58 @@ export class WebGpuRenderer {
     const retired = new Set<GPUTexture>();
     if (oldPresented) retired.add(oldPresented);
     if (oldSettled) retired.add(oldSettled);
-    this.retireUnusedTextures(retired);
+    this.retireTextures(retired);
   }
 
-  private retireUnusedTextures(candidates: ReadonlySet<GPUTexture>): void {
+  private retireTextures(candidates: ReadonlySet<GPUTexture>): void {
     const batch = [...candidates].filter(texture => (
       texture !== this.presentedTexture && texture !== this.settledTexture
     ));
     if (batch.length === 0) return;
     void this.device.queue.onSubmittedWorkDone().then(() => {
       for (const texture of batch) {
-        if (texture !== this.presentedTexture && texture !== this.settledTexture) texture.destroy();
+        if (texture !== this.presentedTexture && texture !== this.settledTexture) this.releaseTexture(texture);
       }
     }).catch(error => console.error('Unable to retire presentation textures', error));
+  }
+
+  private releaseFrameTextures(candidateTexture: GPUTexture, outputTexture: GPUTexture): void {
+    const textures = new Set([candidateTexture, outputTexture]);
+    for (const texture of textures) this.releaseTexture(texture);
+  }
+
+  private acquireComputeTexture(width: number, height: number): GPUTexture {
+    const key = `${width}x${height}`;
+    const available = this.texturePool.get(key);
+    const texture = available?.pop() ?? this.device.createTexture({
+      size: [width, height],
+      format: COMPUTE_TEXTURE_FORMAT,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+    });
+    this.textureKeys.set(texture, key);
+    return texture;
+  }
+
+  private releaseTexture(texture: GPUTexture): void {
+    if (texture === this.presentedTexture || texture === this.settledTexture) return;
+    const key = this.textureKeys.get(texture);
+    if (!key || this.pooledTextureCount() >= MAX_POOLED_TEXTURES) {
+      texture.destroy();
+      return;
+    }
+    const available = this.texturePool.get(key) ?? [];
+    if (available.length >= 2) {
+      texture.destroy();
+      return;
+    }
+    available.push(texture);
+    this.texturePool.set(key, available);
+  }
+
+  private pooledTextureCount(): number {
+    let total = 0;
+    for (const textures of this.texturePool.values()) total += textures.length;
+    return total;
   }
 
   private createPresentationData(
@@ -389,14 +479,6 @@ export class WebGpuRenderer {
     floats[4] = newWeight;
     unsigned[5] = mode;
     return data;
-  }
-
-  private createComputeTexture(width: number, height: number): GPUTexture {
-    return this.device.createTexture({
-      size: [width, height],
-      format: COMPUTE_TEXTURE_FORMAT,
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
-    });
   }
 
   private accumulationKey(snapshot: RenderSnapshot, width: number, height: number): string {
@@ -451,6 +533,7 @@ export class WebGpuRenderer {
     unsigned[14] = snapshot.precision === 'f32' ? 0 : snapshot.precision === 'double-float' ? 1 : 2;
     unsigned[15] = snapshot.reference?.length ?? 1;
     signed[16] = snapshot.camera.scale.exponent;
+    unsigned[17] = 0;
     return data;
   }
 
