@@ -48,6 +48,9 @@ export type ProgressiveRendererStats = Readonly<{
   referenceOrbitLength: number;
   referenceBits: number;
   referenceGenerationMs: number;
+  referenceError: string | null;
+  previewActive: boolean;
+  publishedJobs: number;
 }>;
 
 export type BenchmarkScene = Readonly<{
