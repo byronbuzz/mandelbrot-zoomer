@@ -25,9 +25,11 @@ export type UiElements = Readonly<{
   bitsOut: HTMLOutputElement;
   exponentOut: HTMLOutputElement;
   stateOut: HTMLOutputElement;
+  displayFpsOut: HTMLOutputElement;
   fpsOut: HTMLOutputElement;
   qualityOut: HTMLOutputElement;
   timingOut: HTMLOutputElement;
+  batchesOut: HTMLOutputElement;
   anchorMoveOut: HTMLOutputElement;
   referenceTimeOut: HTMLOutputElement;
   adapterOut: HTMLOutputElement;
@@ -91,7 +93,7 @@ export function createUi(app: HTMLElement): UiElements {
 
   <div class="minimal-hud" id="minimalHud" hidden>
     <output id="hudZoomOut">10^0.00</output>
-    <output id="hudFpsOut">0.0 FPS</output>
+    <output id="hudFpsOut">0 Hz · 0.0 FPS</output>
   </div>
   <button class="panel-restore" id="restorePanel" type="button" hidden aria-label="Show controls">Controls</button>
 
@@ -131,9 +133,11 @@ export function createUi(app: HTMLElement): UiElements {
       <div class="stat-row"><span>Coordinate bits</span><output id="bitsOut">160</output></div>
       <div class="stat-row"><span>Scale exponent</span><output id="exponentOut">2</output></div>
       <div class="stat-row"><span>Render state</span><output id="stateOut">full-quality</output></div>
-      <div class="stat-row"><span>Completed render rate</span><output id="fpsOut">0.0 FPS</output></div>
+      <div class="stat-row"><span>Display presentation rate</span><output id="displayFpsOut">0 Hz</output></div>
+      <div class="stat-row"><span>Anchor-frame rate</span><output id="fpsOut">0.0 FPS</output></div>
       <div class="stat-row"><span>Effective quality</span><output id="qualityOut">500 / 500 iter · 100%</output></div>
       <div class="stat-row"><span>Compute + present</span><output id="timingOut">0.0 + 0.0 ms</output></div>
+      <div class="stat-row"><span>GPU batches</span><output id="batchesOut">0</output></div>
       <div class="stat-row"><span>Reference-anchor move</span><output id="anchorMoveOut">0.0 px</output></div>
       <div class="stat-row"><span>Reference generation</span><output id="referenceTimeOut">inactive</output></div>
       <div class="stat-row multi-line"><span>GPU</span><output id="adapterOut">initialising…</output></div>
@@ -237,9 +241,11 @@ export function createUi(app: HTMLElement): UiElements {
     bitsOut: required<HTMLOutputElement>(app, '#bitsOut'),
     exponentOut: required<HTMLOutputElement>(app, '#exponentOut'),
     stateOut: required<HTMLOutputElement>(app, '#stateOut'),
+    displayFpsOut: required<HTMLOutputElement>(app, '#displayFpsOut'),
     fpsOut: required<HTMLOutputElement>(app, '#fpsOut'),
     qualityOut: required<HTMLOutputElement>(app, '#qualityOut'),
     timingOut: required<HTMLOutputElement>(app, '#timingOut'),
+    batchesOut: required<HTMLOutputElement>(app, '#batchesOut'),
     anchorMoveOut: required<HTMLOutputElement>(app, '#anchorMoveOut'),
     referenceTimeOut: required<HTMLOutputElement>(app, '#referenceTimeOut'),
     adapterOut: required<HTMLOutputElement>(app, '#adapterOut'),
