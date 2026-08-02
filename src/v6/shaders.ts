@@ -173,24 +173,25 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  let result = textureLoad(resultTexture, vec2i(x, y), 0);
+  let pixel = vec2i(i32(x), i32(y));
+  let result = textureLoad(resultTexture, pixel, 0);
   let status = u32(round(result.y));
   if (status == 0u) {
-    textureStore(colourTexture, vec2i(x, y), vec4f(0.0));
+    textureStore(colourTexture, pixel, vec4f(0.0));
     return;
   }
   if (status == 2u) {
-    textureStore(colourTexture, vec2i(x, y), vec4f(0.0, 0.0, 0.0, 1.0));
+    textureStore(colourTexture, pixel, vec4f(0.0, 0.0, 0.0, 1.0));
     return;
   }
   if (status == 3u) {
     let provisional = 0.07 + 0.06 * cos(vec3f(0.0, 1.7, 3.4) + result.x * 0.025);
-    textureStore(colourTexture, vec2i(x, y), vec4f(provisional, 0.35));
+    textureStore(colourTexture, pixel, vec4f(provisional, 0.35));
     return;
   }
 
   let cycle = fract(result.x / max(1.0, p.paletteLength));
-  textureStore(colourTexture, vec2i(x, y), vec4f(palette(cycle), 1.0));
+  textureStore(colourTexture, pixel, vec4f(palette(cycle), 1.0));
 }`;
 
 export const progressivePresentShader = /* wgsl */ `
