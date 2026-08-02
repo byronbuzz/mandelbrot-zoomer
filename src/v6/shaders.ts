@@ -48,13 +48,30 @@ fn dsValue(a: vec2f) -> f32 {
   return a.x + a.y;
 }
 
-fn analyticInterior(c: vec2f) -> bool {
+fn dsLessEqual(a: vec2f, b: vec2f) -> bool {
+  let difference = dsSub(a, b);
+  return difference.x < 0.0 || (difference.x == 0.0 && difference.y <= 0.0);
+}
+
+fn analyticInteriorF32(c: vec2f) -> bool {
   let shiftedX = c.x - 0.25;
   let q = shiftedX * shiftedX + c.y * c.y;
   let inCardioid = q * (q + shiftedX) <= 0.25 * c.y * c.y;
   let bulbX = c.x + 1.0;
   let inPeriodTwoBulb = bulbX * bulbX + c.y * c.y <= 0.0625;
   return inCardioid || inPeriodTwoBulb;
+}
+
+fn analyticInteriorDs(cx: vec2f, cy: vec2f) -> bool {
+  let shiftedX = dsSub(cx, vec2f(0.25, 0.0));
+  let ySquared = dsMul(cy, cy);
+  let q = dsAdd(dsMul(shiftedX, shiftedX), ySquared);
+  let cardioidLeft = dsMul(q, dsAdd(q, shiftedX));
+  let cardioidRight = dsScale(ySquared, 0.25);
+  let bulbX = dsAdd(cx, vec2f(1.0, 0.0));
+  let bulbRadius = dsAdd(dsMul(bulbX, bulbX), ySquared);
+  return dsLessEqual(cardioidLeft, cardioidRight)
+    || dsLessEqual(bulbRadius, vec2f(0.0625, 0.0));
 }
 
 fn smoothEscape(iteration: u32, radiusSquared: f32) -> f32 {
@@ -78,7 +95,9 @@ fn mapCoordinate(pixelX: u32, pixelY: u32) -> array<vec2f, 2> {
 fn calculate(pixelX: u32, pixelY: u32) -> vec4f {
   let coordinate = mapCoordinate(pixelX, pixelY);
   let c = vec2f(dsValue(coordinate[0]), dsValue(coordinate[1]));
-  if (analyticInterior(c)) {
+  let analyticallyInterior = (p.mode == 0u && analyticInteriorF32(c))
+    || (p.mode != 0u && analyticInteriorDs(coordinate[0], coordinate[1]));
+  if (analyticallyInterior) {
     return vec4f(0.0, 2.0, 0.0, f32(p.blockSize));
   }
 
