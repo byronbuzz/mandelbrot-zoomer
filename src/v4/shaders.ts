@@ -24,9 +24,17 @@ struct Telemetry {
   exhausted: atomic<u32>,
   tiles: array<atomic<u32>, 256>,
 }
+struct OrbitPoint {
+  x: vec4f,
+  y: vec4f,
+}
+struct Expansion8 {
+  values: array<f32, 8>,
+  length: u32,
+}
 @group(0) @binding(0) var<uniform> p: Params;
 @group(0) @binding(1) var outTex: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(2) var<storage, read> referenceOrbit: array<vec4f>;
+@group(0) @binding(2) var<storage, read> referenceOrbit: array<OrbitPoint>;
 @group(0) @binding(3) var<storage, read_write> telemetry: Telemetry;
 
 fn twoSum(a: f32, b: f32) -> vec2f {
@@ -51,6 +59,57 @@ fn dsScale(a: vec2f, b: f32) -> vec2f {
 fn dsValue(a: vec2f) -> f32 { return a.x + a.y; }
 fn complexSquare(x: vec2f, y: vec2f) -> array<vec2f, 2> {
   return array<vec2f, 2>(dsSub(dsMul(x, x), dsMul(y, y)), dsScale(dsMul(x, y), 2.0));
+}
+fn growExpansion(expansion: Expansion8, value: f32) -> Expansion8 {
+  var result: Expansion8;
+  var q = value;
+  var outputLength = 0u;
+  var index = 0u;
+  loop {
+    if (index >= expansion.length) { break; }
+    let sum = twoSum(q, expansion.values[index]);
+    if (sum.y != 0.0 && outputLength < 8u) {
+      result.values[outputLength] = sum.y;
+      outputLength++;
+    }
+    q = sum.x;
+    index++;
+  }
+  if ((q != 0.0 || outputLength == 0u) && outputLength < 8u) {
+    result.values[outputLength] = q;
+    outputLength++;
+  }
+  result.length = outputLength;
+  return result;
+}
+fn expansionToDs(expansion: Expansion8) -> vec2f {
+  var result = vec2f(0.0);
+  var index = 0u;
+  loop {
+    if (index >= expansion.length) { break; }
+    result = dsAdd(result, vec2f(expansion.values[index], 0.0));
+    index++;
+  }
+  return result;
+}
+fn referencePlusDelta(reference: vec4f, delta: vec2f) -> vec2f {
+  var expansion: Expansion8;
+  expansion.length = 0u;
+  expansion = growExpansion(expansion, reference.w);
+  expansion = growExpansion(expansion, reference.z);
+  expansion = growExpansion(expansion, reference.y);
+  expansion = growExpansion(expansion, reference.x);
+  expansion = growExpansion(expansion, delta.y);
+  expansion = growExpansion(expansion, delta.x);
+  return expansionToDs(expansion);
+}
+fn referenceTimesDs(reference: vec4f, value: vec2f) -> vec2f {
+  var result = vec2f(0.0);
+  result = dsAdd(result, dsMul(vec2f(reference.w, 0.0), value));
+  result = dsAdd(result, dsMul(vec2f(reference.z, 0.0), value));
+  result = dsAdd(result, dsMul(vec2f(reference.y, 0.0), value));
+  result = dsAdd(result, dsMul(vec2f(reference.x, 0.0), value));
+  return result;
 }
 fn paletteColour(t: f32) -> vec3f {
   return .5 + .5 * cos(6.28318 * (vec3f(t) + vec3f(0.0, .12, .24) + p.phase));
@@ -142,13 +201,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var referenceExhausted = false;
 
   loop {
-    let parts = referenceOrbit[refIndex];
-    let rx = vec2f(parts.x, parts.y);
-    let ry = vec2f(parts.z, parts.w);
+    let point = referenceOrbit[refIndex];
     let deltaX = scaleByViewport(ux);
     let deltaY = scaleByViewport(uy);
-    let currentX = dsAdd(rx, deltaX);
-    let currentY = dsAdd(ry, deltaY);
+    let currentX = referencePlusDelta(point.x, deltaX);
+    let currentY = referencePlusDelta(point.y, deltaY);
     let currentXf = dsValue(currentX);
     let currentYf = dsValue(currentY);
     radius = currentXf * currentXf + currentYf * currentYf;
@@ -174,8 +231,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let uSquared = complexSquare(ux, uy);
     let quadraticX = scaleByViewport(uSquared[0]);
     let quadraticY = scaleByViewport(uSquared[1]);
-    let crossX = dsScale(dsSub(dsMul(rx, ux), dsMul(ry, uy)), 2.0);
-    let crossY = dsScale(dsAdd(dsMul(rx, uy), dsMul(ry, ux)), 2.0);
+    let crossX = dsScale(dsSub(referenceTimesDs(point.x, ux), referenceTimesDs(point.y, uy)), 2.0);
+    let crossY = dsScale(dsAdd(referenceTimesDs(point.x, uy), referenceTimesDs(point.y, ux)), 2.0);
     ux = dsAdd(dsAdd(crossX, quadraticX), dcx);
     uy = dsAdd(dsAdd(crossY, quadraticY), dcy);
     if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
