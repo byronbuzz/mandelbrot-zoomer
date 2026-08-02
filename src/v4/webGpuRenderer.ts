@@ -1,10 +1,12 @@
 import { fixedDifferenceToNumber, fixedSplitF32 } from '../bigFixed';
 import { scaleToNumber } from '../binaryScale';
-import { composeShader, computeShader, presentShader } from './shaders';
+import { fluidPresentShader } from '../v5/fluidPresentShader';
+import { composeShader, computeShader } from './shaders';
 import type { CpuReference, GpuReference, PreparedFrame, RenderSnapshot, RenderTelemetry } from './types';
 
 const PARAMETER_BYTES = 80;
 const COMPOSE_PARAMETER_BYTES = 16;
+const PRESENT_PARAMETER_BYTES = 32;
 const TILE_COLUMNS = 16;
 const TILE_ROWS = 16;
 const TELEMETRY_COUNTER_VALUES = 5;
@@ -25,11 +27,14 @@ export class WebGpuRenderer {
   private readonly presentPipeline: GPURenderPipeline;
   private readonly sampler: GPUSampler;
   private readonly fallbackOrbit: GPUBuffer;
+  private readonly presentationUniform: GPUBuffer;
   private readonly label: string;
   private displayWidth = 1;
   private displayHeight = 1;
   private settledTexture: GPUTexture | null = null;
   private settledKey = '';
+  private presentedTexture: GPUTexture | null = null;
+  private presentedSnapshot: RenderSnapshot | null = null;
 
   private constructor(
     canvas: HTMLCanvasElement,
@@ -49,9 +54,18 @@ export class WebGpuRenderer {
     this.composePipeline = composePipeline;
     this.presentPipeline = presentPipeline;
     this.label = label;
-    this.sampler = device.createSampler({ minFilter: 'nearest', magFilter: 'nearest' });
+    this.sampler = device.createSampler({
+      minFilter: 'linear',
+      magFilter: 'linear',
+      addressModeU: 'clamp-to-edge',
+      addressModeV: 'clamp-to-edge'
+    });
     this.fallbackOrbit = device.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(this.fallbackOrbit, 0, new Float32Array(8));
+    this.presentationUniform = device.createBuffer({
+      size: PRESENT_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<WebGpuRenderer> {
@@ -68,8 +82,8 @@ export class WebGpuRenderer {
     await WebGpuRenderer.assertShaderValid(computeModule, 'compute');
     const composeModule = device.createShaderModule({ code: composeShader });
     await WebGpuRenderer.assertShaderValid(composeModule, 'compose');
-    const presentModule = device.createShaderModule({ code: presentShader });
-    await WebGpuRenderer.assertShaderValid(presentModule, 'present');
+    const presentModule = device.createShaderModule({ code: fluidPresentShader });
+    await WebGpuRenderer.assertShaderValid(presentModule, 'fluid presentation');
 
     const computePipeline = await device.createComputePipelineAsync({
       layout: 'auto',
@@ -127,6 +141,17 @@ export class WebGpuRenderer {
   }
 
   destroyReference(reference: GpuReference): void { reference.buffer.destroy(); }
+
+  reproject(snapshot: RenderSnapshot): boolean {
+    if (!this.presentedTexture || !this.presentedSnapshot) return false;
+    const displayWidth = Math.max(1, Math.floor(snapshot.cssWidth * snapshot.devicePixelRatio));
+    const displayHeight = Math.max(1, Math.floor(snapshot.cssHeight * snapshot.devicePixelRatio));
+    this.resizeCanvas(displayWidth, displayHeight);
+    const parameters = this.createPresentationData(this.presentedSnapshot, snapshot, 1, 1);
+    if (!parameters) return false;
+    this.submitPresentation(this.presentedTexture, this.presentedTexture, parameters);
+    return true;
+  }
 
   async prepare(snapshot: RenderSnapshot): Promise<PreparedFrame> {
     const displayWidth = Math.max(1, Math.floor(snapshot.cssWidth * snapshot.devicePixelRatio));
@@ -242,11 +267,35 @@ export class WebGpuRenderer {
   }
 
   async present(frame: PreparedFrame): Promise<number> {
+    const historyTexture = this.presentedTexture ?? frame.texture;
+    const historySnapshot = this.presentedSnapshot ?? frame.snapshot;
+    const newWeight = this.presentedTexture
+      ? frame.snapshot.stage === 'interactive'
+        ? .72
+        : frame.snapshot.stage === 'refining'
+          ? .88
+          : 1
+      : 1;
+    const parameters = this.createPresentationData(historySnapshot, frame.snapshot, newWeight, 0)
+      ?? this.createIdentityPresentationData(1, 0);
+    const started = performance.now();
+    this.submitPresentation(frame.texture, historyTexture, parameters);
+    await this.device.queue.onSubmittedWorkDone();
+    this.acceptPresentedFrame(frame);
+    return Math.max(0.1, performance.now() - started);
+  }
+
+  discard(frame: PreparedFrame): void { frame.texture.destroy(); }
+
+  private submitPresentation(newTexture: GPUTexture, historyTexture: GPUTexture, parameters: ArrayBuffer): void {
+    this.device.queue.writeBuffer(this.presentationUniform, 0, parameters);
     const bindGroup = this.device.createBindGroup({
       layout: this.presentPipeline.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: this.sampler },
-        { binding: 1, resource: frame.texture.createView() }
+        { binding: 0, resource: { buffer: this.presentationUniform } },
+        { binding: 1, resource: this.sampler },
+        { binding: 2, resource: newTexture.createView() },
+        { binding: 3, resource: historyTexture.createView() }
       ]
     });
     const encoder = this.device.createCommandEncoder();
@@ -262,25 +311,85 @@ export class WebGpuRenderer {
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
-    const started = performance.now();
     this.device.queue.submit([encoder.finish()]);
-    await this.device.queue.onSubmittedWorkDone();
-
-    if (frame.retainAsSettled) {
-      const previous = this.settledTexture;
-      this.settledTexture = frame.texture;
-      this.settledKey = frame.accumulationKey;
-      if (previous && previous !== frame.texture) previous.destroy();
-    } else {
-      frame.texture.destroy();
-      if (frame.snapshot.stage === 'full-quality' && frame.snapshot.precision !== 'perturbation') {
-        this.clearSettledTexture();
-      }
-    }
-    return Math.max(0.1, performance.now() - started);
   }
 
-  discard(frame: PreparedFrame): void { frame.texture.destroy(); }
+  private acceptPresentedFrame(frame: PreparedFrame): void {
+    const oldPresented = this.presentedTexture;
+    const oldSettled = this.settledTexture;
+
+    this.presentedTexture = frame.texture;
+    this.presentedSnapshot = frame.snapshot;
+
+    if (frame.retainAsSettled) {
+      this.settledTexture = frame.texture;
+      this.settledKey = frame.accumulationKey;
+    } else if (frame.snapshot.stage === 'full-quality' && frame.snapshot.precision !== 'perturbation') {
+      this.settledTexture = null;
+      this.settledKey = '';
+    }
+
+    const retired = new Set<GPUTexture>();
+    if (oldPresented) retired.add(oldPresented);
+    if (oldSettled) retired.add(oldSettled);
+    this.retireUnusedTextures(retired);
+  }
+
+  private retireUnusedTextures(candidates: ReadonlySet<GPUTexture>): void {
+    const batch = [...candidates].filter(texture => (
+      texture !== this.presentedTexture && texture !== this.settledTexture
+    ));
+    if (batch.length === 0) return;
+    void this.device.queue.onSubmittedWorkDone().then(() => {
+      for (const texture of batch) {
+        if (texture !== this.presentedTexture && texture !== this.settledTexture) texture.destroy();
+      }
+    }).catch(error => console.error('Unable to retire presentation textures', error));
+  }
+
+  private createPresentationData(
+    source: RenderSnapshot,
+    target: RenderSnapshot,
+    newWeight: number,
+    mode: number
+  ): ArrayBuffer | null {
+    const sourceScale = Math.max(scaleToNumber(source.camera.scale), Number.MIN_VALUE);
+    const scaleRatio = target.camera.scale.mantissa / source.camera.scale.mantissa
+      * Math.pow(2, target.camera.scale.exponent - source.camera.scale.exponent);
+    const sourceAspect = Math.max(1, source.cssWidth) / Math.max(1, source.cssHeight);
+    const targetAspect = Math.max(1, target.cssWidth) / Math.max(1, target.cssHeight);
+    const offsetX = fixedDifferenceToNumber(target.camera.centerX, source.camera.centerX)
+      / sourceScale
+      / sourceAspect;
+    const offsetY = fixedDifferenceToNumber(target.camera.centerY, source.camera.centerY)
+      / sourceScale;
+    const scaleX = scaleRatio * targetAspect / sourceAspect;
+    const scaleY = scaleRatio;
+    const values = [scaleX, scaleY, offsetX, offsetY, newWeight];
+    if (values.some(value => !Number.isFinite(value) || Math.abs(value) > 3.3e38)) return null;
+
+    const data = new ArrayBuffer(PRESENT_PARAMETER_BYTES);
+    const floats = new Float32Array(data);
+    const unsigned = new Uint32Array(data);
+    floats[0] = scaleX;
+    floats[1] = scaleY;
+    floats[2] = offsetX;
+    floats[3] = offsetY;
+    floats[4] = newWeight;
+    unsigned[5] = mode;
+    return data;
+  }
+
+  private createIdentityPresentationData(newWeight: number, mode: number): ArrayBuffer {
+    const data = new ArrayBuffer(PRESENT_PARAMETER_BYTES);
+    const floats = new Float32Array(data);
+    const unsigned = new Uint32Array(data);
+    floats[0] = 1;
+    floats[1] = 1;
+    floats[4] = newWeight;
+    unsigned[5] = mode;
+    return data;
+  }
 
   private createComputeTexture(width: number, height: number): GPUTexture {
     return this.device.createTexture({
@@ -298,12 +407,6 @@ export class WebGpuRenderer {
       snapshot.quality.iterations,
       snapshot.palettePhase.toFixed(6)
     ].join(':');
-  }
-
-  private clearSettledTexture(): void {
-    this.settledTexture?.destroy();
-    this.settledTexture = null;
-    this.settledKey = '';
   }
 
   private resizeCanvas(width: number, height: number): void {
