@@ -14,10 +14,31 @@ struct OrbitParams {
   blockSize: u32,
   mode: u32,
   scaleExponent: i32,
+  referenceDeltaX: vec2f,
+  referenceDeltaY: vec2f,
+  orbitLength: u32,
+  stateTag: u32,
+  _pad0: u32,
+  _pad1: u32,
+}
+
+struct OrbitPoint {
+  x: vec4f,
+  y: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> p: OrbitParams;
 @group(0) @binding(1) var resultTexture: texture_storage_2d<rgba32float, write>;
+@group(0) @binding(2) var<storage, read_write> recurrenceState: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> recurrenceMeta: array<u32>;
+@group(0) @binding(4) var<storage, read> referenceOrbit: array<OrbitPoint>;
+
+const META_ITERATION_MASK = 0x00ffffffu;
+const STATUS_NEW = 0u;
+const STATUS_ESCAPED = 1u;
+const STATUS_INTERIOR = 2u;
+const STATUS_PROVISIONAL = 3u;
+const STATUS_FAILED = 4u;
 
 fn twoSum(a: f32, b: f32) -> vec2f {
   let sum = a + b;
@@ -53,6 +74,14 @@ fn dsLessEqual(a: vec2f, b: vec2f) -> bool {
   return difference.x < 0.0 || (difference.x == 0.0 && difference.y <= 0.0);
 }
 
+fn finiteF32(value: f32) -> bool {
+  return value == value && abs(value) <= 3.402823e38;
+}
+
+fn finiteDs(value: vec2f) -> bool {
+  return finiteF32(value.x) && finiteF32(value.y) && finiteF32(dsValue(value));
+}
+
 fn analyticInteriorF32(c: vec2f) -> bool {
   let shiftedX = c.x - 0.25;
   let q = shiftedX * shiftedX + c.y * c.y;
@@ -79,20 +108,35 @@ fn smoothEscape(iteration: u32, radiusSquared: f32) -> f32 {
   return f32(iteration) + 1.0 - log2(log2(magnitude));
 }
 
-fn mapCoordinate(pixelX: u32, pixelY: u32) -> array<vec2f, 2> {
+fn mapOffset(pixelX: u32, pixelY: u32) -> vec2f {
   let uv = (vec2f(f32(pixelX), f32(pixelY)) + 0.5)
     / vec2f(f32(p.width), f32(p.height));
-  let offsetX = (uv.x - 0.5) * p.aspect;
-  let offsetY = uv.y - 0.5;
-  let pixelScaleX = ldexp(offsetX * p.scaleMantissa, p.scaleExponent);
-  let pixelScaleY = ldexp(offsetY * p.scaleMantissa, p.scaleExponent);
+  return vec2f((uv.x - 0.5) * p.aspect, uv.y - 0.5);
+}
+
+fn mapCoordinate(pixelX: u32, pixelY: u32) -> array<vec2f, 2> {
+  let offset = mapOffset(pixelX, pixelY);
+  let pixelScaleX = ldexp(offset.x * p.scaleMantissa, p.scaleExponent);
+  let pixelScaleY = ldexp(offset.y * p.scaleMantissa, p.scaleExponent);
   return array<vec2f, 2>(
     dsAdd(p.centerX, vec2f(pixelScaleX, 0.0)),
     dsAdd(p.centerY, vec2f(pixelScaleY, 0.0))
   );
 }
 
-fn calculate(pixelX: u32, pixelY: u32) -> vec4f {
+fn expansionToDs(value: vec4f) -> vec2f {
+  var result = vec2f(0.0);
+  result = dsAdd(result, vec2f(value.x, 0.0));
+  result = dsAdd(result, vec2f(value.y, 0.0));
+  result = dsAdd(result, vec2f(value.z, 0.0));
+  return dsAdd(result, vec2f(value.w, 0.0));
+}
+
+fn packMeta(iteration: u32, status: u32) -> u32 {
+  return (iteration & META_ITERATION_MASK) | (status << 24u);
+}
+
+fn calculateDirect(pixelX: u32, pixelY: u32) -> vec4f {
   let coordinate = mapCoordinate(pixelX, pixelY);
   let c = vec2f(dsValue(coordinate[0]), dsValue(coordinate[1]));
   let analyticallyInterior = (p.mode == 0u && analyticInteriorF32(c))
@@ -135,6 +179,93 @@ fn calculate(pixelX: u32, pixelY: u32) -> vec4f {
   return vec4f(f32(iteration), 3.0, f32(iteration), f32(p.blockSize));
 }
 
+fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
+  let index = pixelY * p.width + pixelX;
+  let packed = recurrenceMeta[index];
+  var iteration = packed & META_ITERATION_MASK;
+  let storedStatus = packed >> 24u;
+  let storedState = recurrenceState[index];
+
+  if (storedStatus == STATUS_ESCAPED) {
+    return vec4f(storedState.x, 1.0, f32(iteration), f32(p.blockSize));
+  }
+  if (storedStatus == STATUS_INTERIOR) {
+    return vec4f(0.0, 2.0, f32(iteration), f32(p.blockSize));
+  }
+  if (storedStatus == STATUS_FAILED) {
+    return vec4f(f32(iteration), 4.0, f32(iteration), f32(p.blockSize));
+  }
+
+  let coordinate = mapCoordinate(pixelX, pixelY);
+  if (iteration == 0u && analyticInteriorDs(coordinate[0], coordinate[1])) {
+    recurrenceState[index] = vec4f(0.0);
+    recurrenceMeta[index] = packMeta(0u, STATUS_INTERIOR);
+    return vec4f(0.0, 2.0, 0.0, f32(p.blockSize));
+  }
+
+  let offset = mapOffset(pixelX, pixelY);
+  let pixelScaleX = ldexp(offset.x * p.scaleMantissa, p.scaleExponent);
+  let pixelScaleY = ldexp(offset.y * p.scaleMantissa, p.scaleExponent);
+  let dcx = dsAdd(p.referenceDeltaX, vec2f(pixelScaleX, 0.0));
+  let dcy = dsAdd(p.referenceDeltaY, vec2f(pixelScaleY, 0.0));
+  var dx = vec2f(storedState.x, storedState.y);
+  var dy = vec2f(storedState.z, storedState.w);
+  var radiusSquared = 0.0;
+  var failed = false;
+
+  loop {
+    if (iteration >= p.orbitLength) {
+      failed = true;
+      break;
+    }
+
+    let point = referenceOrbit[iteration];
+    let referenceX = expansionToDs(point.x);
+    let referenceY = expansionToDs(point.y);
+    let zx = dsAdd(referenceX, dx);
+    let zy = dsAdd(referenceY, dy);
+    let x = dsValue(zx);
+    let y = dsValue(zy);
+    radiusSquared = x * x + y * y;
+
+    if (!finiteF32(radiusSquared) || !finiteDs(dx) || !finiteDs(dy)) {
+      failed = true;
+      break;
+    }
+    if (radiusSquared > 4.0 || iteration >= p.iterations) { break; }
+
+    let dxSquared = dsMul(dx, dx);
+    let dySquared = dsMul(dy, dy);
+    let dxdy = dsMul(dx, dy);
+    let crossX = dsScale(dsSub(dsMul(referenceX, dx), dsMul(referenceY, dy)), 2.0);
+    let crossY = dsScale(dsAdd(dsMul(referenceX, dy), dsMul(referenceY, dx)), 2.0);
+    dx = dsAdd(dsAdd(crossX, dsSub(dxSquared, dySquared)), dcx);
+    dy = dsAdd(dsAdd(crossY, dsScale(dxdy, 2.0)), dcy);
+    iteration++;
+
+    if (abs(dsValue(dx)) > 1e30 || abs(dsValue(dy)) > 1e30) {
+      failed = true;
+      break;
+    }
+  }
+
+  if (failed) {
+    recurrenceState[index] = vec4f(dx, dy);
+    recurrenceMeta[index] = packMeta(iteration, STATUS_FAILED);
+    return vec4f(f32(iteration), 4.0, f32(iteration), f32(p.blockSize));
+  }
+  if (radiusSquared > 4.0) {
+    let smooth = smoothEscape(iteration, radiusSquared);
+    recurrenceState[index] = vec4f(smooth, 0.0, 0.0, 0.0);
+    recurrenceMeta[index] = packMeta(iteration, STATUS_ESCAPED);
+    return vec4f(smooth, 1.0, f32(iteration), f32(p.blockSize));
+  }
+
+  recurrenceState[index] = vec4f(dx, dy);
+  recurrenceMeta[index] = packMeta(iteration, STATUS_PROVISIONAL);
+  return vec4f(f32(iteration), 3.0, f32(iteration), f32(p.blockSize));
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   let blockOriginX = p.tileX + gid.x * p.blockSize;
@@ -145,7 +276,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   let sampleX = min(p.width - 1u, blockOriginX + p.blockSize / 2u);
   let sampleY = min(p.height - 1u, blockOriginY + p.blockSize / 2u);
-  let result = calculate(sampleX, sampleY);
+  var result: vec4f;
+  if (p.mode == 2u) {
+    result = calculatePerturbation(sampleX, sampleY);
+  } else {
+    result = calculateDirect(sampleX, sampleY);
+  }
 
   var localY = 0u;
   loop {
@@ -195,7 +331,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let pixel = vec2i(i32(x), i32(y));
   let result = textureLoad(resultTexture, pixel, 0);
   let status = u32(round(result.y));
-  if (status == 0u) {
+  if (status == 0u || status == 4u) {
     textureStore(colourTexture, pixel, vec4f(0.0));
     return;
   }
