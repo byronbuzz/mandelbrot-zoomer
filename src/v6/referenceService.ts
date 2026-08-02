@@ -7,6 +7,9 @@ import type { CameraSnapshot, ReferenceRequest, ReferenceResponse } from '../v4/
 import type { ProgressiveSurfaceSnapshot } from './types';
 
 const OFFSETS = [-0.4, -0.2, 0, 0.2, 0.4] as const;
+const ORBIT_BYTES_PER_POINT = 8 * Float32Array.BYTES_PER_ELEMENT;
+const MIN_REFERENCE_TIMEOUT_MS = 8_000;
+const MAX_REFERENCE_TIMEOUT_MS = 30_000;
 
 function align4(value: number): number {
   return Math.max(4, Math.ceil(value / 4) * 4);
@@ -40,12 +43,18 @@ export class ReferenceService {
     const id = ++this.requestId;
     const worker = new Worker(new URL('../v4/referenceWorker.ts', import.meta.url), { type: 'module' });
     this.worker = worker;
+    const timeoutMs = Math.min(
+      MAX_REFERENCE_TIMEOUT_MS,
+      Math.max(MIN_REFERENCE_TIMEOUT_MS, snapshot.iterations * 12)
+    );
 
     return new Promise<DeepReference>((resolve, reject) => {
       let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
       const finish = (): boolean => {
         if (settled) return false;
         settled = true;
+        if (timeout !== null) clearTimeout(timeout);
         if (this.worker === worker) this.worker = null;
         this.cancelPending = null;
         worker.terminate();
@@ -54,6 +63,9 @@ export class ReferenceService {
       this.cancelPending = () => {
         if (finish()) reject(new Error('Reference request superseded'));
       };
+      timeout = setTimeout(() => {
+        if (finish()) reject(new Error(`Reference generation exceeded ${timeoutMs} ms`));
+      }, timeoutMs);
       worker.addEventListener('error', event => {
         if (finish()) reject(new Error(event.message || 'Reference worker failed'));
       });
@@ -62,6 +74,19 @@ export class ReferenceService {
         if (response.id !== id || response.cameraGeneration !== snapshot.generation) return;
         if (!finish()) return;
         try {
+          if (!(response.orbit instanceof Float32Array)) {
+            throw new Error('Reference worker returned an invalid orbit payload');
+          }
+          if (!Number.isInteger(response.length) || response.length < 1) {
+            throw new Error('Reference worker returned an empty orbit');
+          }
+          const expectedBytes = response.length * ORBIT_BYTES_PER_POINT;
+          if (response.orbit.byteLength < expectedBytes) {
+            throw new Error('Reference orbit payload is shorter than its reported length');
+          }
+          if (!Number.isFinite(response.generationMs) || response.generationMs < 0) {
+            throw new Error('Reference worker returned invalid generation timing');
+          }
           const buffer = this.device.createBuffer({
             size: align4(response.orbit.byteLength),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
