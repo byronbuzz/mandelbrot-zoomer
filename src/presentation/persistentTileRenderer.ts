@@ -82,6 +82,7 @@ type PersistentGpuTile = {
   health: PersistentTileHealth;
   iterationFrontier: number;
   acceptedPixels: number;
+  acceptIterationCap: boolean;
   lastVisibleAt: number;
   lastNumericalUpdateAt: number;
   createdAt: number;
@@ -135,7 +136,7 @@ export class PersistentTileRenderer {
       size: CLEAR_PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
-    this.device.queue.writeBuffer(
+    device.queue.writeBuffer(
       this.clearUniform,
       0,
       new Uint32Array([PERSISTENT_TILE_SIZE, 0, 0, 0])
@@ -261,6 +262,7 @@ export class PersistentTileRenderer {
     );
     return {
       ...this.statsValue,
+      interaction: this.currentRequest?.interaction ?? this.statsValue.interaction,
       cachedTiles: this.tileMap.size,
       numericalFreshnessMs: newestNumericalUpdate > 0 ? now - newestNumericalUpdate : 0,
       presentationHistoryMs: visibleTiles.length > 0 ? now - oldestCreated : 0
@@ -277,7 +279,8 @@ export class PersistentTileRenderer {
     const width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
     const height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
     this.resizeCanvas(width, height);
-    const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio, 'settled');
+    const interaction = this.currentRequest?.interaction ?? 'settled';
+    const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio, interaction);
     const aspect = Math.max(1, cssWidth) / Math.max(1, cssHeight);
     const desiredExponent = sampleExponentForViewport(targetCamera, renderHeight, 0);
     const drawTiles: PersistentGpuTile[] = [];
@@ -302,6 +305,7 @@ export class PersistentTileRenderer {
 
     if (drawTiles.length === 0) return false;
     drawTiles.sort((left, right) => right.descriptor.sampleExponent - left.descriptor.sampleExponent);
+    const renderable: PersistentGpuTile[] = [];
     for (const tile of drawTiles) {
       const transform = this.tileTransform(tile, targetCamera, aspect);
       if (!transform) continue;
@@ -315,7 +319,9 @@ export class PersistentTileRenderer {
           transform.offsetY
         ])
       );
+      renderable.push(tile);
     }
+    if (renderable.length === 0) return false;
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -327,8 +333,7 @@ export class PersistentTileRenderer {
       }]
     });
     pass.setPipeline(this.presentPipeline);
-    for (const tile of drawTiles) {
-      if (!this.tileTransform(tile, targetCamera, aspect)) continue;
+    for (const tile of renderable) {
       pass.setBindGroup(0, tile.presentGroup);
       pass.draw(3);
     }
@@ -365,7 +370,7 @@ export class PersistentTileRenderer {
           request.focusY,
           levelOffset
         );
-        this.currentVisibleKeys = new Set(descriptors.map(descriptor => descriptor.key));
+        this.currentVisibleKeys = this.protectedVisibleKeys(request, renderHeight, aspect, descriptors);
         await this.ensureTiles(descriptors);
         const queue = this.initialWorkQueue(request, descriptors);
         let completedChunks = 0;
@@ -399,16 +404,20 @@ export class PersistentTileRenderer {
           for (const scheduled of batch) {
             const tile = scheduled.tile;
             tile.iterationFrontier = Math.max(tile.iterationFrontier, scheduled.scheduledEnd);
-            tile.lastNumericalUpdateAt = performance.now();
-            tile.lastVisibleAt = tile.lastNumericalUpdateAt;
+            if (scheduled.work.chunkIterations > 0) {
+              tile.lastNumericalUpdateAt = performance.now();
+            }
+            tile.lastVisibleAt = performance.now();
             tile.palettePhase = request.palettePhase;
+            tile.acceptIterationCap = scheduled.work.acceptIterationCap;
             tile.acceptedPixels = tile.health.escapedPixels
               + tile.health.analyticInteriorPixels
               + tile.health.nonFinitePixels
-              + (scheduled.work.acceptIterationCap ? tile.health.cappedPixels : 0);
+              + (tile.acceptIterationCap ? tile.health.cappedPixels : 0);
 
             if (
-              tile.health.activePixels > 0
+              scheduled.work.chunkIterations > 0
+              && tile.health.activePixels > 0
               && tile.iterationFrontier < scheduled.work.targetIterations
               && !this.hasNewerRequest(request.requestId)
             ) {
@@ -426,7 +435,7 @@ export class PersistentTileRenderer {
             }
           }
 
-          const activeTiles = queue.length;
+          const activeTiles = new Set(queue.map(item => item.work.key)).size;
           this.statsValue = {
             ...this.statsValue,
             activeTiles,
@@ -447,6 +456,28 @@ export class PersistentTileRenderer {
       this.running = false;
       if (this.latestRequest) void this.pump();
     }
+  }
+
+  private protectedVisibleKeys(
+    request: PersistentTileRequest,
+    renderHeight: number,
+    aspect: number,
+    primary: readonly PersistentTileDescriptor[]
+  ): Set<PersistentTileKey> {
+    const keys = new Set(primary.map(descriptor => descriptor.key));
+    for (const offset of [1, 2]) {
+      for (const descriptor of visibleTileDescriptors(
+        request.camera,
+        aspect,
+        renderHeight,
+        request.focusX,
+        request.focusY,
+        offset
+      )) {
+        if (this.tileMap.has(descriptor.key)) keys.add(descriptor.key);
+      }
+    }
+    return keys;
   }
 
   private initialWorkQueue(
@@ -470,7 +501,8 @@ export class PersistentTileRenderer {
       tile.lastVisibleAt = performance.now();
       const needsIterations = tile.iterationFrontier < targetIterations;
       const needsRecolour = Math.abs(tile.palettePhase - request.palettePhase) > 1e-6;
-      if (!needsIterations && !needsRecolour) continue;
+      const needsAcceptanceUpdate = tile.acceptIterationCap !== acceptIterationCap;
+      if (!needsIterations && !needsRecolour && !needsAcceptanceUpdate) continue;
       const work: PersistentTileWork = {
         requestId: request.requestId,
         key: descriptor.key,
@@ -626,6 +658,7 @@ export class PersistentTileRenderer {
       health: EMPTY_HEALTH,
       iterationFrontier: 0,
       acceptedPixels: 0,
+      acceptIterationCap: false,
       lastVisibleAt: now,
       lastNumericalUpdateAt: 0,
       createdAt: now,
@@ -649,8 +682,8 @@ export class PersistentTileRenderer {
     const encoder = this.device.createCommandEncoder();
     for (const scheduled of batch) {
       const tile = scheduled.tile;
-      encoder.clearBuffer(tile.counterBuffer);
       if (scheduled.work.chunkIterations > 0) {
+        encoder.clearBuffer(tile.counterBuffer);
         const iterationPass = encoder.beginComputePass();
         iterationPass.setPipeline(this.iterationPipeline);
         iterationPass.setBindGroup(0, tile.iterationGroup);
@@ -669,17 +702,20 @@ export class PersistentTileRenderer {
         Math.ceil(PERSISTENT_TILE_SIZE / 8)
       );
       colourPass.end();
-      encoder.copyBufferToBuffer(
-        tile.counterBuffer,
-        0,
-        tile.counterReadback,
-        0,
-        COUNTER_BYTES
-      );
+      if (scheduled.work.chunkIterations > 0) {
+        encoder.copyBufferToBuffer(
+          tile.counterBuffer,
+          0,
+          tile.counterReadback,
+          0,
+          COUNTER_BYTES
+        );
+      }
     }
     this.device.queue.submit([encoder.finish()]);
     await this.device.queue.onSubmittedWorkDone();
     await Promise.all(batch.map(async scheduled => {
+      if (scheduled.work.chunkIterations <= 0) return;
       const readback = scheduled.tile.counterReadback;
       await readback.mapAsync(GPUMapMode.READ);
       const values = new Uint32Array(readback.getMappedRange()).slice();
