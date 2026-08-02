@@ -15,11 +15,15 @@ import {
 } from '../binaryScale';
 import type { CameraSnapshot } from './types';
 
+const INITIAL_COORDINATE_BITS = 160;
+const INITIAL_CENTER_X = -0.5;
+const INITIAL_CENTER_Y = 0;
+
 export class CameraModel {
   private generationValue = 1;
-  private coordinateBitsValue = 160;
-  private centerXValue: BigFixed = fixedFromNumber(-0.5, this.coordinateBitsValue);
-  private centerYValue: BigFixed = fixedFromNumber(0, this.coordinateBitsValue);
+  private coordinateBitsValue = INITIAL_COORDINATE_BITS;
+  private centerXValue: BigFixed = fixedFromNumber(INITIAL_CENTER_X, this.coordinateBitsValue);
+  private centerYValue: BigFixed = fixedFromNumber(INITIAL_CENTER_Y, this.coordinateBitsValue);
   private scaleValue: BinaryScale = normalizeScale(0.75, 2);
 
   get generation(): number { return this.generationValue; }
@@ -37,6 +41,14 @@ export class CameraModel {
 
   log10Magnification(): number {
     return Math.log10(3) - scaleLog10(this.scaleValue);
+  }
+
+  reset(): void {
+    this.coordinateBitsValue = INITIAL_COORDINATE_BITS;
+    this.centerXValue = fixedFromNumber(INITIAL_CENTER_X, this.coordinateBitsValue);
+    this.centerYValue = fixedFromNumber(INITIAL_CENTER_Y, this.coordinateBitsValue);
+    this.scaleValue = normalizeScale(0.75, 2);
+    this.generationValue++;
   }
 
   zoomAbout(normalizedX: number, normalizedY: number, factor: number, aspect: number): void {
