@@ -16,12 +16,27 @@ import type {
 const ORBIT_PARAMETER_BYTES = 96;
 const COLOUR_PARAMETER_BYTES = 32;
 const PRESENT_PARAMETER_BYTES = 64;
+const TELEMETRY_BYTES = 16;
 const RESULT_FORMAT: GPUTextureFormat = 'rgba32float';
 const COLOUR_FORMAT: GPUTextureFormat = 'rgba8unorm';
 const PALETTE_LENGTH = 64;
 const PERTURBATION_SCALE_EXPONENT = -13;
 const STATE_BYTES_PER_PIXEL = 16;
-const META_BYTES_PER_PIXEL = 4;
+const META_BYTES_PER_PIXEL = 8;
+
+type OrbitTelemetrySnapshot = Readonly<{
+  rebaseEvents: number;
+  fallbackPixels: number;
+  nonFiniteEvents: number;
+  orbitExhaustions: number;
+}>;
+
+const EMPTY_TELEMETRY: OrbitTelemetrySnapshot = {
+  rebaseEvents: 0,
+  fallbackPixels: 0,
+  nonFiniteEvents: 0,
+  orbitExhaustions: 0
+};
 
 function align4(value: number): number {
   return Math.max(4, Math.ceil(value / 4) * 4);
@@ -40,6 +55,9 @@ type Surface = {
   referencePromise: Promise<DeepReference> | null;
   stateBuffer: GPUBuffer | null;
   metaBuffer: GPUBuffer | null;
+  telemetryBuffer: GPUBuffer | null;
+  telemetry: OrbitTelemetrySnapshot;
+  telemetryCaptured: boolean;
   preferCurrent: boolean;
   publishedJobs: number;
 };
@@ -52,6 +70,7 @@ export class ProgressiveRenderer {
   private readonly dummyState: GPUBuffer;
   private readonly dummyMeta: GPUBuffer;
   private readonly dummyReference: GPUBuffer;
+  private readonly dummyTelemetry: GPUBuffer;
   private readonly scheduler = new ProgressiveTileScheduler();
   private readonly referenceService: ReferenceService;
   private current: Surface | null = null;
@@ -88,8 +107,9 @@ export class ProgressiveRenderer {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
     this.dummyState = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE });
-    this.dummyMeta = device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE });
+    this.dummyMeta = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE });
     this.dummyReference = device.createBuffer({ size: 32, usage: GPUBufferUsage.STORAGE });
+    this.dummyTelemetry = device.createBuffer({ size: TELEMETRY_BYTES, usage: GPUBufferUsage.STORAGE });
     this.sampler = device.createSampler({
       minFilter: 'linear',
       magFilter: 'linear',
@@ -246,6 +266,7 @@ export class ProgressiveRenderer {
 
     const job = this.scheduler.next();
     if (!job || job.generation !== surface.snapshot.generation) return false;
+    const finalScheduledJob = this.scheduler.pendingJobs === 0;
     this.device.queue.writeBuffer(this.orbitUniform, 0, this.createOrbitData(surface, job));
     this.device.queue.writeBuffer(this.colourUniform, 0, this.createColourData(surface, job));
 
@@ -256,7 +277,8 @@ export class ProgressiveRenderer {
         { binding: 1, resource: surface.resultTexture.createView() },
         { binding: 2, resource: { buffer: surface.stateBuffer ?? this.dummyState } },
         { binding: 3, resource: { buffer: surface.metaBuffer ?? this.dummyMeta } },
-        { binding: 4, resource: { buffer: surface.reference?.buffer ?? this.dummyReference } }
+        { binding: 4, resource: { buffer: surface.reference?.buffer ?? this.dummyReference } },
+        { binding: 5, resource: { buffer: surface.telemetryBuffer ?? this.dummyTelemetry } }
       ]
     });
     const colourBindGroup = this.device.createBindGroup({
@@ -295,6 +317,7 @@ export class ProgressiveRenderer {
       this.lastIterationLimit = job.iterations;
       surface.publishedJobs++;
       this.noteTileCompletion();
+      if (finalScheduledJob) await this.captureTelemetry(surface);
     }
     return true;
   }
@@ -414,7 +437,9 @@ export class ProgressiveRenderer {
     if (surface.numericalMode === 'perturbation-pending') return 'perturbation reference generating';
     if (surface.numericalMode === 'perturbation') {
       const reference = surface.reference;
-      return `perturbation · ${reference?.bits ?? 0}-bit ref · ${reference?.length ?? 0} orbit · ${(reference?.generationMs ?? 0).toFixed(1)} ms`;
+      const telemetry = surface.telemetry;
+      const repair = telemetry.fallbackPixels > 0 ? ` · ${telemetry.fallbackPixels} fallback px` : '';
+      return `scaled perturbation · ${reference?.bits ?? 0}-bit ref · ${reference?.length ?? 0} orbit · ${telemetry.rebaseEvents} rebases${repair}`;
     }
     if (surface.referenceState === 'failed') return 'double-float direct fallback';
     return surface.numericalMode === 'double-float-direct' ? 'double-float direct' : 'f32 direct';
@@ -423,6 +448,7 @@ export class ProgressiveRenderer {
   get stats(): ProgressiveRendererStats {
     this.trimTileTimestamps(performance.now());
     const surface = this.current;
+    const telemetry = surface?.telemetry ?? EMPTY_TELEMETRY;
     return {
       phase: this.scheduler.phase,
       pendingJobs: this.scheduler.pendingJobs,
@@ -441,7 +467,11 @@ export class ProgressiveRenderer {
       referenceGenerationMs: surface?.reference?.generationMs ?? 0,
       referenceError: surface?.referenceError ?? null,
       previewActive: surface?.preferCurrent ?? false,
-      publishedJobs: surface?.publishedJobs ?? 0
+      publishedJobs: surface?.publishedJobs ?? 0,
+      rebaseEvents: telemetry.rebaseEvents,
+      fallbackPixels: telemetry.fallbackPixels,
+      nonFiniteEvents: telemetry.nonFiniteEvents,
+      orbitExhaustions: telemetry.orbitExhaustions
     };
   }
 
@@ -478,6 +508,9 @@ export class ProgressiveRenderer {
       referencePromise: null,
       stateBuffer: null,
       metaBuffer: null,
+      telemetryBuffer: null,
+      telemetry: EMPTY_TELEMETRY,
+      telemetryCaptured: false,
       preferCurrent,
       publishedJobs: 0
     };
@@ -508,13 +541,21 @@ export class ProgressiveRenderer {
       size: align4(pixelCount * META_BYTES_PER_PIXEL),
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
+    const telemetryBuffer = this.device.createBuffer({
+      size: TELEMETRY_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+    });
     const encoder = this.device.createCommandEncoder();
     encoder.clearBuffer(stateBuffer);
     encoder.clearBuffer(metaBuffer);
+    encoder.clearBuffer(telemetryBuffer);
     this.device.queue.submit([encoder.finish()]);
 
     surface.stateBuffer = stateBuffer;
     surface.metaBuffer = metaBuffer;
+    surface.telemetryBuffer = telemetryBuffer;
+    surface.telemetry = EMPTY_TELEMETRY;
+    surface.telemetryCaptured = false;
     surface.reference = reference;
     surface.referencePromise = null;
     surface.referenceState = 'ready';
@@ -570,7 +611,7 @@ export class ProgressiveRenderer {
       floats.set([deltaX[0], deltaX[1], deltaY[0], deltaY[1]], 16);
       unsigned[20] = surface.reference.length;
     }
-    unsigned[21] = surface.snapshot.generation;
+    unsigned[21] = surface.snapshot.iterations;
     return data;
   }
 
@@ -592,9 +633,13 @@ export class ProgressiveRenderer {
     const cssHeight = Math.max(1, snapshot.cssHeight);
     let pixelRatio = snapshot.devicePixelRatio;
     if (perturbation) {
+      const limit = Number(this.device.limits.maxStorageBufferBindingSize) * 0.9;
       const maxPixels = Math.max(
         1,
-        Math.floor(Number(this.device.limits.maxStorageBufferBindingSize) * 0.9 / STATE_BYTES_PER_PIXEL)
+        Math.min(
+          Math.floor(limit / STATE_BYTES_PER_PIXEL),
+          Math.floor(limit / META_BYTES_PER_PIXEL)
+        )
       );
       pixelRatio = Math.min(pixelRatio, Math.sqrt(maxPixels / (cssWidth * cssHeight)));
     }
@@ -630,6 +675,36 @@ export class ProgressiveRenderer {
     return Object.values(transform).every(Number.isFinite) ? transform : null;
   }
 
+  private async captureTelemetry(surface: Surface): Promise<void> {
+    const source = surface.telemetryBuffer;
+    if (!source || surface.telemetryCaptured) return;
+    surface.telemetryCaptured = true;
+    const readback = this.device.createBuffer({
+      size: TELEMETRY_BYTES,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+    });
+    try {
+      const encoder = this.device.createCommandEncoder();
+      encoder.copyBufferToBuffer(source, 0, readback, 0, TELEMETRY_BYTES);
+      this.device.queue.submit([encoder.finish()]);
+      await this.device.queue.onSubmittedWorkDone();
+      await readback.mapAsync(GPUMapMode.READ);
+      const values = new Uint32Array(readback.getMappedRange()).slice();
+      readback.unmap();
+      surface.telemetry = {
+        rebaseEvents: values[0] ?? 0,
+        fallbackPixels: values[1] ?? 0,
+        nonFiniteEvents: values[2] ?? 0,
+        orbitExhaustions: values[3] ?? 0
+      };
+    } catch (error) {
+      surface.telemetryCaptured = false;
+      console.error('Unable to read V6 perturbation telemetry', error);
+    } finally {
+      readback.destroy();
+    }
+  }
+
   private resizeCanvas(width: number, height: number): void {
     if (this.displayWidth === width && this.displayHeight === height) return;
     this.displayWidth = width;
@@ -642,12 +717,15 @@ export class ProgressiveRenderer {
   private releaseRecurrence(surface: Surface): void {
     const state = surface.stateBuffer;
     const meta = surface.metaBuffer;
+    const telemetry = surface.telemetryBuffer;
     surface.stateBuffer = null;
     surface.metaBuffer = null;
-    if (!state && !meta) return;
+    surface.telemetryBuffer = null;
+    if (!state && !meta && !telemetry) return;
     void this.device.queue.onSubmittedWorkDone().then(() => {
       state?.destroy();
       meta?.destroy();
+      telemetry?.destroy();
     }).catch((error: unknown) => console.error('Unable to release V6 recurrence state', error));
   }
 
