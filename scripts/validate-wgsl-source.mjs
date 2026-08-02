@@ -1,6 +1,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { WgslReflect } from 'wgsl_reflect';
+import reflectModule from 'wgsl_reflect';
+
+const WgslReflect = reflectModule.WgslReflect;
+if (typeof WgslReflect !== 'function') {
+  throw new Error('wgsl_reflect did not expose WgslReflect');
+}
 
 const root = new URL('../src/', import.meta.url);
 const reservedIdentifiers = new Set([
