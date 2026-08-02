@@ -329,15 +329,22 @@ export class WebGpuRenderer {
       this.settledKey = '';
     }
 
-    const oldTextures = new Set<GPUTexture>();
-    if (oldPresented) oldTextures.add(oldPresented);
-    if (oldSettled) oldTextures.add(oldSettled);
-    for (const texture of oldTextures) this.destroyIfUnused(texture);
+    const retired = new Set<GPUTexture>();
+    if (oldPresented) retired.add(oldPresented);
+    if (oldSettled) retired.add(oldSettled);
+    this.retireUnusedTextures(retired);
   }
 
-  private destroyIfUnused(texture: GPUTexture): void {
-    if (texture === this.presentedTexture || texture === this.settledTexture) return;
-    texture.destroy();
+  private retireUnusedTextures(candidates: ReadonlySet<GPUTexture>): void {
+    const batch = [...candidates].filter(texture => (
+      texture !== this.presentedTexture && texture !== this.settledTexture
+    ));
+    if (batch.length === 0) return;
+    void this.device.queue.onSubmittedWorkDone().then(() => {
+      for (const texture of batch) {
+        if (texture !== this.presentedTexture && texture !== this.settledTexture) texture.destroy();
+      }
+    }).catch(error => console.error('Unable to retire presentation textures', error));
   }
 
   private createPresentationData(
