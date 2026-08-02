@@ -87,6 +87,15 @@ export class ReferenceService {
           if (!Number.isFinite(response.generationMs) || response.generationMs < 0) {
             throw new Error('Reference worker returned invalid generation timing');
           }
+
+          const requiredLength = snapshot.iterations + 1;
+          if (response.escaped || response.length < requiredLength) {
+            throw new Error(
+              `Reference orbit ended at ${Math.max(0, response.length - 1)}/${snapshot.iterations} iterations; `
+              + 'using double-float fallback until tile-local reference repair is available'
+            );
+          }
+
           const buffer = this.device.createBuffer({
             size: align4(response.orbit.byteLength),
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST

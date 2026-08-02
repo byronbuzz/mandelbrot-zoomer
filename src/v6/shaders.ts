@@ -222,8 +222,12 @@ fn smoothEscape(iteration: u32, radiusSquared: f32) -> f32 {
   return f32(iteration) + 1.0 - log2(log2(magnitude));
 }
 
-fn finalPassFlag() -> f32 {
-  return select(0.0, 1.0, p.blockSize == 1u && p.iterations >= p.targetIterations);
+fn qualityAlpha() -> f32 {
+  if (p.blockSize == 1u && p.iterations >= p.targetIterations) { return 1.0; }
+  if (p.blockSize == 1u) { return 0.72; }
+  if (p.blockSize == 2u) { return 0.48; }
+  if (p.blockSize == 4u) { return 0.32; }
+  return 0.20;
 }
 
 fn mapOffset(pixelX: u32, pixelY: u32) -> vec2f {
@@ -262,7 +266,7 @@ fn calculateDirect(pixelX: u32, pixelY: u32) -> vec4f {
   let analyticallyInterior = (p.mode == 0u && analyticInteriorF32(c))
     || (p.mode != 0u && analyticInteriorDs(coordinate[0], coordinate[1]));
   if (analyticallyInterior) {
-    return vec4f(0.0, 2.0, 0.0, finalPassFlag());
+    return vec4f(0.0, 2.0, 0.0, qualityAlpha());
   }
 
   var iteration = 0u;
@@ -292,9 +296,9 @@ fn calculateDirect(pixelX: u32, pixelY: u32) -> vec4f {
   }
 
   if (radiusSquared > 4.0) {
-    return vec4f(smoothEscape(iteration, radiusSquared), 1.0, f32(iteration), finalPassFlag());
+    return vec4f(smoothEscape(iteration, radiusSquared), 1.0, f32(iteration), qualityAlpha());
   }
-  return vec4f(f32(iteration), 3.0, f32(iteration), finalPassFlag());
+  return vec4f(f32(iteration), 3.0, f32(iteration), qualityAlpha());
 }
 
 fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
@@ -307,10 +311,10 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
   let storedState = recurrenceState[index];
 
   if (storedStatus == STATUS_ESCAPED) {
-    return vec4f(storedState.x, 1.0, f32(iteration), finalPassFlag());
+    return vec4f(storedState.x, 1.0, f32(iteration), qualityAlpha());
   }
   if (storedStatus == STATUS_INTERIOR) {
-    return vec4f(0.0, 2.0, f32(iteration), finalPassFlag());
+    return vec4f(0.0, 2.0, f32(iteration), qualityAlpha());
   }
   if (storedStatus == STATUS_FALLBACK) {
     return calculateDirect(pixelX, pixelY);
@@ -320,7 +324,7 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
   if (iteration == 0u && analyticInteriorDs(coordinate[0], coordinate[1])) {
     recurrenceState[index] = vec4f(0.0);
     recurrenceMeta[index] = packMeta(0u, STATUS_INTERIOR, 0u, 0u);
-    return vec4f(0.0, 2.0, 0.0, finalPassFlag());
+    return vec4f(0.0, 2.0, 0.0, qualityAlpha());
   }
 
   let offset = mapOffset(pixelX, pixelY);
@@ -422,12 +426,12 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
     let smoothValue = smoothEscape(iteration, radiusSquared);
     recurrenceState[index] = vec4f(smoothValue, 0.0, 0.0, 0.0);
     recurrenceMeta[index] = packMeta(iteration, STATUS_ESCAPED, referenceIndex, rebaseCount);
-    return vec4f(smoothValue, 1.0, f32(iteration), finalPassFlag());
+    return vec4f(smoothValue, 1.0, f32(iteration), qualityAlpha());
   }
 
   recurrenceState[index] = vec4f(ux, uy);
   recurrenceMeta[index] = packMeta(iteration, STATUS_PROVISIONAL, referenceIndex, rebaseCount);
-  return vec4f(f32(iteration), 3.0, f32(iteration), finalPassFlag());
+  return vec4f(f32(iteration), 3.0, f32(iteration), qualityAlpha());
 }
 
 @compute @workgroup_size(8, 8)
@@ -495,27 +499,28 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let pixel = vec2i(i32(x), i32(y));
   let result = textureLoad(resultTexture, pixel, 0);
   let status = u32(round(result.y));
+  let confidence = clamp(result.w, 0.0, 1.0);
   if (status == 0u) {
     textureStore(colourTexture, pixel, vec4f(0.0));
     return;
   }
   if (status == 4u) {
-    textureStore(colourTexture, pixel, vec4f(0.12, 0.0, 0.04, 1.0));
+    textureStore(colourTexture, pixel, vec4f(0.12, 0.0, 0.04, max(0.4, confidence)));
     return;
   }
   if (status == 2u) {
-    textureStore(colourTexture, pixel, vec4f(0.0, 0.0, 0.0, 1.0));
+    textureStore(colourTexture, pixel, vec4f(0.0, 0.0, 0.0, confidence));
     return;
   }
   if (status == 3u) {
     let provisional = 0.07 + 0.06 * cos(vec3f(0.0, 1.7, 3.4) + result.x * 0.025);
-    let alpha = select(0.35, 1.0, result.w >= 0.5);
+    let alpha = select(confidence * 0.65, 1.0, confidence >= 0.999);
     textureStore(colourTexture, pixel, vec4f(provisional, alpha));
     return;
   }
 
   let cycle = fract(result.x / max(1.0, p.paletteLength));
-  textureStore(colourTexture, pixel, vec4f(palette(cycle), 1.0));
+  textureStore(colourTexture, pixel, vec4f(palette(cycle), confidence));
 }`;
 
 export const progressivePresentShader = /* wgsl */ `
@@ -581,20 +586,28 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
     0.0
   );
 
-  if (currentInside && (current.a >= 0.5 || (p.preferCurrent != 0u && current.a > 0.0))) {
+  let background = vec3f(0.008, 0.01, 0.014);
+  var stableBase = background;
+  if (stableInside && stable.a > 0.0) {
+    stableBase = mix(background, stable.rgb, clamp(stable.a, 0.0, 1.0));
+  }
+
+  if (currentInside && current.a > 0.0) {
+    if (stableInside && stable.a > 0.0) {
+      let confidence = clamp(current.a, 0.0, 1.0);
+      let movingFloor = select(0.0, 0.35, p.preferCurrent != 0u);
+      let weight = max(confidence, movingFloor);
+      return vec4f(mix(stableBase, current.rgb, weight), 1.0);
+    }
     return vec4f(current.rgb, 1.0);
   }
   if (stableInside && stable.a > 0.0) {
-    return vec4f(stable.rgb, 1.0);
-  }
-  if (currentInside && current.a > 0.0) {
-    return vec4f(current.rgb, 1.0);
+    return vec4f(stableBase, 1.0);
   }
 
   let source = select(current, stable, p.hasStable != 0u);
   let sourceUv = select(currentUv, stableUv, p.hasStable != 0u);
   let overflow = max(abs(sourceUv - vec2f(0.5)) - vec2f(0.5), vec2f(0.0));
   let edgeWeight = 0.78 * exp2(-12.0 * length(overflow));
-  let background = vec3f(0.008, 0.01, 0.014);
-  return vec4f(mix(background, source.rgb, edgeWeight), 1.0);
+  return vec4f(mix(background, source.rgb, edgeWeight * clamp(source.a, 0.0, 1.0)), 1.0);
 }`;
