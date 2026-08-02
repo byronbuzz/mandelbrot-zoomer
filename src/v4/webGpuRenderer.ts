@@ -45,6 +45,7 @@ export class WebGpuRenderer {
   private settledKey = '';
   private presentedTexture: GPUTexture | null = null;
   private presentedSnapshot: RenderSnapshot | null = null;
+  private presentedAtMs = 0;
 
   private constructor(
     canvas: HTMLCanvasElement,
@@ -318,13 +319,7 @@ export class WebGpuRenderer {
   async present(frame: PreparedFrame): Promise<number> {
     const historyTexture = this.presentedTexture ?? frame.texture;
     const historySnapshot = this.presentedSnapshot ?? frame.snapshot;
-    const newWeight = this.presentedTexture
-      ? frame.snapshot.stage === 'interactive'
-        ? .72
-        : frame.snapshot.stage === 'refining'
-          ? .88
-          : 1
-      : 1;
+    const newWeight = this.presentationNewWeight(historySnapshot, frame.snapshot);
     const parameters = this.createPresentationData(historySnapshot, frame.snapshot, newWeight, 0)
       ?? this.createIdentityPresentationData(1, 0);
     const started = performance.now();
@@ -371,6 +366,7 @@ export class WebGpuRenderer {
 
     this.presentedTexture = frame.texture;
     this.presentedSnapshot = frame.snapshot;
+    this.presentedAtMs = performance.now();
 
     if (frame.retainAsSettled) {
       this.settledTexture = frame.texture;
@@ -435,6 +431,22 @@ export class WebGpuRenderer {
     let total = 0;
     for (const textures of this.texturePool.values()) total += textures.length;
     return total;
+  }
+
+  private presentationNewWeight(source: RenderSnapshot, target: RenderSnapshot): number {
+    if (!this.presentedTexture) return 1;
+    if (target.stage === 'full-quality') return 1;
+    if (target.stage === 'refining') return 0.9;
+
+    const ageMs = Math.max(0, performance.now() - this.presentedAtMs);
+    const scaleRatio = target.camera.scale.mantissa / source.camera.scale.mantissa
+      * Math.pow(2, target.camera.scale.exponent - source.camera.scale.exponent);
+    const magnificationDelta = Math.max(scaleRatio, 1 / Math.max(scaleRatio, Number.MIN_VALUE));
+    if (!Number.isFinite(magnificationDelta) || ageMs >= 260 || magnificationDelta >= 1.45) return 1;
+
+    const historyWeight = ageMs <= 90 ? 0.24 : ageMs <= 170 ? 0.12 : 0.04;
+    const scaleFade = Math.max(0, Math.min(1, (1.45 - magnificationDelta) / 0.3));
+    return 1 - historyWeight * scaleFade;
   }
 
   private createPresentationData(
