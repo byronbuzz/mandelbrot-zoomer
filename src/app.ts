@@ -24,16 +24,16 @@ const camera = new CameraModel();
 const renderer = await WebGpuRenderer.create(ui.canvas);
 const references = new ReferenceManager();
 
-const TARGET_FRAME_MS = 1000 / 60;
+const TARGET_FRAME_MS = 1000 / 12;
 const SETTLE_MS = 180;
 const REFINE_DELAY_MS = 100;
-const MIN_RESOLUTION = 0.28;
+const MIN_RESOLUTION = 0.5;
 const DOUBLE_FLOAT_THRESHOLD_LOG10 = 4;
 const REFERENCE_PREFETCH_LOG10 = 4;
 const PERTURBATION_THRESHOLD_LOG10 = 4.5;
-const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.52;
-const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.42;
-const PERTURBATION_INTERACTIVE_RESOLUTION = 0.72;
+const DOUBLE_FLOAT_INTERACTIVE_RESOLUTION = 0.9;
+const REFERENCE_FALLBACK_INTERACTIVE_RESOLUTION = 0.65;
+const PERTURBATION_INTERACTIVE_RESOLUTION = 0.85;
 const MAX_GLOBAL_REPAIR_PASSES = 4;
 const MAX_TILE_REPAIR_PASSES = 8;
 const GLOBAL_REPAIR_THRESHOLD_FRACTION = 0.15;
@@ -261,8 +261,15 @@ function updateController(frameMs: number, renderedStage: RenderStage): void {
   smoothedFrameMs = smoothedFrameMs * 0.78 + frameMs * 0.22;
   lastCompletedFps = 1000 / smoothedFrameMs;
   if (renderedStage !== 'interactive') return;
-  if (frameMs > TARGET_FRAME_MS * 1.08) adaptiveResolution = Math.max(MIN_RESOLUTION, adaptiveResolution * 0.82);
-  else if (frameMs < TARGET_FRAME_MS * 0.78) adaptiveResolution = Math.min(1, adaptiveResolution * 1.06 + 0.01);
+
+  const ratio = TARGET_FRAME_MS / Math.max(1, frameMs);
+  if (frameMs > TARGET_FRAME_MS * 1.1) {
+    const adjustment = Math.max(0.75, Math.sqrt(ratio));
+    adaptiveResolution = Math.max(MIN_RESOLUTION, adaptiveResolution * adjustment);
+  } else if (frameMs < TARGET_FRAME_MS * 0.72) {
+    const adjustment = Math.min(1.12, Math.sqrt(ratio));
+    adaptiveResolution = Math.min(1, adaptiveResolution * adjustment + 0.015);
+  }
 }
 
 function worstUnresolvedTile(telemetry: RenderTelemetry): { x: number; y: number; count: number } | null {
