@@ -255,10 +255,10 @@ fn calculatePerturbation(pixelX: u32, pixelY: u32) -> vec4f {
     return vec4f(f32(iteration), 4.0, f32(iteration), f32(p.blockSize));
   }
   if (radiusSquared > 4.0) {
-    let smooth = smoothEscape(iteration, radiusSquared);
-    recurrenceState[index] = vec4f(smooth, 0.0, 0.0, 0.0);
+    let smoothValue = smoothEscape(iteration, radiusSquared);
+    recurrenceState[index] = vec4f(smoothValue, 0.0, 0.0, 0.0);
     recurrenceMeta[index] = packMeta(iteration, STATUS_ESCAPED);
-    return vec4f(smooth, 1.0, f32(iteration), f32(p.blockSize));
+    return vec4f(smoothValue, 1.0, f32(iteration), f32(p.blockSize));
   }
 
   recurrenceState[index] = vec4f(dx, dy);
