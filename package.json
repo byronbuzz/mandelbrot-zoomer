@@ -7,8 +7,9 @@
     "dev": "vite",
     "validate:wgsl": "node scripts/validate-wgsl-source.mjs",
     "validate:v1": "node scripts/validate-v1-invariants.mjs",
+    "validate:v11": "node scripts/validate-v11-invariants.mjs",
     "validate:v6": "node scripts/validate-v6-invariants.mjs",
-    "build": "npm run validate:wgsl && npm run validate:v1 && tsc -b && vite build",
+    "build": "npm run validate:wgsl && npm run validate:v1 && npm run validate:v11 && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false"
   },
