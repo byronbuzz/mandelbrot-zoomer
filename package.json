@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "vite",
     "validate:wgsl": "node scripts/validate-wgsl-source.mjs",
-    "build": "npm run validate:wgsl && tsc -b && vite build",
+    "validate:v6": "node scripts/validate-v6-invariants.mjs",
+    "build": "npm run validate:wgsl && npm run validate:v6 && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
     "typescript": "^5.9.2",
-    "vite": "^7.1.1"
+    "vite": "^7.1.1",
+    "wgsl_reflect": "^1.5.0"
   }
 }

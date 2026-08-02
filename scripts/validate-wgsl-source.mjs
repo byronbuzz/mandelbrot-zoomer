@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { WgslReflect } from 'wgsl_reflect/wgsl_reflect.module.js';
 
 const root = new URL('../src/', import.meta.url);
 const reservedIdentifiers = new Set([
@@ -41,7 +42,8 @@ for (const file of sourceFiles(root.pathname)) {
   const shaderPattern = /\/\*\s*wgsl\s*\*\/\s*`([\s\S]*?)`/g;
   for (const match of source.matchAll(shaderPattern)) {
     shaderCount++;
-    const shader = stripComments(match[1]);
+    const shaderSource = match[1];
+    const shader = stripComments(shaderSource);
     for (const pattern of declarationPatterns) {
       pattern.lastIndex = 0;
       for (const declaration of shader.matchAll(pattern)) {
@@ -51,6 +53,12 @@ for (const file of sourceFiles(root.pathname)) {
         }
       }
     }
+    try {
+      new WgslReflect(shaderSource);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${relative(process.cwd(), file)}: WGSL parse failed: ${message}`);
+    }
   }
 }
 
@@ -59,4 +67,4 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log(`Validated ${shaderCount} WGSL shader template strings for reserved declaration identifiers.`);
+console.log(`Parsed and validated ${shaderCount} WGSL shader template strings.`);
