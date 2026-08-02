@@ -117,14 +117,20 @@ function updateReadouts(): void {
   const zoomLabel = `10^${camera.log10Magnification().toFixed(2)}`;
   const moving = Math.abs(zoomVelocity) > VELOCITY_EPSILON || panning;
   const blockLabel = stats.lastBlockSize > 0 ? `${stats.lastBlockSize}×${stats.lastBlockSize}` : 'waiting';
+  const orbitLabel = stats.referenceOrbitLength > 0
+    ? `${stats.referenceOrbitLength.toLocaleString()} samples · scaled rebasing`
+    : stats.referenceState;
+  const fallbackLabel = stats.referenceError
+    ? `reference failed: ${stats.referenceError}`
+    : `${stats.fallbackPixels.toLocaleString()} fallback pixels · ${stats.nonFiniteEvents.toLocaleString()} non-finite`;
 
   ui.zoomOut.value = zoomLabel;
   ui.hudZoomOut.value = zoomLabel;
   ui.precisionOut.value = renderer.precisionLabel;
-  ui.orbitOut.value = 'reference atlas arrives in V6.1';
-  ui.healthOut.value = `${stats.completedJobs}/${stats.totalJobs} progressive tile jobs · ${stats.phase}`;
-  ui.failureOut.value = 'iteration-cap pixels remain provisional; analytic cardioid + period-2 bulb enabled';
-  ui.maxExponentOut.value = 'direct-render foundation';
+  ui.orbitOut.value = orbitLabel;
+  ui.healthOut.value = `${stats.completedJobs}/${stats.totalJobs} jobs · ${stats.phase} · ${stats.rebaseEvents.toLocaleString()} rebases`;
+  ui.failureOut.value = fallbackLabel;
+  ui.maxExponentOut.value = `${stats.orbitExhaustions.toLocaleString()} orbit-end rebases`;
   ui.bitsOut.value = String(camera.coordinateBits);
   ui.exponentOut.value = String(camera.snapshot().scale.exponent);
   ui.stateOut.value = moving ? `motion pressure ${(motionPressure() * 100).toFixed(0)}%` : stats.phase;
@@ -134,14 +140,16 @@ function updateReadouts(): void {
   ui.timingOut.value = `${stats.lastTileMs.toFixed(1)} ms tile`;
   ui.batchesOut.value = `${stats.completedJobs}/${stats.totalJobs}`;
   ui.anchorMoveOut.value = `generation ${stats.anchorGeneration}`;
-  ui.referenceTimeOut.value = 'not active in V6.0';
+  ui.referenceTimeOut.value = stats.referenceGenerationMs > 0
+    ? `${stats.referenceGenerationMs.toFixed(1)} ms`
+    : stats.referenceState;
   ui.adapterOut.value = renderer.adapterLabel;
   ui.buildOut.value = BUILD_LABEL;
   ui.speedOut.value = `${Number(ui.speed.value).toFixed(2)}×/s`;
   ui.iterOut.value = requestedIterations().toLocaleString();
   ui.palOut.value = Number(ui.palette.value).toFixed(2);
   ui.hudFpsOut.value = `${displayRate()} Hz · ${stats.tileRate} tiles/s`;
-  ui.setStatsWarning(false);
+  ui.setStatsWarning(stats.fallbackPixels > 0 || Boolean(stats.referenceError));
 }
 
 function diagnosticsReport(): string {
@@ -149,7 +157,7 @@ function diagnosticsReport(): string {
   const stats = renderer.stats;
   return [
     `Mandelbrot Zoomer ${BUILD_LABEL}`,
-    `Engine: V6 progressive foundation`,
+    `Engine: V6 progressive hybrid`,
     `Captured: ${new Date().toISOString()}`,
     `GPU: ${renderer.adapterLabel}`,
     `URL: ${location.href}`,
@@ -158,14 +166,27 @@ function diagnosticsReport(): string {
     `Center Y raw: ${snapshot.centerY.raw.toString()} (bits ${snapshot.centerY.bits})`,
     `Scale: ${snapshot.scale.mantissa} * 2^${snapshot.scale.exponent}`,
     `Precision: ${renderer.precisionLabel}`,
+    `Numerical mode: ${stats.numericalMode}`,
+    `Reference state: ${stats.referenceState}`,
+    `Reference bits: ${stats.referenceBits}`,
+    `Reference orbit length: ${stats.referenceOrbitLength}`,
+    `Reference generation: ${stats.referenceGenerationMs.toFixed(3)} ms`,
+    `Reference error: ${stats.referenceError ?? 'none'}`,
     `Iterations target: ${requestedIterations()}`,
     `Progressive phase: ${stats.phase}`,
     `Tile progress: ${stats.completedJobs}/${stats.totalJobs}`,
     `Last block size: ${stats.lastBlockSize}`,
+    `Last iteration limit: ${stats.lastIterationLimit}`,
     `Last tile time: ${stats.lastTileMs.toFixed(3)} ms`,
     `Tile publication rate: ${stats.tileRate}/s`,
     `Display presentation rate: ${displayRate()} Hz`,
     `Motion pressure: ${motionPressure().toFixed(4)}`,
+    `Preview active: ${stats.previewActive}`,
+    `Published jobs: ${stats.publishedJobs}`,
+    `Perturbation rebases: ${stats.rebaseEvents}`,
+    `Orbit-end rebases: ${stats.orbitExhaustions}`,
+    `Fallback pixels: ${stats.fallbackPixels}`,
+    `Non-finite events: ${stats.nonFiniteEvents}`,
     `Analytic interior tests: ${stats.analyticInteriorEnabled}`
   ].join('\n');
 }
@@ -299,11 +320,11 @@ document.addEventListener('keydown', event => {
 });
 
 renderer.onDeviceError(message => { ui.status.textContent = message; });
-ui.status.textContent = `${renderer.adapterLabel} · ${BUILD_LABEL} · progressive direct engine`;
+ui.status.textContent = `${renderer.adapterLabel} · ${BUILD_LABEL} · progressive hybrid engine`;
 const anchorRateLabel = ui.fpsOut.previousElementSibling;
 if (anchorRateLabel) anchorRateLabel.textContent = 'Tile publication rate';
 const helpNote = ui.panel.querySelector<HTMLElement>('.help-panel .panel-note');
-if (helpNote) helpNote.textContent = 'V6 uses eased zoom motion and continuous progressive tile refinement.';
+if (helpNote) helpNote.textContent = 'V6 uses eased motion previews, persistent iteration and scaled perturbation rebasing.';
 
 function tick(now: number): void {
   const deltaSeconds = Math.min(0.05, Math.max(0, (now - lastTick) / 1000));
