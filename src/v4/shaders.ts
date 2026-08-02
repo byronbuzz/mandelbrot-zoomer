@@ -141,6 +141,20 @@ fn scaleByViewport(value: vec2f) -> vec2f {
   let scaled = dsScale(value, p.scaleMantissa);
   return vec2f(ldexp(scaled.x, p.scaleExponent), ldexp(scaled.y, p.scaleExponent));
 }
+fn scaleBySqrtViewport(value: vec2f) -> vec2f {
+  var halfExponent = p.scaleExponent / 2;
+  var remainder = p.scaleExponent - halfExponent * 2;
+  if (remainder < 0) {
+    halfExponent -= 1;
+    remainder += 2;
+  }
+  let exponentFactor = select(1.0, 2.0, remainder == 1);
+  let scaled = dsScale(value, sqrt(p.scaleMantissa * exponentFactor));
+  return vec2f(ldexp(scaled.x, halfExponent), ldexp(scaled.y, halfExponent));
+}
+fn quadraticByViewport(x: vec2f, y: vec2f) -> array<vec2f, 2> {
+  return complexSquare(scaleBySqrtViewport(x), scaleBySqrtViewport(y));
+}
 fn divideByViewport(value: vec2f) -> vec2f {
   let scaled = dsScale(value, 1.0 / p.scaleMantissa);
   return vec2f(ldexp(scaled.x, -p.scaleExponent), ldexp(scaled.y, -p.scaleExponent));
@@ -228,13 +242,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       continue;
     }
 
-    let uSquared = complexSquare(ux, uy);
-    let quadraticX = scaleByViewport(uSquared[0]);
-    let quadraticY = scaleByViewport(uSquared[1]);
+    let quadratic = quadraticByViewport(ux, uy);
     let crossX = dsScale(dsSub(referenceTimesDs(point.x, ux), referenceTimesDs(point.y, uy)), 2.0);
     let crossY = dsScale(dsAdd(referenceTimesDs(point.x, uy), referenceTimesDs(point.y, ux)), 2.0);
-    ux = dsAdd(dsAdd(crossX, quadraticX), dcx);
-    uy = dsAdd(dsAdd(crossY, quadraticY), dcy);
+    ux = dsAdd(dsAdd(crossX, quadratic[0]), dcx);
+    uy = dsAdd(dsAdd(crossY, quadratic[1]), dcy);
     if (abs(dsValue(ux)) > 1e37 || abs(dsValue(uy)) > 1e37) {
       unresolved = true;
       break;
