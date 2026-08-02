@@ -85,7 +85,7 @@ export class RenderCoordinator {
           const presentMs = await this.renderer.present(frame);
           frame = null;
           if (this.latest) this.renderer.reproject(this.latest);
-          this.onPresented({ presentedSnapshot, computeMs, computeBatches, presentMs, telemetry } as unknown as PresentedFrame);
+          this.onPresented({ snapshot: presentedSnapshot, computeMs, computeBatches, presentMs, telemetry });
         } catch (error) {
           if (frame) this.renderer.discard(frame);
           this.onError(error);
