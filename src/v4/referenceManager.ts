@@ -70,7 +70,7 @@ export class ReferenceManager {
       iterations,
       purpose,
       candidates,
-      purpose === 'provisional' ? 0 : Math.min(iterations, 2048),
+      purpose === 'provisional' ? 0 : Math.min(iterations, 8192),
       `${camera.generation}:${iterations}:${purpose}`
     );
   }
