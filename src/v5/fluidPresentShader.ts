@@ -49,18 +49,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
 
   if (p.mode == 1u) {
     if (!historyInside) { return vec4f(.008, .01, .014, 1.0); }
-    let history = textureSample(historyImage, imageSampler, historyUv);
+    let history = textureSampleLevel(historyImage, imageSampler, historyUv, 0.0);
     let colour = select(checker(input.position), history.rgb, history.a >= .5);
     return vec4f(colour, 1.0);
   }
 
-  let current = textureSample(newImage, imageSampler, input.uv);
+  let current = textureSampleLevel(newImage, imageSampler, input.uv, 0.0);
   let currentColour = select(checker(input.position), current.rgb, current.a >= .5);
   if (!historyInside || p.newWeight >= .999) {
     return vec4f(currentColour, 1.0);
   }
 
-  let history = textureSample(historyImage, imageSampler, historyUv);
+  let history = textureSampleLevel(historyImage, imageSampler, historyUv, 0.0);
   let historyColour = select(checker(input.position), history.rgb, history.a >= .5);
 
   if (current.a < .5 && history.a >= .5) {
