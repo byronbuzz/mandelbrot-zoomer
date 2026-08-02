@@ -6,6 +6,8 @@ export const PERSISTENT_TILE_SIZE = 128;
 export const PERSISTENT_TILE_BITS = 7;
 
 export type PersistentTileKey = `${number}:${string}:${string}`;
+export type TileNumericalMode = 'f32-direct' | 'double-float-direct' | 'perturbation';
+export type TileReferenceState = 'none' | 'queued' | 'ready' | 'failed';
 
 export type PersistentTileDescriptor = Readonly<{
   key: PersistentTileKey;
@@ -45,6 +47,8 @@ export type PersistentTileHealth = Readonly<{
   analyticInteriorPixels: number;
   cappedPixels: number;
   nonFinitePixels: number;
+  glitchPixels: number;
+  orbitExhaustedPixels: number;
 }>;
 
 export type PersistentFieldStats = Readonly<{
@@ -54,6 +58,11 @@ export type PersistentFieldStats = Readonly<{
   cachedTiles: number;
   activeTiles: number;
   convergedTiles: number;
+  directTiles: number;
+  perturbationTiles: number;
+  pendingReferences: number;
+  repairTiles: number;
+  referenceFailures: number;
   completedChunks: number;
   queuedChunks: number;
   lastBatchMs: number;
