@@ -78,13 +78,14 @@ export class RenderCoordinator {
             frame = null;
             continue;
           }
+          const presentedSnapshot = frame.snapshot;
           const computeMs = frame.computeMs;
           const computeBatches = frame.computeBatches;
           const telemetry = frame.telemetry;
           const presentMs = await this.renderer.present(frame);
           frame = null;
           if (this.latest) this.renderer.reproject(this.latest);
-          this.onPresented({ snapshot: frame?.snapshot ?? snapshot, computeMs, computeBatches, presentMs, telemetry });
+          this.onPresented({ presentedSnapshot, computeMs, computeBatches, presentMs, telemetry } as unknown as PresentedFrame);
         } catch (error) {
           if (frame) this.renderer.discard(frame);
           this.onError(error);
