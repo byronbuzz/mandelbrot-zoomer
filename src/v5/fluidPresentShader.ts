@@ -48,10 +48,15 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let historyInside = all(historyUv >= vec2f(0.0)) && all(historyUv <= vec2f(1.0));
 
   if (p.mode == 1u) {
-    if (!historyInside) { return vec4f(.008, .01, .014, 1.0); }
-    let history = textureSampleLevel(historyImage, imageSampler, historyUv, 0.0);
-    let colour = select(checker(input.position), history.rgb, history.a >= .5);
-    return vec4f(colour, 1.0);
+    let clampedHistoryUv = clamp(historyUv, vec2f(0.0), vec2f(1.0));
+    let history = textureSampleLevel(historyImage, imageSampler, clampedHistoryUv, 0.0);
+    let historyColour = select(checker(input.position), history.rgb, history.a >= .5);
+    if (historyInside) { return vec4f(historyColour, 1.0); }
+
+    let overflow = max(abs(historyUv - vec2f(.5)) - vec2f(.5), vec2f(0.0));
+    let edgeWeight = .38 * exp2(-32.0 * length(overflow));
+    let background = vec3f(.008, .01, .014);
+    return vec4f(mix(background, historyColour, edgeWeight), 1.0);
   }
 
   let current = textureSampleLevel(newImage, imageSampler, input.uv, 0.0);
