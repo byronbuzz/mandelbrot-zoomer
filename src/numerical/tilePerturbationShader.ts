@@ -107,17 +107,17 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= p.tileSize || gid.y >= p.tileSize) { return; }
   let index = gid.y * p.tileSize + gid.x;
   let pixel = vec2i(gid.xy);
-  var meta = recurrenceMeta[index];
-  if (meta.y == STATUS_ESCAPED) { atomicAdd(&counters.escapedPixels, 1u); return; }
-  if (meta.y == STATUS_INTERIOR) { atomicAdd(&counters.analyticInteriorPixels, 1u); return; }
-  if (meta.y == STATUS_NON_FINITE) { atomicAdd(&counters.nonFinitePixels, 1u); return; }
-  if (meta.y == STATUS_GLITCH) { atomicAdd(&counters.glitchPixels, 1u); return; }
-  if (meta.y == STATUS_ORBIT_EXHAUSTED) { atomicAdd(&counters.orbitExhaustedPixels, 1u); return; }
+  var pixelMeta = recurrenceMeta[index];
+  if (pixelMeta.y == STATUS_ESCAPED) { atomicAdd(&counters.escapedPixels, 1u); return; }
+  if (pixelMeta.y == STATUS_INTERIOR) { atomicAdd(&counters.analyticInteriorPixels, 1u); return; }
+  if (pixelMeta.y == STATUS_NON_FINITE) { atomicAdd(&counters.nonFinitePixels, 1u); return; }
+  if (pixelMeta.y == STATUS_GLITCH) { atomicAdd(&counters.glitchPixels, 1u); return; }
+  if (pixelMeta.y == STATUS_ORBIT_EXHAUSTED) { atomicAdd(&counters.orbitExhaustedPixels, 1u); return; }
 
   let offset = pixelOffset(gid.x, gid.y);
   let coordinateX = dsAdd(p.centerX, offset[0]);
   let coordinateY = dsAdd(p.centerY, offset[1]);
-  if (meta.x == 0u && analyticInteriorDs(coordinateX, coordinateY)) {
+  if (pixelMeta.x == 0u && analyticInteriorDs(coordinateX, coordinateY)) {
     recurrenceState[index] = vec4f(0.0);
     recurrenceMeta[index] = vec4u(0u, STATUS_INTERIOR, 0u, p.repairPass);
     textureStore(resultTexture, pixel, vec4f(0.0, 2.0, 0.0, 0.0));
@@ -130,8 +130,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let dcy = dsAdd(p.referenceDeltaY, offset[1]);
   var dx = recurrenceState[index].xy;
   var dy = recurrenceState[index].zw;
-  var iteration = meta.x;
-  var referenceIndex = meta.z;
+  var iteration = pixelMeta.x;
+  var referenceIndex = pixelMeta.z;
   let iterationEnd = min(p.iterationTarget, iteration + p.chunkIterations);
   var radiusSquared = 0.0;
 
