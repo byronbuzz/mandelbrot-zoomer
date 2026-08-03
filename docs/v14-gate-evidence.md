@@ -68,7 +68,9 @@ The final presentation candidate `c410bc7` was also tested from a user-selected,
 
 Fine-grained speckling and structured banding emerge around `10^7` and become severe by `10^8`. The artifact remains in a settled frame with all visible tiles reported converged, low reprojection-coordinate error, zero validation errors and every affected tile still using direct mode. This strongly localizes the anomaly to numerical/render-quality content before presentation, but does not categorically exclude history or coverage effects because coverage was not independently measured. A later precision milestone must compare a frozen numerical buffer against an MPFR oracle and an independently rendered presentation baseline. No perturbation, series, BLA, reference-orbit or recurrence change is included in Release 1.4.
 
-### Live zoom-out blocker
+### Live bidirectional navigation blocker
+
+#### Zoom-out coverage loss
 
 Settled captures concealed a separate presentation failure. From the same `10^8.007`, 5,000-iteration endpoint, a PNG was taken immediately after each zoom-out input burst at every decade down to approximately `10^2`. The corresponding post-transition diagnostics for orders `10^6` through `10^2` were sampled approximately 350 ms later, after multiple presentation frames and, in some cases, promotions. These records prove a live continuity failure but are not synchronized first-presentation-frame measurements.
 
@@ -77,13 +79,21 @@ Settled captures concealed a separate presentation failure. From the same `10^8.
 - `10^5 -> 10^4`: the live frame showed a stale, block-edged plume while the UI reported `moving · calculating`, zero visible numerical tiles and zero converged tiles;
 - `10^3 -> 10^2`: a large stale vertical band and block-shaped edge fill remained visible before refinement.
 
+#### Zoom-in quality regression
+
+User-captured frames show that continuity also fails while zooming in. At `10^5.410`, while 146 of 256 visible tiles were active, nearly the whole canvas briefly regressed to black except for a small rectangular detail island and edge slivers. At `10^1.814`, with 37 active and 65 converged tiles, the displayed boundary temporarily fell back to a much lower effective iteration frontier before rapidly refining.
+
+The numerical scheduler intentionally advances moving tiles in short chunks, but an unescaped-at-current-frontier pixel is not equivalent to a resolved interior or final-cap pixel. In the current path, moving/coarse iteration-cap pixels are written as black with non-zero quality, and the atlas overlay accepts any non-zero quality. A provisional low-frontier result can therefore overwrite a valid higher-quality history sample. In addition, `coveragePixels` includes provisional cap pixels and is used by the authoritative-promotion predicate, so a field that is spatially covered but temporally lower quality can replace the history anchor.
+
+The required invariant is monotonic display quality: once a target pixel has a valid displayed source, later frames may replace it only with equal-or-higher confidence for the same target view. Provisional capped pixels may fill genuinely invalid holes, but must not replace valid reprojected history. The evidence is retained as `outputs/v14-evidence/live-zoom-in-5000-black-flash-depth5.png` and `live-zoom-in-5000-iteration-regression-depth1.png`.
+
 All captures retained 60 Hz presentation and zero WebGPU validation errors, so validation-clean submission is not a coverage guarantee. The root architectural defect is that the presenter retains only one full-screen history view. During zoom-out that source maps to a small rectangle inside the newly exposed viewport; the reprojection shader clears all source-UV misses to black, while the accepted atlas has too few retained coarser/outside tiles to cover the remainder. Subsequent 128x128 tile admission causes the visible block in-fill and jumps.
 
-This is a Release 1.4 presentation blocker. The milestone must remain draft until a bounded multi-scale/overscanned history or equivalent retained coarse-coverage layer keeps the full target viewport continuously covered during zoom-out, and an executable pre-settle coverage gate passes the recorded `10^8 -> 10^2` trace. Evidence is stored in `outputs/v14-evidence/live-zoom-out-5000-order-{7..2}.{png,json}` and `live-zoom-out-5000-summary.json`.
+This is a Release 1.4 presentation blocker. The milestone must remain draft until a rolling display head with explicit validity/confidence prevents quality regression in both directions, a bounded multi-scale/overscanned history or equivalent retained coarse-coverage layer keeps the full target viewport continuously covered during zoom-out, and executable pre-settle gates pass deterministic zoom-in and the recorded `10^8 -> 10^2` zoom-out trace. Zoom-out evidence is stored in `outputs/v14-evidence/live-zoom-out-5000-order-{7..2}.{png,json}` and `live-zoom-out-5000-summary.json`.
 
 An earlier pre-fix atlas capture at approximately `10^2` is retained as historical evidence of a specific parent-culling hole. The same class of hole appeared in the legacy path, localizing that earlier defect to shared tile admission. Fixing it did not establish general reverse-navigation coverage: the live `10^8 -> 10^2` gate above exposes additional unresolved history and coverage failures.
 
-Release checklist status: the behavioral pre-settle full-coverage gate is **FAILED / PENDING**. Release 1.4 must not advance or deploy from this draft PR until a frame-synchronized validity gate passes both presenters across the recorded reverse-navigation trace.
+Release checklist status: the behavioral pre-settle full-coverage and monotonic-quality gates are **FAILED / PENDING**. Release 1.4 must not advance or deploy from this draft PR until frame-synchronized validity/confidence gates pass both presenters in both navigation directions.
 
 ## Failures found and fixed by the executable gates
 
