@@ -1,4 +1,5 @@
 import {
+  fixedAddScaled,
   fixedDifferenceToNumber,
   fixedSplitF32,
   fixedSub,
@@ -49,7 +50,9 @@ const TILE_PIXEL_COUNT = PERSISTENT_TILE_SIZE * PERSISTENT_TILE_SIZE;
 const INITIAL_BATCH_TILES = 8;
 const MIN_BATCH_TILES = 4;
 const MAX_BATCH_TILES = 24;
+const RESOURCE_CREATION_BATCH_TILES = 24;
 const MAX_CACHED_TILES = 224;
+const CACHE_HISTORY_TILE_RESERVE = 96;
 const MAX_NUMERICAL_PIXELS = 2_500_000;
 const DIRECT_SAFETY_ITERATIONS = 256;
 const MAX_REFERENCE_REPAIR_PASSES = 5;
@@ -132,6 +135,7 @@ type FieldTile = {
   createdAt: number;
   palettePhase: number;
   directMode: 0 | 1;
+  requiresPerturbation: boolean;
   numericalMode: TileNumericalMode;
   referenceState: TileReferenceState;
   reference: TileGpuReference | null;
@@ -159,6 +163,13 @@ function schedulerYield(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
+function splitChanged(
+  before: readonly [number, number],
+  after: readonly [number, number]
+): boolean {
+  return before[0] !== after[0] || before[1] !== after[1];
+}
+
 export class TileFieldRenderer {
   private readonly tileMap = new Map<PersistentTileKey, FieldTile>();
   private readonly directPipeline: GPUComputePipeline;
@@ -176,6 +187,10 @@ export class TileFieldRenderer {
   private currentPlan: PlannedDescriptor[] = [];
   private currentQueue: ScheduledWork[] = [];
   private currentVisibleKeys = new Set<PersistentTileKey>();
+  private pendingLevelOffsets: number[] = [];
+  private currentRenderHeight = 1;
+  private currentAspect = 1;
+  private maximumPlannedLevel = 2;
   private running = false;
   private displayWidth = 1;
   private displayHeight = 1;
@@ -338,7 +353,10 @@ export class TileFieldRenderer {
   }
 
   get isBusy(): boolean {
-    return this.running || this.latestRequest !== null || this.currentQueue.length > 0;
+    return this.running
+      || this.latestRequest !== null
+      || this.currentQueue.length > 0
+      || this.pendingLevelOffsets.length > 0;
   }
 
   get stats(): PersistentFieldStats {
@@ -382,7 +400,7 @@ export class TileFieldRenderer {
     const drawTiles: FieldTile[] = [];
     const seen = new Set<PersistentTileKey>();
 
-    for (const levelOffset of [4, 3, 2, 1, 0, -1]) {
+    for (const levelOffset of [4, 3, 2, 1, 0]) {
       for (const descriptor of visibleTileDescriptors(
         targetCamera,
         aspect,
@@ -403,6 +421,7 @@ export class TileFieldRenderer {
 
     const renderable: Array<{ tile: FieldTile; group: GPUBindGroup }> = [];
     for (const tile of drawTiles) {
+      if (this.hasCompleteChildren(tile)) continue;
       const transform = this.tileTransform(tile, targetCamera, aspect);
       if (!transform) continue;
       this.device.queue.writeBuffer(tile.presentUniform, 0, new Float32Array([
@@ -443,14 +462,25 @@ export class TileFieldRenderer {
     if (this.running) return;
     this.running = true;
     try {
-      while (this.latestRequest || this.currentQueue.length > 0) {
+      while (
+        this.latestRequest
+        || this.currentQueue.length > 0
+        || this.pendingLevelOffsets.length > 0
+      ) {
         if (this.latestRequest) {
           const request = this.latestRequest;
           this.latestRequest = null;
           await this.prepareRequest(request);
         }
         const request = this.currentRequest;
-        if (!request || this.currentQueue.length === 0) break;
+        if (!request) break;
+
+        if (this.currentQueue.length === 0) {
+          const admitted = await this.admitNextSpatialLevel(request);
+          if (this.latestRequest) continue;
+          if (!admitted) break;
+        }
+        if (this.currentQueue.length === 0) continue;
 
         const quantumStarted = performance.now();
         const quantumBudget = this.quantumBudget(request.interaction);
@@ -468,7 +498,12 @@ export class TileFieldRenderer {
         } while (performance.now() - quantumStarted < quantumBudget);
 
         this.evictColdTiles();
-        if (!this.latestRequest && this.currentQueue.length > 0) await schedulerYield();
+        if (
+          !this.latestRequest
+          && (this.currentQueue.length > 0 || this.pendingLevelOffsets.length > 0)
+        ) {
+          await schedulerYield();
+        }
       }
     } catch (error) {
       console.error('Progressive tile field scheduler failed', error);
@@ -476,7 +511,13 @@ export class TileFieldRenderer {
       this.runtimeErrorListener?.(message);
     } finally {
       this.running = false;
-      if (this.latestRequest || this.currentQueue.length > 0) void this.pump();
+      if (
+        this.latestRequest
+        || this.currentQueue.length > 0
+        || this.pendingLevelOffsets.length > 0
+      ) {
+        void this.pump();
+      }
     }
   }
 
@@ -484,46 +525,56 @@ export class TileFieldRenderer {
     this.currentRequest = request;
     this.completedChunks = 0;
     this.lastBatchMs = 0;
-    const renderHeight = this.renderHeight(
+    this.currentPlan = [];
+    this.currentQueue = [];
+    this.currentVisibleKeys = new Set<PersistentTileKey>();
+    this.currentRenderHeight = this.renderHeight(
       request.cssWidth,
       request.cssHeight,
       request.devicePixelRatio
     );
-    const aspect = Math.max(1, request.cssWidth) / Math.max(1, request.cssHeight);
-    this.currentPlan = this.planDescriptors(request, renderHeight, aspect);
-    await this.ensureTiles(this.currentPlan.map(item => item.descriptor));
+    this.currentAspect = Math.max(1, request.cssWidth) / Math.max(1, request.cssHeight);
+    this.pendingLevelOffsets = [2, 1, 0];
+    this.maximumPlannedLevel = 2;
     await this.activatePendingReferences();
-    this.currentVisibleKeys = new Set(this.currentPlan.map(item => item.descriptor.key));
-    this.ensureReferencePolicy(request, this.currentPlan);
-    this.currentQueue = this.initialWorkQueue(request, this.currentPlan);
+    await this.admitNextSpatialLevel(request);
     this.updateStats();
   }
 
-  private planDescriptors(
-    request: PersistentTileRequest,
-    renderHeight: number,
-    aspect: number
-  ): PlannedDescriptor[] {
-    const levels = request.interaction === 'moving' ? [2, 1, 0] : [1, 0];
-    const result: PlannedDescriptor[] = [];
-    const seen = new Set<PersistentTileKey>();
-    for (const levelOffset of levels) {
-      const margin = levelOffset > 0 ? 1 : 0;
-      for (const descriptor of visibleTileDescriptors(
-        request.camera,
-        aspect,
-        renderHeight,
-        request.focusX,
-        request.focusY,
-        levelOffset,
-        margin
-      )) {
-        if (seen.has(descriptor.key)) continue;
-        seen.add(descriptor.key);
-        result.push({ descriptor, levelOffset });
-      }
+  private async admitNextSpatialLevel(request: PersistentTileRequest): Promise<boolean> {
+    while (this.pendingLevelOffsets.length > 0 && !this.latestRequest) {
+      const levelOffset = this.pendingLevelOffsets.shift();
+      if (levelOffset === undefined) break;
+      const levelPlan = this.planDescriptorsForLevel(request, levelOffset);
+      const ready = await this.ensureTiles(levelPlan.map(item => item.descriptor));
+      if (!ready || this.latestRequest) return false;
+
+      await this.activatePendingReferences();
+      this.currentPlan.push(...levelPlan);
+      for (const item of levelPlan) this.currentVisibleKeys.add(item.descriptor.key);
+      this.ensureReferencePolicy(request, levelPlan);
+      const levelQueue = this.initialWorkQueue(request, levelPlan);
+      this.currentQueue.push(...levelQueue);
+      this.updateStats();
+      if (levelQueue.length > 0) return true;
     }
-    return result;
+    return this.currentQueue.length > 0;
+  }
+
+  private planDescriptorsForLevel(
+    request: PersistentTileRequest,
+    levelOffset: number
+  ): PlannedDescriptor[] {
+    const margin = levelOffset > 0 ? 1 : 0;
+    return visibleTileDescriptors(
+      request.camera,
+      this.currentAspect,
+      this.currentRenderHeight,
+      request.focusX,
+      request.focusY,
+      levelOffset,
+      margin
+    ).map(descriptor => ({ descriptor, levelOffset }));
   }
 
   private initialWorkQueue(
@@ -531,7 +582,6 @@ export class TileFieldRenderer {
     plan: readonly PlannedDescriptor[]
   ): ScheduledWork[] {
     const queue: ScheduledWork[] = [];
-    const maximumLevel = Math.max(0, ...plan.map(item => item.levelOffset));
     for (const planned of plan) {
       const tile = this.tileMap.get(planned.descriptor.key);
       if (!tile) continue;
@@ -549,7 +599,7 @@ export class TileFieldRenderer {
         request,
         tile,
         planned.levelOffset,
-        maximumLevel,
+        this.maximumPlannedLevel,
         finalTarget,
         scheduledEnd,
         needsIterations ? chunkIterations : 0
@@ -598,7 +648,6 @@ export class TileFieldRenderer {
   }
 
   private finishBatch(batch: readonly ScheduledWork[], request: PersistentTileRequest): void {
-    const maximumLevel = Math.max(0, ...this.currentPlan.map(item => item.levelOffset));
     for (const scheduled of batch) {
       const tile = scheduled.tile;
       tile.iterationFrontier = Math.max(tile.iterationFrontier, scheduled.scheduledEnd);
@@ -606,18 +655,22 @@ export class TileFieldRenderer {
       tile.lastVisibleAt = performance.now();
       tile.palettePhase = request.palettePhase;
       tile.capPresentationMode = scheduled.capMode;
-      tile.coveragePixels = tile.health.escapedPixels
+      const acceptedCoverage = tile.health.escapedPixels
         + tile.health.analyticInteriorPixels
         + (scheduled.capMode > 0 ? tile.health.cappedPixels : 0);
+      tile.coveragePixels = Math.max(tile.coveragePixels, acceptedCoverage);
       const finalAcceptedCap = scheduled.capMode === 2
         && scheduled.scheduledEnd >= scheduled.finalTarget;
-      tile.resolvedPixels = tile.health.escapedPixels
+      const resolvedCoverage = tile.health.escapedPixels
         + tile.health.analyticInteriorPixels
         + (finalAcceptedCap ? tile.health.cappedPixels : 0);
+      tile.resolvedPixels = Math.max(tile.resolvedPixels, resolvedCoverage);
 
       this.maybeRequestRepair(tile, request);
+      const continuingPixels = tile.health.activePixels + tile.health.cappedPixels;
       if (
         scheduled.work.chunkIterations > 0
+        && continuingPixels > 0
         && scheduled.scheduledEnd < scheduled.finalTarget
         && !this.latestRequest
       ) {
@@ -629,7 +682,7 @@ export class TileFieldRenderer {
           request,
           tile,
           scheduled.levelOffset,
-          maximumLevel,
+          this.maximumPlannedLevel,
           scheduled.finalTarget,
           nextEnd,
           scheduled.work.chunkIterations
@@ -663,7 +716,7 @@ export class TileFieldRenderer {
       presentationHistoryMs: 0,
       sampleExponent: sampleExponentForViewport(
         request.camera,
-        this.renderHeight(request.cssWidth, request.cssHeight, request.devicePixelRatio),
+        this.currentRenderHeight,
         0
       ),
       tileSize: PERSISTENT_TILE_SIZE
@@ -701,19 +754,18 @@ export class TileFieldRenderer {
         this.requestCurrentAgain();
         continue;
       }
-      this.queueReference(tile, request, tile.repairPass, referenceTarget);
+      this.queueReference(tile, tile.repairPass, referenceTarget);
     }
   }
 
   private tileNeedsPerturbation(tile: FieldTile): boolean {
     if (tile.numericalMode === 'perturbation') return true;
     if (tile.health.nonFinitePixels > 0) return true;
-    return tile.directMode !== 0;
+    return tile.requiresPerturbation;
   }
 
   private queueReference(
     tile: FieldTile,
-    _request: PersistentTileRequest,
     repairPass: number,
     referenceTarget: number
   ): void {
@@ -757,7 +809,7 @@ export class TileFieldRenderer {
       tile.referenceState = 'failed';
       return;
     }
-    this.queueReference(tile, request, tile.repairPass + 1, request.targetIterations);
+    this.queueReference(tile, tile.repairPass + 1, request.targetIterations);
   }
 
   private requestCurrentAgain(): void {
@@ -811,11 +863,8 @@ export class TileFieldRenderer {
         activePixels: Math.max(0, TILE_PIXEL_COUNT
           - (preserveAccepted ? tile.resolvedPixels : 0))
       };
-      if (!preserveAccepted) {
-        tile.coveragePixels = 0;
-        tile.resolvedPixels = 0;
-      }
-      tile.capPresentationMode = 0;
+      if (!preserveAccepted) tile.resolvedPixels = 0;
+      tile.capPresentationMode = tile.coveragePixels > 0 ? 1 : 0;
       tile.lastNumericalUpdateAt = performance.now();
     }
   }
@@ -828,41 +877,50 @@ export class TileFieldRenderer {
     return request.targetIterations;
   }
 
-  private async ensureTiles(descriptors: readonly PersistentTileDescriptor[]): Promise<void> {
-    const created: FieldTile[] = [];
-    this.device.pushErrorScope('validation');
-    for (const descriptor of descriptors) {
-      if (this.tileMap.has(descriptor.key)) continue;
-      const tile = this.createTile(descriptor);
-      this.tileMap.set(descriptor.key, tile);
-      created.push(tile);
-    }
-    const validationError = await this.device.popErrorScope();
-    if (validationError) {
-      for (const tile of created) {
-        this.tileMap.delete(tile.descriptor.key);
-        this.destroyTile(tile);
+  private async ensureTiles(
+    descriptors: readonly PersistentTileDescriptor[]
+  ): Promise<boolean> {
+    const missing = descriptors.filter(descriptor => !this.tileMap.has(descriptor.key));
+    for (let start = 0; start < missing.length; start += RESOURCE_CREATION_BATCH_TILES) {
+      if (this.latestRequest) return false;
+      const batchDescriptors = missing.slice(start, start + RESOURCE_CREATION_BATCH_TILES);
+      const created: FieldTile[] = [];
+      this.device.pushErrorScope('validation');
+      for (const descriptor of batchDescriptors) {
+        if (this.tileMap.has(descriptor.key)) continue;
+        const tile = this.createTile(descriptor);
+        this.tileMap.set(descriptor.key, tile);
+        created.push(tile);
       }
-      throw new Error(`Tile resource layout validation failed: ${validationError.message}`);
+      const validationError = await this.device.popErrorScope();
+      if (validationError) {
+        for (const tile of created) {
+          this.tileMap.delete(tile.descriptor.key);
+          this.destroyTile(tile);
+        }
+        throw new Error(`Tile resource layout validation failed: ${validationError.message}`);
+      }
+      if (created.length > 0) {
+        const encoder = this.device.createCommandEncoder();
+        for (const tile of created) {
+          encoder.clearBuffer(tile.stateBuffer);
+          encoder.clearBuffer(tile.metaBuffer);
+          encoder.clearBuffer(tile.counterBuffer);
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(this.clearPipeline);
+          pass.setBindGroup(0, tile.clearGroup);
+          pass.dispatchWorkgroups(
+            Math.ceil(PERSISTENT_TILE_SIZE / 8),
+            Math.ceil(PERSISTENT_TILE_SIZE / 8)
+          );
+          pass.end();
+        }
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+      }
+      if (start + RESOURCE_CREATION_BATCH_TILES < missing.length) await schedulerYield();
     }
-    if (created.length === 0) return;
-
-    const encoder = this.device.createCommandEncoder();
-    for (const tile of created) {
-      encoder.clearBuffer(tile.stateBuffer);
-      encoder.clearBuffer(tile.metaBuffer);
-      encoder.clearBuffer(tile.counterBuffer);
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(this.clearPipeline);
-      pass.setBindGroup(0, tile.clearGroup);
-      pass.dispatchWorkgroups(
-        Math.ceil(PERSISTENT_TILE_SIZE / 8),
-        Math.ceil(PERSISTENT_TILE_SIZE / 8)
-      );
-      pass.end();
-    }
-    this.device.queue.submit([encoder.finish()]);
-    await this.device.queue.onSubmittedWorkDone();
+    return !this.latestRequest;
   }
 
   private createTile(descriptor: PersistentTileDescriptor): FieldTile {
@@ -952,9 +1010,7 @@ export class TileFieldRenderer {
       entries: [
         { binding: 0, resource: { buffer: resetUniform } },
         { binding: 1, resource: { buffer: stateBuffer } },
-        { binding: 2, resource: { buffer: metaBuffer } },
-        { binding: 3, resource: resultTexture.createView() },
-        { binding: 4, resource: qualityTexture.createView() }
+        { binding: 2, resource: { buffer: metaBuffer } }
       ]
     });
     const presentLinearGroup = this.createPresentGroup(
@@ -977,6 +1033,20 @@ export class TileFieldRenderer {
     );
     const sampleStep = Math.pow(2, descriptor.sampleExponent);
     const directMode: 0 | 1 = sampleStep > centerMagnitude * Math.pow(2, -21) ? 0 : 1;
+    const centerXSplit = fixedSplitF32(descriptor.centerX);
+    const centerYSplit = fixedSplitF32(descriptor.centerY);
+    const nextXSplit = fixedSplitF32(fixedAddScaled(
+      descriptor.centerX,
+      1,
+      descriptor.sampleExponent
+    ));
+    const nextYSplit = fixedSplitF32(fixedAddScaled(
+      descriptor.centerY,
+      1,
+      descriptor.sampleExponent
+    ));
+    const requiresPerturbation = !splitChanged(centerXSplit, nextXSplit)
+      || !splitChanged(centerYSplit, nextYSplit);
     const now = performance.now();
     return {
       descriptor,
@@ -1009,6 +1079,7 @@ export class TileFieldRenderer {
       createdAt: now,
       palettePhase: Number.NaN,
       directMode,
+      requiresPerturbation,
       numericalMode: directMode === 0 ? 'f32-direct' : 'double-float-direct',
       referenceState: 'none',
       reference: null,
@@ -1238,6 +1309,20 @@ export class TileFieldRenderer {
     ));
   }
 
+  private hasCompleteChildren(tile: FieldTile): boolean {
+    const childExponent = tile.descriptor.sampleExponent - 1;
+    const baseX = tile.descriptor.tileX * 2n;
+    const baseY = tile.descriptor.tileY * 2n;
+    for (let y = 0n; y < 2n; y++) {
+      for (let x = 0n; x < 2n; x++) {
+        const key = `${childExponent}:${(baseX + x).toString()}:${(baseY + y).toString()}`;
+        const child = this.tileMap.get(key);
+        if (!child || child.coveragePixels < TILE_PIXEL_COUNT) return false;
+      }
+    }
+    return true;
+  }
+
   private tileTransform(
     tile: FieldTile,
     targetCamera: CameraSnapshot,
@@ -1257,11 +1342,15 @@ export class TileFieldRenderer {
   }
 
   private evictColdTiles(): void {
-    if (this.tileMap.size <= MAX_CACHED_TILES) return;
+    const cacheTarget = Math.max(
+      MAX_CACHED_TILES,
+      this.currentVisibleKeys.size + CACHE_HISTORY_TILE_RESERVE
+    );
+    if (this.tileMap.size <= cacheTarget) return;
     const candidates = [...this.tileMap.values()]
       .filter(tile => !this.currentVisibleKeys.has(tile.descriptor.key))
       .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt);
-    while (this.tileMap.size > MAX_CACHED_TILES && candidates.length > 0) {
+    while (this.tileMap.size > cacheTarget && candidates.length > 0) {
       const tile = candidates.shift();
       if (!tile) break;
       this.tileMap.delete(tile.descriptor.key);
