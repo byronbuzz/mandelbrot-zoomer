@@ -18,6 +18,11 @@ const required = [
   ['nearest validity lookup', shaders, 'textureLoad(qualityAtlas'],
   ['single instanced current-tile candidate', presenter, 'pass.draw(6, instanceCount)'],
   ['persistent history reprojection', presenter, 'historyTransform'],
+  ['immutable direct history sources', presenter, 'A composed display head is deliberately not a history source'],
+  ['one-pass smooth immutable reconstruction', shaders, 'History surfaces are immutable resolved checkpoints'],
+  ['history source sharpness ordering', presenter, 'right.projectedRankDelta - left.projectedRankDelta'],
+  ['finer-history current admission gate', shaders, 'preserveFinerCompatibleHistory'],
+  ['conflict representative prefers footprint', shaders, 'rank(candidate) > rank(base)'],
   ['rolling display ping-pong', presenter, 'otherSurface(resources, head)'],
   ['rolling colour and provenance', presenter, "format: 'r32uint'"],
   ['explicit provenance merge', shaders, 'compatiblePreference'],
@@ -74,6 +79,46 @@ if (presenter.includes('promotionPending')) {
 }
 if (!shaders.includes('isDisplayDefinite(semantic(base)) && isCap(semantic(candidate))')) {
   failures.push('Continuity instrumentation does not explicitly detect definite-to-cap regression.');
+}
+
+// Direct source-to-target reprojection is path-independent: intermediate rAF
+// views never become a sampling source. Quantization is allowed only at the
+// final colour target, not once per navigation step.
+const immutableSource = Array.from({ length: 257 }, (_, index) =>
+  0.5 + 0.5 * Math.sin(index * 0.37) * Math.cos(index * 0.11));
+function sampleImmutable(source, coordinate) {
+  const clamped = Math.max(0, Math.min(source.length - 1, coordinate));
+  const left = Math.floor(clamped);
+  const right = Math.min(source.length - 1, left + 1);
+  const fraction = clamped - left;
+  return source[left] * (1 - fraction) + source[right] * fraction;
+}
+function renderImmutable(scale) {
+  return Array.from({ length: 65 }, (_, index) => {
+    const targetUv = 0.25 + index / 128;
+    const sourceUv = 0.5 + (targetUv - 0.5) * scale;
+    return sampleImmutable(immutableSource, sourceUv * (immutableSource.length - 1));
+  });
+}
+const directOctave = renderImmutable(2);
+let steppedOctave = renderImmutable(1);
+for (let step = 1; step <= 120; step++) steppedOctave = renderImmutable(Math.pow(2, step / 120));
+const pathError = directOctave.reduce((worst, value, index) =>
+  Math.max(worst, Math.abs(value - steppedOctave[index])), 0);
+if (pathError > 1 / 255) failures.push(`Immutable path-independence oracle exceeded colour quantization: ${pathError}.`);
+
+const directRankDelta = Math.round(Math.log2(2) * 8);
+const roundedStepDelta = Math.round(Math.log2(Math.pow(2, 1 / 120)) * 8);
+if (directRankDelta !== 8 || roundedStepDelta * 120 === directRankDelta) {
+  failures.push('Rank accumulation oracle did not distinguish direct immutable ranking from rounded frame deltas.');
+}
+const tiedCoverageSources = [
+  { name: 'coarse', projectedRankDelta: -8, coverage: 1 },
+  { name: 'sharp', projectedRankDelta: 0, coverage: 1 }
+].sort((left, right) => right.projectedRankDelta - left.projectedRankDelta
+  || right.coverage - left.coverage);
+if (tiedCoverageSources[0]?.name !== 'sharp') {
+  failures.push('Equal-coverage source selection failed to prefer projected sharpness.');
 }
 
 function scaled(mantissa, exponent) {

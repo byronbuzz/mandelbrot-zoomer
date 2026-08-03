@@ -564,12 +564,9 @@ export class AtlasHistoryPresenter {
   }
 
   private historySources(target: ExactView): Array<HistorySource & { transform: PackedTransform; error: number }> {
-    const rolling: HistorySource | null = this.rollingHead ? {
-      surface: this.rollingHead.surface,
-      view: this.rollingHead.view,
-      owner: this.rollingHead.owner,
-      origin: 1
-    } : null;
+    // A composed display head is deliberately not a history source. Every
+    // frame reprojects immutable resolved checkpoints directly into the target
+    // view, making the result independent of the number of intermediate rAFs.
     const retained: HistorySource[] = [];
     if (this.stableCheckpoint && this.stableCheckpoint.view.palettePhase === target.palettePhase) retained.push({
       surface: this.stableCheckpoint.surface,
@@ -583,17 +580,26 @@ export class AtlasHistoryPresenter {
     }
     const admit = (candidate: HistorySource) => {
       const admission = admitHistory(historyTransform(candidate.view, target), candidate.view, target);
-      return admission.accepted ? { ...candidate, transform: admission.packed, error: admission.error } : null;
+      return admission.accepted ? {
+        ...candidate,
+        transform: admission.packed,
+        error: admission.error,
+        projectedRankDelta: footprintRankDelta(admission.packed, candidate.view, target),
+        coverage: transformCoverage(admission.packed)
+      } : null;
     };
-    const admittedRolling = rolling ? admit(rolling) : null;
-    const rollingCoverage = admittedRolling ? transformCoverage(admittedRolling.transform) : 0;
-    const bestRetained = retained.map(admit).filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .map(item => ({ item, coverage: transformCoverage(item.transform) }))
-      .filter(entry => entry.coverage > rollingCoverage + 1e-6)
-      .sort((left, right) => right.coverage - left.coverage)[0]?.item ?? null;
-    return [admittedRolling, bestRetained].filter(
-      (item): item is NonNullable<typeof item> => Boolean(item)
-    );
+    const ranked = retained.map(admit).filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => right.projectedRankDelta - left.projectedRankDelta
+        || right.coverage - left.coverage);
+    const selected: typeof ranked = [];
+    let selectedCoverage = 0;
+    for (const item of ranked) {
+      if (selected.length > 0 && item.coverage <= selectedCoverage + 1e-6) continue;
+      selected.push(item);
+      selectedCoverage = Math.max(selectedCoverage, item.coverage);
+      if (selected.length >= MAX_HISTORY_SOURCES) break;
+    }
+    return selected;
   }
 
   private packInstances(instances: readonly AtlasInstance[], width: number, height: number): {
