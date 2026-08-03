@@ -26,6 +26,8 @@ const required = [
   ['palette-only escaped recolour', shaders, 'let recolour = p.paletteChanged != 0u && status == 1u'],
   ['cap acceptance publication', shaders, 'forceCapPublication'],
   ['storage-capable atlas', atlas, 'GPUTextureUsage.STORAGE_BINDING'],
+  ['atlas exhaustion is non-fatal', atlas, 'if (index === undefined) return null'],
+  ['partial level admission rolls back', renderer, 'if (atlasCapacityExhausted) return false'],
   ['submission telemetry', stats, 'inFlightBatches'],
   ['avoided-copy telemetry', stats, 'avoidedAtlasCopies'],
   ['same-GPU baseline comparison', performanceGate, 'completedChunkRatioAt1000Ms']

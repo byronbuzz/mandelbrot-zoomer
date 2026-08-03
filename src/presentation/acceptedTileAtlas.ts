@@ -1,7 +1,7 @@
 import { PERSISTENT_TILE_SIZE } from '../tiles/persistentTileTypes';
 
 const ATLAS_COLUMNS = 32;
-const ATLAS_ROWS = 16;
+const ATLAS_ROWS = 24;
 
 export type AtlasSlot = Readonly<{ index: number; x: number; y: number; lease: number }>;
 
@@ -14,6 +14,7 @@ export class AcceptedTileAtlas {
   readonly height = ATLAS_ROWS * PERSISTENT_TILE_SIZE;
   private readonly free: number[] = [];
   private readonly leases = new Uint32Array(ATLAS_COLUMNS * ATLAS_ROWS);
+  private readonly occupied = new Uint8Array(ATLAS_COLUMNS * ATLAS_ROWS);
 
   constructor(private readonly device: GPUDevice) {
     const usage = GPUTextureUsage.COPY_DST
@@ -49,9 +50,10 @@ export class AcceptedTileAtlas {
     return this.free.length;
   }
 
-  allocate(): AtlasSlot {
+  allocate(): AtlasSlot | null {
     const index = this.free.pop();
-    if (index === undefined) throw new Error('Accepted tile atlas exhausted');
+    if (index === undefined) return null;
+    this.occupied[index] = 1;
     this.leases[index] = (this.leases[index] + 1) >>> 0 || 1;
     this.device.queue.writeBuffer(this.leaseDirectory, index * Uint32Array.BYTES_PER_ELEMENT, this.leases, index, 1);
     return {
@@ -63,6 +65,8 @@ export class AcceptedTileAtlas {
   }
 
   release(slot: AtlasSlot): void {
+    if (this.occupied[slot.index] === 0) return;
+    this.occupied[slot.index] = 0;
     this.free.push(slot.index);
   }
 
