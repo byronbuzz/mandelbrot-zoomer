@@ -13,6 +13,8 @@ const baselineUrl = process.env.PERFORMANCE_BASELINE
   ?? 'https://byronbuzz.github.io/mandelbrot-zoomer/?deploy=501804c';
 const expectedBaselineBuild = process.env.PERFORMANCE_BASELINE_BUILD ?? '1.4 · 501804c';
 const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
+const requireImprovement = process.env.PERFORMANCE_REQUIRE_IMPROVEMENT !== '0';
+const minimumNeutralRatio = Number(process.env.PERFORMANCE_MINIMUM_NEUTRAL_RATIO ?? 0.95);
 const server = spawn(process.execPath, [
   viteEntry, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--configLoader', 'runner'
 ], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -145,11 +147,20 @@ try {
       failures.push(`${label} settled cap-publication transition failed continuity checks.`);
     }
   }
-  if (optimized1000 <= baseline1000) {
+  if (requireImprovement && optimized1000 <= baseline1000) {
     failures.push(`Optimized movement completed ${optimized1000} chunks versus baseline ${baseline1000}.`);
+  } else if (!requireImprovement && optimized1000 / Math.max(1, baseline1000) < minimumNeutralRatio) {
+    failures.push(
+      `Precision-stage movement regressed to ${optimized1000} chunks versus baseline ${baseline1000}`
+      + ` (minimum ${minimumNeutralRatio.toFixed(2)}x).`
+    );
   }
   if (failures.length) throw new Error(failures.join('\n'));
-  console.log(`Performance browser gate passed on ${report.adapter}: ${baseline1000} -> ${optimized1000} completed chunks at 1 s (${report.comparison.completedChunkRatioAt1000Ms.toFixed(2)}x).`);
+  console.log(
+    `${requireImprovement ? 'Performance' : 'No-regression'} browser gate passed on ${report.adapter}: `
+    + `${baseline1000} -> ${optimized1000} completed chunks at 1 s `
+    + `(${report.comparison.completedChunkRatioAt1000Ms.toFixed(2)}x).`
+  );
 } finally {
   if (browser) await browser.close();
   server.kill();

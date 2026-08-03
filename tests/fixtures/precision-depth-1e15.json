@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-depth-1e15",
+  "description": "Wide-reference transport canary near 10^15 at the exact Misiurewicz point c=i.",
+  "iterationTarget": 5000,
+  "expectedTransportBits": 144,
+  "camera": {
+    "centerX": { "raw": "0", "bits": 160 },
+    "centerY": { "raw": "1461501637330902918203684832716283019655932542976", "bits": 160 },
+    "scale": { "mantissa": 1, "exponent": -50 }
+  },
+  "viewport": { "cssWidth": 1200, "cssHeight": 800, "devicePixelRatio": 1 }
+}

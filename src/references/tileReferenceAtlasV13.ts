@@ -16,7 +16,6 @@ import {
 } from '../tiles/persistentTileTypes';
 import { tileSpanExponent } from '../tiles/worldTilePlanner';
 
-const ORBIT_BYTES_PER_POINT = 8 * Float32Array.BYTES_PER_ELEMENT;
 const MAX_REFERENCE_ITERATIONS = 65_536;
 const REQUEST_TIMEOUT_MS = 30_000;
 const INITIAL_REFERENCE_GROUP_TILE_SPAN = 2n;
@@ -51,6 +50,7 @@ export type TileGpuReference = Readonly<{
   bits: number;
   workingBits: number;
   transportBits: number;
+  floatsPerPoint: 8 | 16;
   contractVersion: number;
   generationMs: number;
   buffer: GPUBuffer;
@@ -187,7 +187,10 @@ export class TileReferenceAtlas {
   private failureCountValue = 0;
   private demandEpoch = 0;
 
-  constructor(private readonly device: GPUDevice) {
+  constructor(
+    private readonly device: GPUDevice,
+    private readonly maxTransportBits: 96 | 192 = 192
+  ) {
     for (let index = 0; index < workerCount(); index++) {
       const slot = { worker: null as unknown as Worker, active: null, timeout: null };
       slot.worker = this.createWorker(slot);
@@ -372,6 +375,7 @@ export class TileReferenceAtlas {
       // survives a short probe can still escape thousands of iterations later,
       // which previously triggered repeated repair waves at deep boundaries.
       probeIterations: request.iterations,
+      maxTransportBits: this.maxTransportBits,
       candidates: this.candidates(request, bits)
     };
     slot.worker.postMessage(workerRequest);
@@ -450,7 +454,12 @@ export class TileReferenceAtlas {
       if (!Number.isInteger(response.length) || response.length < 2) {
         throw new Error('Reference worker returned an empty orbit');
       }
-      const expectedBytes = response.length * ORBIT_BYTES_PER_POINT;
+      if (response.floatsPerPoint !== 8 && response.floatsPerPoint !== 16) {
+        throw new Error('Reference worker returned an invalid orbit stride');
+      }
+      const expectedBytes = response.length
+        * response.floatsPerPoint
+        * Float32Array.BYTES_PER_ELEMENT;
       if (response.orbit.byteLength < expectedBytes) {
         throw new Error('Reference orbit payload is shorter than its reported length');
       }
@@ -475,6 +484,7 @@ export class TileReferenceAtlas {
         bits: response.bits,
         workingBits: response.workingBits,
         transportBits: response.transportBits,
+        floatsPerPoint: response.floatsPerPoint,
         contractVersion: response.contractVersion,
         generationMs: response.generationMs,
         buffer

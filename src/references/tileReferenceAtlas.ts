@@ -292,6 +292,7 @@ export class TileReferenceAtlas {
       centerY: serializeFixed(request.groupCenterY),
       iterations: request.iterations,
       probeIterations: Math.min(request.iterations, request.repairPass === 0 ? 1024 : 4096),
+      maxTransportBits: 96,
       candidates: this.candidates(request)
     };
     slot.worker.postMessage(workerRequest);

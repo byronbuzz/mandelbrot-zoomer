@@ -122,6 +122,7 @@ export class ReferenceService {
         centerY: serializeFixed(snapshot.camera.centerY),
         iterations: snapshot.iterations,
         probeIterations: Math.min(snapshot.iterations, 3072),
+        maxTransportBits: 96,
         candidates: this.candidates(snapshot, width, height)
       };
       worker.postMessage(request);

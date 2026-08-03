@@ -10,12 +10,11 @@ struct PerturbParams {
   chunkIterations: u32,
   orbitLength: u32,
   acceptIterationCap: u32,
-  referenceBits: u32,
+  referenceStride: u32,
   repairPass: u32,
   glitchRatio: f32,
   _pad0: vec3u,
 }
-struct OrbitPoint { x: vec4f, y: vec4f }
 struct TileCounters {
   activePixels: atomic<u32>,
   escapedPixels: atomic<u32>,
@@ -38,7 +37,7 @@ const STATUS_ORBIT_EXHAUSTED = 6u;
 @group(0) @binding(3) var resultTexture: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var qualityTexture: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(5) var<storage, read_write> counters: TileCounters;
-@group(0) @binding(6) var<storage, read> referenceOrbit: array<OrbitPoint>;
+@group(0) @binding(6) var<storage, read> referenceOrbit: array<f32>;
 
 fn twoSum(a: f32, b: f32) -> vec2f {
   let sumValue = a + b;
@@ -66,19 +65,36 @@ fn dsLessEqual(a: vec2f, b: vec2f) -> bool {
 }
 fn finiteF32(value: f32) -> bool { return value == value && abs(value) <= 3.402823e38; }
 fn finiteDs(value: vec2f) -> bool { return finiteF32(value.x) && finiteF32(value.y); }
-fn referenceDs(value: vec4f) -> vec2f {
+fn referenceDs(pointOffset: u32, coordinateOffset: u32, limbCount: u32) -> vec2f {
   var result = vec2f(0.0);
-  result = dsAdd(result, vec2f(value.w, 0.0));
-  result = dsAdd(result, vec2f(value.z, 0.0));
-  result = dsAdd(result, vec2f(value.y, 0.0));
-  return dsAdd(result, vec2f(value.x, 0.0));
+  var limb = limbCount;
+  loop {
+    if (limb == 0u) { break; }
+    limb--;
+    result = dsAdd(
+      result,
+      vec2f(referenceOrbit[pointOffset + coordinateOffset + limb], 0.0)
+    );
+  }
+  return result;
 }
-fn referenceTimesDs(reference: vec4f, value: vec2f) -> vec2f {
+fn referenceTimesDs(
+  pointOffset: u32,
+  coordinateOffset: u32,
+  limbCount: u32,
+  value: vec2f
+) -> vec2f {
   var result = vec2f(0.0);
-  result = dsAdd(result, dsMul(vec2f(reference.w, 0.0), value));
-  result = dsAdd(result, dsMul(vec2f(reference.z, 0.0), value));
-  result = dsAdd(result, dsMul(vec2f(reference.y, 0.0), value));
-  return dsAdd(result, dsMul(vec2f(reference.x, 0.0), value));
+  var limb = limbCount;
+  loop {
+    if (limb == 0u) { break; }
+    limb--;
+    result = dsAdd(
+      result,
+      dsMul(vec2f(referenceOrbit[pointOffset + coordinateOffset + limb], 0.0), value)
+    );
+  }
+  return result;
 }
 fn analyticInteriorDs(cx: vec2f, cy: vec2f) -> bool {
   let shiftedX = dsSub(cx, vec2f(0.25, 0.0));
@@ -90,9 +106,10 @@ fn analyticInteriorDs(cx: vec2f, cy: vec2f) -> bool {
 }
 fn pixelOffset(pixelX: u32, pixelY: u32) -> array<vec2f, 2> {
   let halfSize = f32(p.tileSize) * 0.5;
+  let pixelUnit = ldexp(1.0, -64);
   return array<vec2f, 2>(
-    vec2f(ldexp(f32(pixelX) + 0.5 - halfSize, p.sampleExponent), 0.0),
-    vec2f(ldexp(f32(pixelY) + 0.5 - halfSize, p.sampleExponent), 0.0)
+    vec2f((f32(pixelX) + 0.5 - halfSize) * pixelUnit, 0.0),
+    vec2f((f32(pixelY) + 0.5 - halfSize) * pixelUnit, 0.0)
   );
 }
 fn complexSquare(x: vec2f, y: vec2f) -> array<vec2f, 2> {
@@ -115,8 +132,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (pixelMeta.y == STATUS_ORBIT_EXHAUSTED) { atomicAdd(&counters.orbitExhaustedPixels, 1u); return; }
 
   let offset = pixelOffset(gid.x, gid.y);
-  let coordinateX = dsAdd(p.centerX, offset[0]);
-  let coordinateY = dsAdd(p.centerY, offset[1]);
+  let perturbationScale = ldexp(1.0, p.sampleExponent + 64);
+  let coordinateX = dsAdd(p.centerX, dsScale(offset[0], perturbationScale));
+  let coordinateY = dsAdd(p.centerY, dsScale(offset[1], perturbationScale));
   if (pixelMeta.x == 0u && analyticInteriorDs(coordinateX, coordinateY)) {
     recurrenceState[index] = vec4f(0.0);
     recurrenceMeta[index] = vec4u(0u, STATUS_INTERIOR, 0u, p.repairPass);
@@ -141,11 +159,14 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       atomicAdd(&counters.orbitExhaustedPixels, 1u);
       return;
     }
-    let point = referenceOrbit[referenceIndex];
-    let referenceX = referenceDs(point.x);
-    let referenceY = referenceDs(point.y);
-    let currentX = dsAdd(referenceX, dx);
-    let currentY = dsAdd(referenceY, dy);
+    let limbCount = p.referenceStride / 2u;
+    let pointOffset = referenceIndex * p.referenceStride;
+    let referenceX = referenceDs(pointOffset, 0u, limbCount);
+    let referenceY = referenceDs(pointOffset, limbCount, limbCount);
+    let actualDx = dsScale(dx, perturbationScale);
+    let actualDy = dsScale(dy, perturbationScale);
+    let currentX = dsAdd(referenceX, actualDx);
+    let currentY = dsAdd(referenceY, actualDy);
     let x = dsValue(currentX);
     let y = dsValue(currentY);
     radiusSquared = x * x + y * y;
@@ -162,17 +183,26 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       return;
     }
 
-    let quadratic = complexSquare(dx, dy);
+    let quadraticScaled = array<vec2f, 2>(
+      dsSub(dsMul(actualDx, dx), dsMul(actualDy, dy)),
+      dsScale(dsMul(actualDx, dy), 2.0)
+    );
     let crossX = dsScale(
-      dsSub(referenceTimesDs(point.x, dx), referenceTimesDs(point.y, dy)),
+      dsSub(
+        referenceTimesDs(pointOffset, 0u, limbCount, dx),
+        referenceTimesDs(pointOffset, limbCount, limbCount, dy)
+      ),
       2.0
     );
     let crossY = dsScale(
-      dsAdd(referenceTimesDs(point.x, dy), referenceTimesDs(point.y, dx)),
+      dsAdd(
+        referenceTimesDs(pointOffset, 0u, limbCount, dy),
+        referenceTimesDs(pointOffset, limbCount, limbCount, dx)
+      ),
       2.0
     );
-    dx = dsAdd(dsAdd(crossX, quadratic[0]), dcx);
-    dy = dsAdd(dsAdd(crossY, quadratic[1]), dcy);
+    dx = dsAdd(dsAdd(crossX, quadraticScaled[0]), dcx);
+    dy = dsAdd(dsAdd(crossY, quadraticScaled[1]), dcy);
     iteration++;
     referenceIndex++;
     if (!finiteDs(dx) || !finiteDs(dy)) {
