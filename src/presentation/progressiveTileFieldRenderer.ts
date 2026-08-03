@@ -708,7 +708,7 @@ export class TileFieldRenderer {
 
   private queueReference(
     tile: FieldTile,
-    request: PersistentTileRequest,
+    _request: PersistentTileRequest,
     repairPass: number,
     referenceTarget: number
   ): void {
