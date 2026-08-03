@@ -15,8 +15,6 @@ import {
   type PersistentTileKey
 } from './persistentTileTypes';
 
-const TILE_MARGIN = 1;
-
 function floorDivPowerOfTwo(value: BigFixed, exponent: number): bigint {
   const shift = value.bits + exponent;
   return shift >= 0
@@ -42,10 +40,11 @@ export function sampleExponentForViewport(
 ): number {
   const pixelExponent = scaleLog2(camera.scale) - Math.log2(Math.max(1, renderHeight));
 
-  // The base lattice should be approximately one numerical sample per display pixel.
-  // Flooring this value oversampled by up to 2x in each axis, producing roughly four
-  // times as many persistent tiles and reference requests as the pixel budget allowed.
-  return Math.ceil(pixelExponent) + levelOffset;
+  // Level zero is the authoritative pixel lattice. Flooring guarantees that its
+  // numerical sample pitch is no larger than one display pixel. Coarser levels
+  // are selected explicitly through levelOffset rather than by weakening the
+  // settled lattice.
+  return Math.floor(pixelExponent) + levelOffset;
 }
 
 export function tileSpanExponent(sampleExponent: number): number {
@@ -88,7 +87,8 @@ export function visibleTileDescriptors(
   renderHeight: number,
   focusX: number,
   focusY: number,
-  levelOffset = 0
+  levelOffset = 0,
+  tileMargin = 1
 ): PersistentTileDescriptor[] {
   const sampleExponent = sampleExponentForViewport(camera, renderHeight, levelOffset);
   const spanExponent = tileSpanExponent(sampleExponent);
@@ -102,11 +102,12 @@ export function visibleTileDescriptors(
   const focusDy = scaleDeltaParts(camera.scale, focusY - 0.5);
   const focusWorldX = fixedAddScaled(camera.centerX, focusDx.mantissa, focusDx.exponent);
   const focusWorldY = fixedAddScaled(camera.centerY, focusDy.mantissa, focusDy.exponent);
+  const margin = BigInt(Math.max(0, Math.floor(tileMargin)));
 
-  const firstX = floorDivPowerOfTwo(minX, spanExponent) - BigInt(TILE_MARGIN);
-  const lastX = floorDivPowerOfTwo(maxX, spanExponent) + BigInt(TILE_MARGIN);
-  const firstY = floorDivPowerOfTwo(minY, spanExponent) - BigInt(TILE_MARGIN);
-  const lastY = floorDivPowerOfTwo(maxY, spanExponent) + BigInt(TILE_MARGIN);
+  const firstX = floorDivPowerOfTwo(minX, spanExponent) - margin;
+  const lastX = floorDivPowerOfTwo(maxX, spanExponent) + margin;
+  const firstY = floorDivPowerOfTwo(minY, spanExponent) - margin;
+  const lastY = floorDivPowerOfTwo(maxY, spanExponent) + margin;
   const descriptors: PersistentTileDescriptor[] = [];
 
   for (let tileY = firstY; tileY <= lastY; tileY++) {

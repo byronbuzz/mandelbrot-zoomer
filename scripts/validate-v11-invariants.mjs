@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 
-const renderer = readFileSync(new URL('../src/presentation/tileFieldRenderer.ts', import.meta.url), 'utf8');
+const renderer = readFileSync(new URL('../src/presentation/progressiveTileFieldRenderer.ts', import.meta.url), 'utf8');
 const shader = [
   '../src/numerical/tileDirectShader.ts',
   '../src/numerical/tilePerturbationShader.ts',
-  '../src/numerical/tileDisplayShaders.ts'
+  '../src/numerical/tileFieldShadersV13.ts'
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const planner = readFileSync(new URL('../src/tiles/worldTilePlanner.ts', import.meta.url), 'utf8');
 
@@ -17,11 +17,13 @@ const required = [
   ['active tile telemetry', shader, 'activePixels: atomic<u32>'],
   ['separate quality resource', shader, 'qualityTexture: texture_storage_2d<rgba8unorm, write>'],
   ['tile cache survives camera requests', renderer, 'private readonly tileMap'],
-  ['batch-boundary request coalescing', renderer, 'if (this.latestRequest) break'],
+  ['request coalescing at bounded work boundaries', renderer, 'if (this.latestRequest || this.currentQueue.length === 0) break'],
   ['numerical freshness telemetry', renderer, 'numericalFreshnessMs'],
   ['bounded tile cache', renderer, 'MAX_CACHED_TILES'],
-  ['alpha is accepted coverage only', renderer, "srcFactor: 'src-alpha'"],
-  ['navigation direct safety ceiling', renderer, 'DIRECT_SAFETY_ITERATIONS']
+  ['accepted coverage controls composition', renderer, "srcFactor: 'src-alpha'"],
+  ['navigation direct safety ceiling', renderer, 'DIRECT_SAFETY_ITERATIONS'],
+  ['separate provisional and resolved coverage', renderer, 'coveragePixels'],
+  ['separate provisional and resolved coverage', renderer, 'resolvedPixels']
 ];
 
 const failures = required
@@ -32,7 +34,7 @@ if (/seedShader|sourceImage|destinationImage/.test(renderer)) {
   failures.push('Persistent numerical tiles must not be seeded from colour history.');
 }
 if (/blockSize:\s*8[\s\S]*blockSize:\s*4[\s\S]*blockSize:\s*2[\s\S]*blockSize:\s*1/.test(renderer)) {
-  failures.push('Persistent tile scheduling must not recreate the static full-viewport 8/4/2/1 ladder.');
+  failures.push('Persistent tile scheduling must not recreate the static full-viewport 8/4/2/1 restart ladder.');
 }
 if (/PERTURBATION_SCALE_EXPONENT|DOUBLE_FLOAT_THRESHOLD|depth\s*[<>]=?/.test(renderer)) {
   failures.push('Precision must not be selected by a global depth threshold.');

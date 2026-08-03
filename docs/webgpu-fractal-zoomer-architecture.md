@@ -18,16 +18,20 @@ The renderer is a persistent numerical tile field viewed through a continuously 
 2. Presentation runs independently at display cadence.
 3. Numerical state belongs to exact dyadic world-space tiles, not viewport frames.
 4. Camera movement reprojects accepted tile samples for presentation without pretending that colour reprojection is numerical persistence.
-5. Iteration-cap results remain provisional during navigation unless a numerically suitable pipeline reaches the settled target.
-6. Recurrence state, numerical results, colour data and quality metadata are separate resources.
-7. GPU work is bounded, coalesced and batched; obsolete requests are abandoned at batch boundaries.
-8. Precision is selected from coordinate distinguishability, iteration demand and measured tile health, never one global zoom threshold.
-9. Deep rendering uses local reference groups and local repair; no single reference decides the whole viewport.
-10. Moving, settling and settled states advance the same cached tile population.
+5. Spatial resolution and iteration depth are independent refinement axes.
+6. Iteration-cap results remain provisional during navigation unless a numerically suitable pipeline reaches the settled target.
+7. Recurrence state, numerical results, colour data and quality metadata are separate resources.
+8. GPU work is bounded, coalesced and batched; obsolete requests are abandoned at batch boundaries.
+9. Interaction state controls scheduling latency and priority, not a global numerical iteration ceiling.
+10. Precision is selected from coordinate distinguishability, iteration demand and measured tile health, never one global zoom threshold.
+11. Deep rendering uses local reference groups and genuinely tile-local repair; no single reference decides the whole viewport.
+12. Moving, settling and settled states advance the same cached tile population.
+13. A stopped view must converge to an authoritative lattice whose sample pitch is no larger than one display pixel.
+14. Provisional coverage may improve navigation but must never be counted as numerical convergence.
 
 ## 1.0.0 — greenfield presentation prototype
 
-1.0.0 established the new product, exact camera, explicit interaction states, independent display-rate presentation and adaptive direct rendering. Its browser tests also exposed an important architectural error: the persistent object was reprojected colour rather than numerical state. That implementation remains valuable as a prototype but is superseded by 1.1.0 and 1.2.0.
+1.0.0 established the new product, exact camera, explicit interaction states, independent display-rate presentation and adaptive direct rendering. Its browser tests also exposed an important architectural error: the persistent object was reprojected colour rather than numerical state. That implementation remains valuable as a prototype but is superseded by later stages.
 
 ## 1.1.0 — persistent numerical tiles
 
@@ -42,39 +46,59 @@ Implemented foundations:
 - focus-prioritised active-tile work queues;
 - bounded tile cache with coarse and fine levels coexisting;
 - accepted-sample coverage controls composition instead of colour brightness;
-- separate numerical-freshness and presentation-history telemetry;
-- no static full-viewport 8×8 → 4×4 → 2×2 → 1×1 restart ladder.
+- separate numerical-freshness and presentation-history telemetry.
 
-Active-pixel compaction and indirect dispatch remain performance work for a later stage; the numerical state model no longer depends on them for correctness.
+The 1.1 implementation proved the numerical state model, but its production scheduler still selected one lattice per interaction state and retained too much host synchronisation.
 
 ## 1.2.0 — local deep perturbation
 
-Implemented deep path:
+Implemented deep-path components:
 
-- persistent high-precision reference worker and GPU orbit cache;
+- persistent high-precision reference workers and GPU orbit cache;
 - references shared by small local tile groups rather than the whole viewport;
+- finite short and escaped references admitted as useful local segments;
 - four-limb reference-orbit representation;
 - specialised direct and perturbation compute pipelines;
-- direct work is bounded conservatively while a local reference is pending;
-- full-length reference admission before a tile enters perturbation mode;
+- direct work bounded conservatively while a local reference is pending;
 - per-pixel perturbation continuation across bounded chunks;
 - cancellation-glitch, orbit-exhaustion and non-finite health signals;
-- alternate local reference candidates and bounded repair passes;
+- alternate reference candidates and bounded repair passes;
 - repair resets unresolved pixels while preserving accepted escaped/interior samples;
 - weak or failed references affect only their local tiles;
 - no depth-triggered viewport-wide direct/perturbation transition.
 
-## 1.3.0 — deep acceleration and verification
+The 1.2 browser traces exposed that the scheduler—not only the arithmetic—was preventing these components from operating as one coherent field: global moving iteration caps, one-lattice requests, tiny synchronised batches, an undersampled settled lattice and group-scoped repair all violated the governing model.
+
+## 1.3.0 — progressive spatial and iteration field
+
+1.3.0 is the architectural completion of the interactive field scheduler:
+
+- one stable numerical resolution target across moving, settling and settled states;
+- an explicit persistent lattice pyramid, with coarse coverage followed by intermediate and authoritative pixel-level tiles;
+- no global moving or settling iteration ceiling;
+- every tile retains the user iteration target and advances through bounded chunks as compute time permits;
+- provisional coarse and moving iteration-cap coverage is publishable without being counted as convergence;
+- adaptive multi-tile GPU quanta replace fixed four-tile request bursts;
+- scheduler yields occur between bounded quanta rather than after every logical tile decision;
+- the authoritative level-zero lattice uses a sample pitch no larger than one display pixel;
+- nearest sampling presents the finest accepted lattice without a final linear-filter blur;
+- initial references remain amortised over small groups, while repair references are tile-local;
+- reference working precision is raised from coordinate/scale demand rather than inherited blindly from the camera storage width;
+- WebGPU resource creation is guarded by validation scopes, and host/shader uniform layouts are CI invariants.
+
+Per-batch diagnostic readback remains temporarily present in 1.3.0. It is amortised over larger adaptive batches; GPU-resident active compaction and indirect continuation remain a measured optimisation rather than a prerequisite for correctness.
+
+## 1.4.0 — deep acceleration and verification
 
 Planned:
 
 - arbitrary-precision Wasm reference engine;
-- dynamic reference precision;
 - series approximation with conservative remainder bounds;
-- scaled perturbation where ordinary deltas approach exponent limits;
+- true scaled perturbation where ordinary deltas approach exponent limits;
 - experimental BLA with exact fallback;
 - deterministic high-precision sentinel validation;
 - active-pixel compaction and indirect dispatch where profiling demonstrates a win;
+- GPU-resident health reduction that removes ordinary per-batch host readback;
 - device-profile tuning and sustained mobile thermal telemetry.
 
 ## Admission policy for earlier work
