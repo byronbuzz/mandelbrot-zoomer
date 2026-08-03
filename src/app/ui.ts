@@ -1,3 +1,4 @@
+
 import { APP_NAME, BUILD_LABEL } from './build';
 
 export type AppUi = Readonly<{
@@ -42,8 +43,8 @@ export function createUi(root: HTMLElement): AppUi {
           <button id="panel-close" class="close-button" type="button" aria-label="Close controls">×</button>
         </div>
         <section class="control-section">
-          <label>Zoom speed <input id="speed" type="range" min="0.25" max="5" step="0.05" value="1.5"></label>
-          <label>Iteration target <input id="iterations" type="range" min="100" max="12000" step="100" value="500"></label>
+          <label>Zoom speed <input id="speed" type="range" min="0.25" max="5" step="0.05" value="0.7"></label>
+          <label>Iteration target <input id="iterations" type="range" min="100" max="12000" step="100" value="5000"></label>
           <label>Palette phase <input id="palette" type="range" min="0" max="1" step="0.01" value="0.08"></label>
           <div class="button-row">
             <button id="reset-location" type="button">Reset location</button>
