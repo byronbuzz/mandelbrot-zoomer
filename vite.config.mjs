@@ -7,5 +7,5 @@ export default defineConfig({
   define: {
     __BUILD_SHA__: JSON.stringify(buildSha)
   },
-  build: { target: 'es2022', sourcemap: true },
+  build: { target: 'es2022', sourcemap: true }
 });
