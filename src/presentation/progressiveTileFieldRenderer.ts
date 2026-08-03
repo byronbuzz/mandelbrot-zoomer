@@ -443,4 +443,1589 @@ export class TileFieldRenderer {
   }
 
   onDeviceError(listener: (message: string) => void): void {
-    this.device.addEventListener('uncapturederror', (event: GPUUnca×ùÞÚ$z{-®éÜj×u&VfW&Væ6S¢çVÆÂÀ¢VæF–æu&W6WC¢çVÆÂÀ¢&VfW&Væ6TW'&÷#¢çVÆÂÀ¢&W—%73¢À¢&VfW&Væ6UF&vWC¢À¢&VfW&Væ6TFVÖæDWö6ƒ¢À¢&VfW&Væ6U&WV—&VEG&ç7÷'D&—G3¢&WV—&VE&VfW&Væ6UG&ç7÷'D&—G2†FW67&—F÷"ç6×ÆTW‡öæVçB¢Ó°¢Ð ¢&—fFR7&VFU&W6VçDw&÷W€¢Væ–f÷&Ó¢uT'VffW"À¢6öÆ÷W%FW‡GW&S¢uUFW‡GW&RÀ¢VÆ—G•FW‡GW&S¢uUFW‡GW&RÀ¢6×ÆW#¢uU6×ÆW ¢“¢uT&–æDw&÷W°¢&WGW&âF†—2æFWf–6Ræ7&VFT&–æDw&÷W‡°¢Æ–÷WC¢F†—2ç&W6VçE—VÆ–æRævWD&–æDw&÷WÆ–÷WBƒ’À¢VçG&–W3¢°¢²&–æF–æs¢Â&W6÷W&6S¢²'VffW#¢Væ–f÷&ÒÒÒÀ¢²&–æF–æs¢Â&W6÷W&6S¢6×ÆW"ÒÀ¢²&–æF–æs¢"Â&W6÷W&6S¢6öÆ÷W%FW‡GW&Ræ7&VFUf–Wr‚’ÒÀ¢²&–æF–æs¢2Â&W6÷W&6S¢VÆ—G•FW‡GW&Ræ7&VFUf–Wr‚’Ð¢Ð¢Ò“°¢Ð ¢&—fFR7&VFUW'GW&$w&÷W‡F–ÆS¢f–VÆEF–ÆRÂ&VfW&Væ6S¢F–ÆTwU&VfW&Væ6R“¢uT&–æDw&÷W°¢&WGW&âF†—2æFWf–6Ræ7&VFT&–æDw&÷W‡°¢Æ–÷WC¢F†—2çW'GW&%—VÆ–æRævWD&–æDw&÷WÆ–÷WBƒ’À¢VçG&–W3¢°¢²&–æF–æs¢Â&W6÷W&6S¢²'VffW#¢F–ÆRçW'GW&%Væ–f÷&ÒÒÒÀ¢²&–æF–æs¢Â&W6÷W&6S¢²'VffW#¢F–ÆRç7FFT'VffW"ÒÒÀ¢²&–æF–æs¢"Â&W6÷W&6S¢²'VffW#¢F–ÆRæÖWF'VffW"ÒÒÀ¢²&–æF–æs¢2Â&W6÷W&6S¢F–ÆRç&W7VÇEFW‡GW&Ræ7&VFUf–Wr‚’ÒÀ¢²&–æF–æs¢BÂ&W6÷W&6S¢F–ÆRçVÆ—G•FW‡GW&Ræ7&VFUf–Wr‚’ÒÀ¢²&–æF–æs¢RÂ&W6÷W&6S¢²'VffW#¢F–ÆRæ6÷VçFW$'VffW"ÒÒÀ¢²&–æF–æs¢bÂ&W6÷W&6S¢²'VffW#¢&VfW&Væ6Ræ'VffW"ÒÐ¢Ð¢Ò“°¢Ð ¢&—fFR7V&Ö—D&F6‚€¢&F6ƒ¢&VFöæÇ’66†VGVÆVEv÷&µµÒÀ¢&WVW7C¢W'6—7FVçEF–ÆU&WVW7@¢“¢VæF–æt&F6‚°¢6öç7B¶W—2ÒæWr6WB†&F6‚æÖ‡66†VGVÆVBÓâ66†VGVÆVBçF–ÆRæFW67&—F÷"æ¶W’’“°¢–b†¶W—2ç6—¦RÓÒ&F6‚æÆVæwF‚’F‡&÷ræWrW'&÷"‚tF–ÆRv266†VGVÆVBGv–6R–âöæRuR&F6‚r“°¢f÷"†6öç7BVæF–æröbF†—2çVæF–æt&F6†W2’°¢–b‡VæF–æræ&F6‚ç6öÖR‡66†VGVÆVBÓâ¶W—2æ†2‡66†VGVÆVBçF–ÆRæFW67&—F÷"æ¶W’’’’°¢F‡&÷ræWrW'&÷"‚tF–ÆRÇ&VG’†2â–âÖfÆ–v‡BuR×WFF–öâr“°¢Ð¢Ð¢6öç7B6Æ÷BÒF†—2ç&VF&6µ6Æ÷G2æf–æB†6æF–FFRÓâ6æF–FFRæ'W7’“°¢–b‚6Æ÷B’F‡&÷ræWrW'&÷"‚t6÷VçFW"&VF&6²&–ærW††W7FVBr“°¢6Æ÷Bæ'W7’ÒG'VS°¢f÷"†6öç7B66†VGVÆVBöb&F6‚’°¢6öç7BF–ÆRÒ66†VGVÆVBçF–ÆS°¢–b‡F–ÆRæçVÖW&–6ÄÖöFRÓÓÒwW'GW&&F–öâr’°¢F†—2æFWf–6RçVWVRçw&—FT'VffW"€¢F–ÆRçW'GW&%Væ–f÷&ÒÀ¢À¢F†—2æ7&VFUW'GW&%&ÖWFW$FF‡66†VGVÆVB¢“°¢ÒVÇ6R°¢F†—2æFWf–6RçVWVRçw&—FT'VffW"€¢F–ÆRæF—&V7EVæ–f÷&ÒÀ¢À¢F†—2æ7&VFTF—&V7E&ÖWFW$FF‡66†VGVÆVB¢“°¢Ð¢F†—2æFWf–6RçVWVRçw&—FT'VffW"€¢F–ÆRæ6öÆ÷W%Væ–f÷&ÒÀ¢À¢F†—2æ7&VFT6öÆ÷W%&ÖWFW$FF‡66†VGVÆVBÂ&WVW7BçÆWGFU†6R¢“°¢Ð ¢6öç7BVæ6öFW"ÒF†—2æFWf–6Ræ7&VFT6öÖÖæDVæ6öFW"‚“°¢Væ6öFW"æ6ÆV$'VffW"‡6Æ÷Bæ'VffW"“°¢f÷"†ÆWB&F6„–æFW‚Ò²&F6„–æFW‚Â&F6‚æÆVæwFƒ²&F6„–æFW‚²²’°¢6öç7B66†VGVÆVBÒ&F6…¶&F6„–æFW…Ó°¢6öç7BF–ÆRÒ66†VGVÆVBçF–ÆS°¢–b‡F†—2ç&WV—&W4çVÖW&–6ÄF—7F6‚‡66†VGVÆVB’’°¢Væ6öFW"æ6ÆV$'VffW"‡F–ÆRæ6÷VçFW$'VffW"“°¢6öç7B—FW&F–öå72ÒVæ6öFW"æ&Vv–ä6ö×WFU72‚“°¢–b‡F–ÆRæçVÖW&–6ÄÖöFRÓÓÒwW'GW&&F–öâr’°¢–b‚F–ÆRçW'GW&$w&÷W’F‡&÷ræWrW'&÷"†Ö—76–ærW'GW&&F–öâ&–æBw&÷Wf÷"G·F–ÆRæFW67&—F÷"æ¶W—Ö“°¢—FW&F–öå72ç6WE—VÆ–æR‡F†—2çW'GW&%—VÆ–æR“°¢—FW&F–öå72ç6WD&–æDw&÷WƒÂF–ÆRçW'GW&$w&÷W“°¢ÒVÇ6R°¢—FW&F–öå72ç6WE—VÆ–æR‡F†—2æF—&V7E—VÆ–æR“°¢—FW&F–öå72ç6WD&–æDw&÷WƒÂF–ÆRæF—&V7Dw&÷W“°¢Ð¢—FW&F–öå72æF—7F6…v÷&¶w&÷W2€¢ÖF‚æ6V–Â…U%4•5DTåEõD”ÄUõ4•¤Rò‚’À¢ÖF‚æ6V–Â…U%4•5DTåEõD”ÄUõ4•¤Rò‚¢“°¢—FW&F–öå72æVæB‚“°¢Ð ¢6öç7B6öÆ÷W%72ÒVæ6öFW"æ&Vv–ä6ö×WFU72‚“°¢6öÆ÷W%72ç6WE—VÆ–æR‡F†—2æ6öÆ÷W%—VÆ–æR“°¢6öÆ÷W%72ç6WD&–æDw&÷WƒÂF–ÆRæ6öÆ÷W$w&÷W“°¢6öÆ÷W%72æF—7F6…v÷&¶w&÷W2€¢ÖF‚æ6V–Â…U%4•5DTåEõD”ÄUõ4•¤Rò‚’À¢ÖF‚æ6V–Â…U%4•5DTåEõD”ÄUõ4•¤Rò‚¢“°¢6öÆ÷W%72æVæB‚“°¢–b‡F†—2ç&WV—&W4çVÖW&–6ÄF—7F6‚‡66†VGVÆVB’’°¢Væ6öFW"æ6÷”'VffW%Fô'VffW"€¢F–ÆRæ6÷VçFW$'VffW"À¢À¢6Æ÷Bæ'VffW"À¢&F6„–æFW‚¢4õTåDU%õ$TD$4µõ5E$”DRÀ¢4õTåDU%ô%•DU0¢“°¢Ð¢Ð¢6öç7B7V&Ö—GFVDBÒW&f÷&Öæ6Rææ÷r‚“°¢F†—2æFWf–6RçVWVRç7V&Ö—B…¶Væ6öFW"æf–æ—6‚‚•Ò“°¢f÷"†6öç7B66†VGVÆVBöb&F6‚’°¢–b‡66†VGVÆVBçF–ÆRæFÆ56Æ÷B’66†VGVÆVBçF–ÆRæFÆ4æVVG46ÆV"ÒfÇ6S°¢Ð¢6öç7B6ö×ÆWFVBÒ6Æ÷Bæ'VffW"æÖ7–æ2„uTÖÖöFRå$TB’çF†Vâ‚‚’Óâ°¢6öç7BÖVBÒæWrV–çC3$'&’‡6Æ÷Bæ'VffW"ævWDÖVE&ævR‚’“°¢6öç7B†VÇF‚Ò&F6‚æfÆDÖ‚‡66†VGVÆVBÂ&F6„–æFW‚’Óâ°¢–b‚F†—2ç&WV—&W4çVÖW&–6ÄF—7F6‚‡66†VGVÆVB’’&WGW&âµÓ°¢6öç7Böfg6WBÒ&F6„–æFW‚¢„4õTåDU%õ$TD$4µõ5E$”DRòV–çC3$'&’ä%•DU5õU%ôTÄTÔTåB“°¢&WGW&â·°¢66†VGVÆVBÀ¢fÇVS¢°¢7F—fU—†VÇ3¢ÖVE¶öfg6WEÒóòÀ¢W66VE—†VÇ3¢ÖVE¶öfg6WB²ÒóòÀ¢æÇ—F–4–çFW&–÷%—†VÇ3¢ÖVE¶öfg6WB²%ÒóòÀ¢6VE—†VÇ3¢ÖVE¶öfg6WB²5ÒóòÀ¢æöäf–æ—FU—†VÇ3¢ÖVE¶öfg6WB²EÒóòÀ¢vÆ—F6…—†VÇ3¢ÖVE¶öfg6WB²UÒóòÀ¢÷&&—DW††W7FVE—†VÇ3¢ÖVE¶öfg6WB²eÒóò ¢Ð¢ÕÓ°¢Ò“°¢6Æ÷Bæ'VffW"çVæÖ‚“°¢&WGW&â²6ö×ÆWFVDC¢W&f÷&Öæ6Rææ÷r‚’Â†VÇF‚Ó°¢Ò“°¢F†—2ç7V&Ö—GFVD6‡Væ·2³Ò&F6‚æÆVæwFƒ°¢F†—2æFÆ5V&Æ–6F–öç2³ÒF†—2æ66WFVDFÆ2ò&F6‚æÆVæwF‚¢°¢F†—2æfö–FVDFÆ46÷–W2³ÒF†—2æ66WFVDFÆ2ò&F6‚æÆVæwF‚¢2¢°¢&WGW&â²&F6‚Â&WVW7BÂ7V&Ö—GFVDBÂ6Æ÷BÂ6ö×ÆWFVBÓ°¢Ð ¢&—fFR&WV—&W4çVÖW&–6ÄF—7F6‚‡66†VGVÆVC¢66†VGVÆVEv÷&²“¢&ööÆVâ°¢&WGW&â66†VGVÆVBçv÷&²æ6‡Væ´—FW&F–öç2â ¢ÇÂ66†VGVÆVBæ6ÖöFRâ66†VGVÆVBçF–ÆRæ6&W6VçFF–öäÖöFS°¢Ð ¢&—fFR7&VFTF—&V7E&ÖWFW$FF‡66†VGVÆVC¢66†VGVÆVEv÷&²“¢'&”'VffW"°¢6öç7BFFÒæWr'&”'VffW"„D•$T5Eõ$ÔUDU%ô%•DU2“°¢6öç7BfÆöG2ÒæWrfÆöC3$'&’†FF“°¢6öç7BVç6–væVBÒæWrV–çC3$'&’†FF“°¢6öç7B6–væVBÒæWr–çC3$'&’†FF“°¢6öç7BF–ÆRÒ66†VGVÆVBçF–ÆS°¢6öç7B¶6VçFW%„†’Â6VçFW%„ÆõÒÒf—†VE7Æ—Dc3"‡F–ÆRæFW67&—F÷"æ6VçFW%‚“°¢6öç7B¶6VçFW%”†’Â6VçFW%”ÆõÒÒf—†VE7Æ—Dc3"‡F–ÆRæFW67&—F÷"æ6VçFW%’“°¢fÆöG5³ÒÒ6VçFW%„†“°¢fÆöG5³ÒÒ6VçFW%„Æó°¢fÆöG5³%ÒÒ6VçFW%”†“°¢fÆöG5³5ÒÒ6VçFW%”Æó°¢6–væVE³EÒÒF–ÆRæFW67&—F÷"ç6×ÆTW‡öæVçC°¢Vç6–væVE³UÒÒU%4•5DTåEõD”ÄUõ4•¤S°¢Vç6–væVE³eÒÒ66†VGVÆVBç66†VGVÆVDVæC°¢Vç6–væVE³uÒÒ66†VGVÆVBçv÷&²æ6‡Væ´—FW&F–öç3°¢Vç6–væVE³…ÒÒF–ÆRæF—&V7DÖöFS°¢Vç6–væVE³•ÒÒ66†VGVÆVBæ6ÖöFS°¢&WGW&âFF°¢Ð ¢&—fFR7&VFUW'GW&%&ÖWFW$FF‡66†VGVÆVC¢66†VGVÆVEv÷&²“¢'&”'VffW"°¢6öç7BF–ÆRÒ66†VGVÆVBçF–ÆS°¢6öç7B&VfW&Væ6RÒF–ÆRç&VfW&Væ6S°¢–b‚&VfW&Væ6R’F‡&÷ræWrW'&÷"†Ö—76–ærF–ÆR&VfW&Væ6Rf÷"G·F–ÆRæFW67&—F÷"æ¶W—Ö“°¢6öç7BFFÒæWr'&”'VffW"…U%EU$%õ$ÔUDU%ô%•DU2“°¢6öç7BfÆöG2ÒæWrfÆöC3$'&’†FF“°¢6öç7BVç6–væVBÒæWrV–çC3$'&’†FF“°¢6öç7B6–væVBÒæWr–çC3$'&’†FF“°¢6öç7B¶6VçFW%„†’Â6VçFW%„ÆõÒÒf—†VE7Æ—Dc3"‡F–ÆRæFW67&—F÷"æ6VçFW%‚“°¢6öç7B¶6VçFW%”†’Â6VçFW%”ÆõÒÒf—†VE7Æ—Dc3"‡F–ÆRæFW67&—F÷"æ6VçFW%’“°¢6öç7B¶FVÇF„†’ÂFVÇF„ÆõÒÒf—†VE7Æ—Dc3"†f—†VE7V"‡F–ÆRæFW67&—F÷"æ6VçFW%‚Â&VfW&Væ6Ræ6VçFW%‚’“°¢6öç7B¶FVÇF”†’ÂFVÇF”ÆõÒÒf—†VE7Æ—Dc3"†f—†VE7V"‡F–ÆRæFW67&—F÷"æ6VçFW%’Â&VfW&Væ6Ræ6VçFW%’’“°¢fÆöG5³ÒÒ6VçFW%„†“°¢fÆöG5³ÒÒ6VçFW%„Æó°¢fÆöG5³%ÒÒ6VçFW%”†“°¢fÆöG5³5ÒÒ6VçFW%”Æó°¢fÆöG5³EÒÒFVÇF„†“°¢fÆöG5³UÒÒFVÇF„Æó°¢fÆöG5³eÒÒFVÇF”†“°¢fÆöG5³uÒÒFVÇF”Æó°¢6–væVE³…ÒÒF–ÆRæFW67&—F÷"ç6×ÆTW‡öæVçC°¢Vç6–væVE³•ÒÒU%4•5DTåEõD”ÄUõ4•¤S°¢Vç6–væVE³ÒÒ66†VGVÆVBç66†VGVÆVDVæC°¢Vç6–væVE³ÒÒ66†VGVÆVBçv÷&²æ6‡Væ´—FW&F–öç3°¢Vç6–væVE³%ÒÒ&VfW&Væ6RæÆVæwFƒ°¢Vç6–væVE³5ÒÒ66†VGVÆVBæ6ÖöFS°¢Vç6–væVE³EÒÒ&VfW&Væ6Ræ&—G3°¢Vç6–væVE³UÒÒF–ÆRç&W—%73°¢fÆöG5³eÒÒtÄ•D4…õ$D”ó°¢&WGW&âFF°¢Ð ¢&—fFR7&VFT6öÆ÷W%&ÖWFW$FF€¢66†VGVÆVC¢66†VGVÆVEv÷&²À¢ÆWGFU†6S¢çVÖ&W ¢“¢'&”'VffW"°¢6öç7BFFÒæWr'&”'VffW"„4ôÄõU%õ$ÔUDU%ô%•DU2“°¢6öç7BVç6–væVBÒæWrV–çC3$'&’†FF“°¢6öç7BfÆöG2ÒæWrfÆöC3$'&’†FF“°¢Vç6–væVE³ÒÒU%4•5DTåEõD”ÄUõ4•¤S°¢–b‡F†—2æ66WFVDFÆ2bb66†VGVÆVBçF–ÆRæFÆ56Æ÷B’°¢Vç6–væVE³ÒÒÖF‚æ'2‡66†VGVÆVBçF–ÆRçÆWGFU†6RÒÆWGFU†6R’âRÓbò¢°¢Vç6–væVE³%ÒÒ66†VGVÆVBçF–ÆRæ—FW&F–öäg&öçF–W#°¢6öç7Bf÷&6T6V&Æ–6F–öâÒ66†VGVÆVBæ6ÖöFRâ66†VGVÆVBçF–ÆRæ6&W6VçFF–öäÖöFS°¢Vç6–væVE³5ÒÒ†f÷&6T6V&Æ–6F–öâò¢’Â‡66†VGVÆVBçF–ÆRæFÆ4æVVG46ÆV"ò"¢“°¢Vç6–væVE³EÒÒ66†VGVÆVBçF–ÆRæFÆ56Æ÷Bçƒ°¢Vç6–væVE³UÒÒ66†VGVÆVBçF–ÆRæFÆ56Æ÷Bç“°¢fÆöG5³eÒÒÆWGFU†6S°¢fÆöG5³uÒÒÄUEDUôÄTäuDƒ°¢ÒVÇ6R°¢fÆöG5³%ÒÒÆWGFU†6S°¢fÆöG5³5ÒÒÄUEDUôÄTäuDƒ°¢Ð¢&WGW&âFF°¢Ð ¢&—fFR&VæFW$†V–v‡B€¢775v–GFƒ¢çVÖ&W"À¢774†V–v‡C¢çVÖ&W"À¢FWf–6U—†VÅ&F–ó¢çVÖ&W ¢“¢çVÖ&W"°¢6öç7BG"Ò6Æ×†FWf–6U—†VÅ&F–òÂÂ"“°¢6öç7B&WVW7FVEv–GF‚ÒÖF‚æÖ‚ƒÂ775v–GF‚¢G"“°¢6öç7B&WVW7FVD†V–v‡BÒÖF‚æÖ‚ƒÂ774†V–v‡B¢G"“°¢6öç7B66ÆRÒÖF‚æÖ–âƒÂÖF‚ç7'B„Ô…ôåTÔU$”4Åõ•„TÅ2ò‡&WVW7FVEv–GF‚¢&WVW7FVD†V–v‡B’’“°¢&WGW&âÖF‚æÖ‚ƒÂÖF‚æfÆö÷"‡&WVW7FVD†V–v‡B¢66ÆR’“°¢Ð ¢&—fFR7–æ2v—EFW7D&F6…W&Ö—B‚“¢&öÖ—6SÆ&ööÆVãâ°¢v†–ÆR‡F†—2çFW7E66†VGVÆW%W6V@¢bbF†—2çFW7D&F6…W&Ö—G2ÃÒ ¢bbF†—2æFV@¢bbF†—2ç7W7VæFV@¢bbF†—2æÆFW7E&WVW7B’°¢v—BæWr&öÖ—6SÇfö–Câ‡&W6öÇfRÓâF†—2çFW7DvFUv—FW'2çW6‚‡&W6öÇfR’“°¢Ð¢–b‡F†—2çFW7E66†VGVÆW%W6VBbbF†—2çFW7D&F6…W&Ö—G2â’°¢F†—2çFW7D&F6…W&Ö—G2ÒÓ°¢&WGW&âG'VS°¢Ð¢&WGW&âfÇ6S°¢Ð ¢&—fFRæ÷FUFW7D&F6„6ö×ÆWFVB‡&WVW7D–C¢çVÖ&W"“¢fö–B°¢F†—2çFW7D&F6…&Wf—6–öâ²³°¢6öç7B&WVW7D&F6„6÷VçBÒ‡F†—2çFW7E&WVW7D&F6„6÷VçG2ævWB‡&WVW7D–B’óò’²°¢F†—2çFW7E&WVW7D&F6„6÷VçG2ç6WB‡&WVW7D–BÂ&WVW7D&F6„6÷VçB“°¢6öç7B&VG’ÒF†—2çFW7D&F6…v—FW'2æf–ÇFW"€¢v—FW"Óâv—FW"ç&WVW7D–BÓÓÒ&WVW7D–Bbbv—FW"çF&vWD6÷VçBÃÒ&WVW7D&F6„6÷Vç@¢“°¢F†—2çFW7D&F6…v—FW'2ÒF†—2çFW7D&F6…v—FW'2æf–ÇFW"‡v—FW"Óâ&VG’æ–æ6ÇVFW2‡v—FW"’“°¢f÷"†6öç7Bv—FW"öb&VG’’v—FW"ç&W6öÇfR‡°¢&F6…&Wf—6–öã¢F†—2çFW7D&F6…&Wf—6–öâÀ¢&WVW7D–BÀ¢&WVW7D&F6„6÷Vç@¢Ò“°¢Ð ¢&—fFRVçGVÔ'VFvWB†–çFW&7F–öã¢W'6—7FVçEF–ÆU&WVW7E²v–çFW&7F–öâuÒ“¢çVÖ&W"°¢&WGW&â–çFW&7F–öâÓÓÒvÖ÷f–ærp¢òÔõd”äuõTåETÕôÕ0¢¢–çFW&7F–öâÓÓÒw6WGFÆ–ærrò4UEDÄ”äuõTåETÕôÕ2¢4UEDÄTEõTåETÕôÕ3°¢Ð ¢&—fFR&F6…F&vWB†–çFW&7F–öã¢W'6—7FVçEF–ÆU&WVW7E²v–çFW&7F–öâuÒ“¢çVÖ&W"°¢&WGW&â–çFW&7F–öâÓÓÒvÖ÷f–ærp¢òÔõd”äuô$D4…õD$tUEôÕ0¢¢–çFW&7F–öâÓÓÒw6WGFÆ–ærrò4UEDÄ”äuô$D4…õD$tUEôÕ2¢4UEDÄTEô$D4…õD$tUEôÕ3°¢Ð ¢&—fFRFD&F6…6—¦R€¢–çFW&7F–öã¢W'6—7FVçEF–ÆU&WVW7E²v–çFW&7F–öâuÒÀ¢VÆ6VD×3¢çVÖ&W ¢“¢fö–B°¢6öç7BF&vWBÒF†—2æ&F6…F&vWB†–çFW&7F–öâ“°¢6öç7B&F–òÒ6Æ×‡F&vWBòÖF‚æÖ‚ƒã#RÂVÆ6VD×2’ÂãbÂãR“°¢F†—2æFF—fT&F6…F–ÆW2ÒÖF‚ç&÷VæB†6Æ×€¢F†—2æFF—fT&F6…F–ÆW2¢&F–òÀ¢Ô”åô$D4…õD”ÄU2À¢Ô…ô$D4…õD”ÄU0¢’“°¢Ð ¢&—fFR†46ö×ÆWFT6†–ÆG&Vâ‡F–ÆS¢f–VÆEF–ÆR“¢&ööÆVâ°¢6öç7B6†–ÆDW‡öæVçBÒF–ÆRæFW67&—F÷"ç6×ÆTW‡öæVçBÒ°¢6öç7B&6U‚ÒF–ÆRæFW67&—F÷"çF–ÆU‚¢&ã°¢6öç7B&6U’ÒF–ÆRæFW67&—F÷"çF–ÆU’¢&ã°¢f÷"†ÆWB’Òã²’Â&ã²’²²’°¢f÷"†ÆWB‚Òã²‚Â&ã²‚²²’°¢6öç7B¶W“¢W'6—7FVçEF–ÆT¶W’ÒG¶6†–ÆDW‡öæVçGÓ¢G²†&6U‚²‚’çFõ7G&–ær‚—Ó¢G²†&6U’²’’çFõ7G&–ær‚—Ö°¢6öç7B6†–ÆBÒF†—2çF–ÆTÖævWB†¶W’“°¢–b‚6†–ÆBÇÂ6†–ÆBæ6÷fW&vU—†VÇ2ÂD”ÄUõ•„TÅô4õTåB’&WGW&âfÇ6S°¢Ð¢Ð¢&WGW&âG'VS°¢Ð ¢&—fFRF–ÆUG&ç6f÷&Ò€¢F–ÆS¢f–VÆEF–ÆRÀ¢F&vWD6ÖW&¢6ÖW&6æ6†÷BÀ¢7V7C¢çVÖ&W ¢“¢²66ÆUƒ¢çVÖ&W#²66ÆU“¢çVÖ&W#²öfg6WEƒ¢çVÖ&W#²öfg6WE“¢çVÖ&W"ÒÂçVÆÂ°¢6öç7B7äW‡öæVçBÒF–ÆU7äW‡öæVçB‡F–ÆRæFW67&—F÷"ç6×ÆTW‡öæVçB“°¢6öç7B66ÆU’Ò66ÆT÷fW$G–F–2‡F&vWD6ÖW&ç66ÆRÂ7äW‡öæVçB“°¢6öç7BG&ç6f÷&ÒÒ6µG&ç6f÷&Ò‡°¢66ÆUƒ¢66ÆU’¢7V7BÀ¢66ÆU’À¢öfg6WEƒ¢f—†VDF–ffW&Væ6T÷fW$G–F–2‡F&vWD6ÖW&æ6VçFW%‚ÂF–ÆRæFW67&—F÷"æ6VçFW%‚Â7äW‡öæVçB’À¢öfg6WE“¢f—†VDF–ffW&Væ6T÷fW$G–F–2‡F&vWD6ÖW&æ6VçFW%’ÂF–ÆRæFW67&—F÷"æ6VçFW%’Â7äW‡öæVçB¢Ò“°¢&WGW&âG&ç6f÷&Ô—4f–æ—FR‡G&ç6f÷&Ò’òG&ç6f÷&Ò¢çVÆÃ°¢Ð ¢&—fFRWf–7D6öÆEF–ÆW2‚“¢fö–B°¢6öç7B66†UF&vWBÒÖF‚æÖ‚€¢Ô…ô44„TEõD”ÄU2À¢F†—2æ7W'&VçEf—6–&ÆT¶W—2ç6—¦R²44„Uô„•5Dõ%•õD”ÄUõ$U4U%dP¢“°¢–b‡F†—2çF–ÆTÖç6—¦RÃÒ66†UF&vWB’&WGW&ã°¢6öç7B6æF–FFW2Ò²ââçF†—2çF–ÆTÖçfÇVW2‚•Ð¢æf–ÇFW"‡F–ÆRÓâF†—2æ7W'&VçEf—6–&ÆT¶W—2æ†2‡F–ÆRæFW67&—F÷"æ¶W’’¢ç6÷'B‚†ÆVgBÂ&–v‡B’ÓâÆVgBæÆ7Ef—6–&ÆTBÒ&–v‡BæÆ7Ef—6–&ÆTB“°¢v†–ÆR‡F†—2çF–ÆTÖç6—¦Râ66†UF&vWBbb6æF–FFW2æÆVæwF‚â’°¢6öç7BF–ÆRÒ6æF–FFW2ç6†–gB‚“°¢–b‚F–ÆR’'&V³°¢F†—2çF–ÆTÖæFVÆWFR‡F–ÆRæFW67&—F÷"æ¶W’“°¢F†—2æFW7G&÷•F–ÆR‡F–ÆR“°¢Ð¢Ð ¢&—fFRWf–7DöæT6öÆEF–ÆR‚“¢&ööÆVâ°¢6öç7BF–ÆRÒ²ââçF†—2çF–ÆTÖçfÇVW2‚•Ð¢æf–ÇFW"†6æF–FFRÓâF†—2æ7W'&VçEf—6–&ÆT¶W—2æ†2†6æF–FFRæFW67&—F÷"æ¶W’’¢ç6÷'B‚†ÆVgBÂ&–v‡B’ÓâÆVgBæÆ7Ef—6–&ÆTBÒ&–v‡BæÆ7Ef—6–&ÆTB•³Ó°¢–b‚F–ÆR’&WGW&âfÇ6S°¢F†—2çF–ÆTÖæFVÆWFR‡F–ÆRæFW67&—F÷"æ¶W’“°¢F†—2æFW7G&÷•F–ÆR‡F–ÆR“°¢&WGW&âG'VS°¢Ð ¢&—fFRFW7G&÷•F–ÆR‡F–ÆS¢f–VÆEF–ÆR“¢fö–B°¢–b‡F†—2æ66WFVDFÆ2bbF–ÆRæFÆ56Æ÷B’F†—2æ66WFVDFÆ2ç&VÆV6R‡F–ÆRæFÆ56Æ÷B“°¢F–ÆRç7FFT'VffW"æFW7G&÷’‚“°¢F–ÆRæÖWF'VffW"æFW7G&÷’‚“°¢F–ÆRæ6÷VçFW$'VffW"æFW7G&÷’‚“°¢F–ÆRç&W7VÇEFW‡GW&RæFW7G&÷’‚“°¢F–ÆRçVÆ—G•FW‡GW&RæFW7G&÷’‚“°¢F–ÆRæ6öÆ÷W%FW‡GW&RæFW7G&÷’‚“°¢F–ÆRæWf–FVæ6UFW‡GW&RæFW7G&÷’‚“°¢F–ÆRæF—&V7EVæ–f÷&ÒæFW7G&÷’‚“°¢F–ÆRçW'GW&%Væ–f÷&ÒæFW7G&÷’‚“°¢F–ÆRæ6öÆ÷W%Væ–f÷&ÒæFW7G&÷’‚“°¢F–ÆRç&W6VçEVæ–f÷&ÒæFW7G&÷’‚“°¢F–ÆRç&W6WEVæ–f÷&ÒæFW7G&÷’‚“°¢Ð ¢&—fFR&W6—¦T6çf2‡v–GFƒ¢çVÖ&W"Â†V–v‡C¢çVÖ&W"“¢fö–B°¢–b‡F†—2æF—7Æ•v–GF‚ÓÓÒv–GF‚bbF†—2æF—7Æ”†V–v‡BÓÓÒ†V–v‡B’&WGW&ã°¢F†—2æF—7Æ•v–GF‚Òv–GFƒ°¢F†—2æF—7Æ”†V–v‡BÒ†V–v‡C°¢F†—2æ6çf2çv–GF‚Òv–GFƒ°¢F†—2æ6çf2æ†V–v‡BÒ†V–v‡C°¢F†—2æ6öçFW‡Bæ6öæf–wW&R‡²FWf–6S¢F†—2æFWf–6RÂf÷&ÖC¢F†—2æ6çf4f÷&ÖBÂÇ†ÖöFS¢v÷VRrÒ“°¢Ð ¢&—fFR7FF–27–æ276W'E6†FW%fÆ–B†ÖöGVÆS¢uU6†FW$ÖöGVÆRÂÆ&VÃ¢7G&–ær“¢&öÖ—6SÇfö–Câ°¢6öç7B6ö×–ÆF–öâÒv—BÖöGVÆRævWD6ö×–ÆF–öä–æfò‚“°¢6öç7BW'&÷'2Ò6ö×–ÆF–öâæÖW76vW2æf–ÇFW"‚†ÖW76vS¢²G—S¢7G&–ærÒ’ÓâÖW76vRçG—RÓÓÒvW'&÷"r“°¢–b†W'&÷'2æÆVæwF‚ÓÓÒ’&WGW&ã°¢6öç7Bf—'7BÒW'&÷'5³Ó°¢F‡&÷ræWrW'&÷"†G¶Æ&VÇÒtu4ÂÆ–æRG¶f—'7BæÆ–æTçV×Ó¢G¶f—'7BæÖW76vWÖ“°¢Ð§Ð
+    this.device.addEventListener('uncapturederror', (event: GPUUncapturedErrorEvent) => {
+      this.deviceErrors.push(event.error.message);
+      if (this.deviceErrors.length > 32) this.deviceErrors.shift();
+      listener(`WebGPU error: ${event.error.message}`);
+    });
+  }
+
+  onDeviceLost(listener: (message: string) => void): void {
+    this.deviceLostListener = listener;
+    void this.device.lost.then((reason: { message?: string; reason?: string }) => {
+      if (this.dead) return;
+      listener(reason.message || reason.reason || 'Unknown device loss');
+    });
+  }
+
+  request(request: PersistentTileRequest): void {
+    if (this.dead || this.suspended) return;
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
+    this.latestRequest = request;
+    const gateWaiters = this.testGateWaiters.splice(0);
+    for (const resolve of gateWaiters) resolve();
+    if (!this.running) void this.pump();
+  }
+
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    if (!suspended) return;
+    this.latestRequest = null;
+    this.currentQueue = [];
+    this.pendingLevelOffsets = [];
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
+    const gateWaiters = this.testGateWaiters.splice(0);
+    for (const resolve of gateWaiters) resolve();
+    const batchWaiters = this.testBatchWaiters.splice(0);
+    for (const waiter of batchWaiters) waiter.reject(new Error('Renderer suspended before the requested test batches completed'));
+    const pauseWaiters = this.testPauseWaiters.splice(0);
+    for (const resolve of pauseWaiters) resolve();
+  }
+
+  setTestSchedulerPaused(paused: boolean): Promise<void> {
+    this.testSchedulerPaused = paused;
+    if (paused) {
+      if (!this.testBatchExecuting) return Promise.resolve();
+      return new Promise(resolve => this.testPauseWaiters.push(resolve));
+    }
+    this.testBatchPermits = 0;
+    const waiters = this.testGateWaiters.splice(0);
+    for (const resolve of waiters) resolve();
+    return Promise.resolve();
+  }
+
+  releaseTestBatches(count: number): Promise<{
+    batchRevision: number;
+    requestId: number;
+    requestBatchCount: number;
+  }> {
+    if (!Number.isFinite(count) || count < 1) {
+      return Promise.reject(new Error('Batch release count must be a positive finite integer'));
+    }
+    const permitted = Math.floor(count);
+    const requestId = this.latestRequest?.requestId ?? this.currentRequest?.requestId;
+    if (requestId === undefined) return Promise.reject(new Error('No numerical request is available for the test gate'));
+    const targetCount = (this.testRequestBatchCounts.get(requestId) ?? 0) + permitted;
+    this.testBatchPermits += permitted;
+    const waiters = this.testGateWaiters.splice(0);
+    for (const resolve of waiters) resolve();
+    return new Promise((resolve, reject) => this.testBatchWaiters.push({
+      requestId, targetCount, resolve, reject
+    }));
+  }
+
+  get completedTestBatchRevision(): number {
+    return this.testBatchRevision;
+  }
+
+  get currentTestRequestId(): number {
+    return this.latestRequest?.requestId ?? this.currentRequest?.requestId ?? 0;
+  }
+
+  nextContinuityFrame(afterFrame: number) {
+    return this.atlasPresenter?.nextContinuityFrame(afterFrame)
+      ?? Promise.reject(new Error('Continuity frames require the atlas presenter'));
+  }
+
+  get isBusy(): boolean {
+    return this.running
+      || this.latestRequest !== null
+      || this.referenceRefreshPending
+      || this.currentQueue.length > 0
+      || this.pendingBatches.length > 0
+      || this.pendingLevelOffsets.length > 0;
+  }
+
+  get stats(): PersistentFieldStats {
+    const now = performance.now();
+    const visibleTiles = [...this.currentVisibleKeys]
+      .map(key => this.tileMap.get(key))
+      .filter((tile): tile is FieldTile => Boolean(tile));
+    const newestNumericalUpdate = visibleTiles.reduce(
+      (latest, tile) => Math.max(latest, tile.lastNumericalUpdateAt),
+      0
+    );
+    const oldestCreated = visibleTiles.reduce(
+      (oldest, tile) => Math.min(oldest, tile.createdAt),
+      now
+    );
+    return {
+      ...this.statsValue,
+      interaction: this.currentRequest?.interaction ?? this.statsValue.interaction,
+      cachedTiles: this.tileMap.size,
+      pendingReferences: this.referenceAtlas.pendingCount,
+      referenceFailures: this.referenceAtlas.failureCount,
+      referenceWorkingBits: this.referenceAtlas.maximumWorkingBits,
+      referenceTransportBits: this.referenceAtlas.maximumTransportBits,
+      precisionLimitedTiles: visibleTiles.filter(
+        tile => tile.referenceError?.includes('below required')
+      ).length,
+      numericalFreshnessMs: newestNumericalUpdate > 0 ? now - newestNumericalUpdate : 0,
+      presentationHistoryMs: visibleTiles.length > 0 ? now - oldestCreated : 0
+    };
+  }
+
+  present(
+    targetCamera: CameraSnapshot,
+    cssWidth: number,
+    cssHeight: number,
+    devicePixelRatio: number
+  ): boolean {
+    if (this.dead || cssWidth <= 0 || cssHeight <= 0 || devicePixelRatio <= 0) return false;
+    const limit = this.device.limits.maxTextureDimension2D;
+    const requestedWidth = Math.max(1, cssWidth * devicePixelRatio);
+    const requestedHeight = Math.max(1, cssHeight * devicePixelRatio);
+    const displayScale = Math.min(1, limit / requestedWidth, limit / requestedHeight);
+    const width = Math.max(1, Math.floor(requestedWidth * displayScale));
+    const height = Math.max(1, Math.floor(requestedHeight * displayScale));
+    this.resizeCanvas(width, height);
+    const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio);
+    const aspect = Math.max(1, cssWidth) / Math.max(1, cssHeight);
+    const fineExponent = sampleExponentForViewport(targetCamera, renderHeight, 0);
+    const settledPresentation = (this.currentRequest?.interaction ?? 'settled') === 'settled';
+    const drawTiles: FieldTile[] = [];
+    const seen = new Set<PersistentTileKey>();
+
+    for (const levelOffset of [4, 3, 2, 1, 0]) {
+      for (const descriptor of visibleTileDescriptors(
+        targetCamera,
+        aspect,
+        renderHeight,
+        0.5,
+        0.5,
+        levelOffset,
+        1
+      )) {
+        const tile = this.tileMap.get(descriptor.key);
+        if (!tile || seen.has(tile.descriptor.key) || tile.coveragePixels <= 0) continue;
+        seen.add(tile.descriptor.key);
+        drawTiles.push(tile);
+      }
+    }
+    if (drawTiles.length === 0) {
+      return !this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas
+        ? this.atlasPresenter.present(
+          targetCamera, aspect, width, height, this.acceptedAtlas, [], false,
+          this.currentRequest?.targetIterations ?? 0,
+          this.currentRequest?.palettePhase ?? 0,
+          this.currentTestRequestId,
+          this.testBatchRevision
+        )
+        : false;
+    }
+    drawTiles.sort((left, right) => right.descriptor.sampleExponent - left.descriptor.sampleExponent);
+
+    const renderable: Array<{ tile: FieldTile; group: GPUBindGroup; transform: ReturnType<TileFieldRenderer['tileTransform']> }> = [];
+    for (const tile of drawTiles) {
+      const transform = this.tileTransform(tile, targetCamera, aspect);
+      if (!transform) continue;
+      this.device.queue.writeBuffer(tile.presentUniform, 0, new Float32Array([
+        transform.scaleX,
+        transform.scaleY,
+        transform.offsetX,
+        transform.offsetY
+      ]));
+      renderable.push({
+        tile,
+        transform,
+        group: settledPresentation && tile.descriptor.sampleExponent <= fineExponent
+          ? tile.presentNearestGroup
+          : tile.presentLinearGroup
+      });
+    }
+    if (renderable.length === 0) {
+      return !this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas
+        ? this.atlasPresenter.present(
+          targetCamera, aspect, width, height, this.acceptedAtlas, [], false,
+          this.currentRequest?.targetIterations ?? 0,
+          this.currentRequest?.palettePhase ?? 0,
+          this.currentTestRequestId,
+          this.testBatchRevision
+        )
+        : false;
+    }
+
+    if (!this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas) {
+      const instances: AtlasInstance[] = renderable.flatMap(item => item.transform && item.tile.atlasSlot
+        ? [{
+          transform: item.transform,
+          slot: item.tile.atlasSlot,
+          iterationFrontier: item.tile.iterationFrontier,
+          capMode: item.tile.capPresentationMode,
+          targetIterations: this.currentRequest?.targetIterations ?? 0
+        }]
+        : []);
+      const authoritative = settledPresentation
+        && this.pendingLevelOffsets.length === 0
+        && this.currentQueue.length === 0
+        && this.pendingBatches.length === 0
+        && this.currentVisibleKeys.size > 0
+        && [...this.currentVisibleKeys].every(key => {
+          const tile = this.tileMap.get(key);
+          return Boolean(tile && tile.resolvedPixels >= TILE_PIXEL_COUNT);
+        });
+      return this.atlasPresenter.present(
+        targetCamera,
+        aspect,
+        width,
+        height,
+        this.acceptedAtlas,
+        instances,
+        authoritative,
+        this.currentRequest?.targetIterations ?? 0,
+        this.currentRequest?.palettePhase ?? 0,
+        this.currentTestRequestId,
+        this.testBatchRevision
+      );
+    }
+
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.context.getCurrentTexture().createView(),
+        clearValue: { r: 0.008, g: 0.01, b: 0.014, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store'
+      }]
+    });
+    pass.setPipeline(this.presentPipeline);
+    for (const item of renderable) {
+      pass.setBindGroup(0, item.group);
+      pass.draw(3);
+    }
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+    return true;
+  }
+
+  get presentationMode(): 'atlas-history' | 'legacy' {
+    return this.useLegacyPresenter ? 'legacy' : 'atlas-history';
+  }
+
+  get presentationDiagnostics() {
+    const diagnostics = this.atlasPresenter?.diagnostics ?? {
+      frames: 0,
+      historyFrames: 0,
+      fallbackFrames: 0,
+      anchorPromotions: 0,
+      instanceCount: 0,
+      resourceEpoch: 0,
+      worstReprojectionErrorTexels: 0,
+      lastFrameCpuMs: 0,
+      validationErrors: 0,
+      rollingFrames: 0,
+      snapshotCount: 0,
+      reducedFrame: 0,
+      totalPixels: 0,
+      invalidPixels: 0,
+      historyPixels: 0,
+      retainedPixels: 0,
+      currentPixels: 0,
+      provisionalCapPixels: 0,
+      finalCapPixels: 0,
+      terminalPixels: 0,
+      qualityRegressionPixels: 0,
+      escapedToProvisionalBlackPixels: 0,
+      candidateRejectedLowerQualityPixels: 0,
+      semanticConflictEvents: 0,
+      conflictPixels: 0,
+      droppedReadbacks: 0
+    };
+    return {
+      ...diagnostics,
+      validationErrors: diagnostics.validationErrors + this.deviceErrors.length
+    };
+  }
+
+  forceDeviceLossForTest(): void {
+    if (!this.dead) this.device.destroy();
+  }
+
+  dispose(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.latestRequest = null;
+    this.currentQueue = [];
+    this.pendingLevelOffsets = [];
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
+    this.context.unconfigure();
+    const destroyResources = () => {
+      this.referenceAtlas.dispose();
+      for (const tile of this.tileMap.values()) this.destroyTile(tile);
+      this.tileMap.clear();
+      for (const slot of this.readbackSlots) slot.buffer.destroy();
+      this.atlasPresenter?.destroy();
+      this.acceptedAtlas?.destroy();
+      this.clearUniform.destroy();
+    };
+    if (this.pendingBatches.length > 0) {
+      void Promise.allSettled(this.pendingBatches.map(pending => pending.completed))
+        .then(destroyResources);
+    } else {
+      destroyResources();
+    }
+  }
+
+  private async pump(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    try {
+      while (
+        !this.dead && !this.suspended && (this.latestRequest
+        || this.referenceRefreshPending
+        || this.currentQueue.length > 0
+        || this.pendingBatches.length > 0
+        || this.pendingLevelOffsets.length > 0)
+      ) {
+        if (this.latestRequest) {
+          await this.drainPendingBatches();
+          const request = this.latestRequest;
+          this.latestRequest = null;
+          await this.prepareRequest(request);
+        }
+        const request = this.currentRequest;
+        if (!request) break;
+
+        if (this.referenceRefreshPending) {
+          await this.applyReferenceRefresh(request);
+          if (this.latestRequest) continue;
+        }
+
+        if (this.currentQueue.length === 0) {
+          if (this.pendingBatches.length > 0) {
+            await this.retireOldestBatch();
+            continue;
+          }
+          const admitted = await this.admitNextSpatialLevel(request);
+          if (this.latestRequest) continue;
+          if (!admitted) break;
+        }
+        if (this.currentQueue.length === 0) continue;
+
+        const quantumStarted = performance.now();
+        const quantumBudget = this.quantumBudget(request.interaction);
+        do {
+          if (this.suspended) break;
+          if (this.latestRequest) break;
+          if (this.pendingBatches.length >= MAX_IN_FLIGHT_BATCHES) {
+            await this.retireOldestBatch();
+            continue;
+          }
+          if (this.currentQueue.length === 0) {
+            if (this.pendingBatches.length > 0) {
+              await this.retireOldestBatch();
+              continue;
+            }
+            break;
+          }
+          if (this.testSchedulerPaused && this.pendingBatches.length > 0) {
+            await this.retireOldestBatch();
+            continue;
+          }
+          const testPermit = await this.awaitTestBatchPermit();
+          if (this.testSchedulerPaused && !testPermit) continue;
+          if (this.latestRequest || this.currentQueue.length === 0) {
+            if (this.testSchedulerPaused) this.testBatchPermits++;
+            break;
+          }
+          this.currentQueue.sort((left, right) => left.work.priority - right.work.priority);
+          const batch = this.currentQueue.splice(0, this.adaptiveBatchTiles);
+          this.testBatchExecuting = true;
+          this.pendingBatches.push(this.submitBatch(batch, request));
+          this.updateStats();
+          if (this.testSchedulerPaused) await this.retireOldestBatch();
+        } while (performance.now() - quantumStarted < quantumBudget);
+
+        this.evictColdTiles();
+        if (
+          !this.latestRequest
+          && (this.referenceRefreshPending
+            || this.currentQueue.length > 0
+            || this.pendingBatches.length > 0
+            || this.pendingLevelOffsets.length > 0)
+        ) {
+          await schedulerYield();
+        }
+      }
+    } catch (error) {
+      console.error('Progressive tile field scheduler failed', error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.runtimeErrorListener?.(message);
+    } finally {
+      this.running = false;
+      if (
+        !this.suspended && (this.latestRequest
+        || this.referenceRefreshPending
+        || this.currentQueue.length > 0
+        || this.pendingBatches.length > 0
+        || this.pendingLevelOffsets.length > 0)
+      ) {
+        void this.pump();
+      }
+    }
+  }
+
+  private async retireOldestBatch(): Promise<void> {
+    // Keep the record owned by the FIFO while its GPU completion is pending.
+    // Authoritative-presentation checks, disposal, and diagnostics must continue
+    // to see this batch until all host state derived from it has been committed.
+    const pending = this.pendingBatches[0];
+    if (!pending) return;
+    try {
+      const completion = await pending.completed;
+      for (const snapshot of completion.health) {
+        const health = snapshot.value;
+        const classified = health.activePixels
+          + health.escapedPixels
+          + health.analyticInteriorPixels
+          + health.cappedPixels
+          + health.nonFinitePixels
+          + health.glitchPixels
+          + health.orbitExhaustedPixels;
+        if (classified !== TILE_PIXEL_COUNT) {
+          throw new Error(`Invalid tile counter total ${classified} for ${snapshot.scheduled.tile.descriptor.key}`);
+        }
+        snapshot.scheduled.tile.health = health;
+      }
+      const intervalStart = this.lastBatchCompletedAt > 0
+        ? this.lastBatchCompletedAt
+        : pending.submittedAt;
+      this.lastBatchMs = Math.max(0.1, completion.completedAt - intervalStart);
+      this.lastBatchCompletedAt = completion.completedAt;
+      this.completedChunks += pending.batch.length;
+      this.adaptBatchSize(pending.request.interaction, this.lastBatchMs);
+      this.finishBatch(pending.batch, pending.request);
+      this.noteTestBatchCompleted(pending.request.requestId);
+    } finally {
+      pending.slot.busy = false;
+      const pendingIndex = this.pendingBatches.indexOf(pending);
+      if (pendingIndex >= 0) this.pendingBatches.splice(pendingIndex, 1);
+      this.testBatchExecuting = this.pendingBatches.length > 0;
+      if (!this.testBatchExecuting && this.testSchedulerPaused) {
+        const pauseWaiters = this.testPauseWaiters.splice(0);
+        for (const resolve of pauseWaiters) resolve();
+      }
+      this.updateStats();
+    }
+  }
+
+  private async drainPendingBatches(): Promise<void> {
+    while (this.pendingBatches.length > 0) await this.retireOldestBatch();
+  }
+
+  private async prepareRequest(request: PersistentTileRequest): Promise<void> {
+    this.currentRequest = request;
+    this.referenceAtlas.setDemandEpoch(request.requestId);
+    this.completedChunks = 0;
+    this.submittedChunks = 0;
+    this.atlasPublications = 0;
+    this.avoidedAtlasCopies = 0;
+    this.lastBatchMs = 0;
+    this.lastBatchCompletedAt = 0;
+    this.currentPlan = [];
+    this.currentQueue = [];
+    this.currentVisibleKeys = new Set<PersistentTileKey>();
+    this.currentRenderHeight = this.renderHeight(
+      request.cssWidth,
+      request.cssHeight,
+      request.devicePixelRatio
+    );
+    this.currentAspect = Math.max(1, request.cssWidth) / Math.max(1, request.cssHeight);
+    this.pendingLevelOffsets = [2, 1, 0];
+    this.maximumPlannedLevel = 2;
+    for (const levelOffset of this.pendingLevelOffsets) {
+      for (const planned of this.planDescriptorsForLevel(request, levelOffset)) {
+        this.currentVisibleKeys.add(planned.descriptor.key);
+      }
+    }
+    await this.activatePendingReferences();
+    await this.admitNextSpatialLevel(request);
+    this.updateStats();
+  }
+
+  private async admitNextSpatialLevel(request: PersistentTileRequest): Promise<boolean> {
+    while (this.pendingLevelOffsets.length > 0 && !this.latestRequest) {
+      const levelOffset = this.pendingLevelOffsets.shift();
+      if (levelOffset === undefined) break;
+      const levelPlan = this.planDescriptorsForLevel(request, levelOffset);
+      const ready = await this.ensureTiles(levelPlan.map(item => item.descriptor));
+      if (!ready || this.latestRequest) return false;
+
+      await this.activatePendingReferences();
+      this.currentPlan.push(...levelPlan);
+      for (const item of levelPlan) this.currentVisibleKeys.add(item.descriptor.key);
+      this.ensureReferencePolicy(request, levelPlan);
+      const levelQueue = this.initialWorkQueue(request, levelPlan);
+      this.currentQueue.push(...levelQueue);
+      this.updateStats();
+      if (levelQueue.length > 0) return true;
+    }
+    return this.currentQueue.length > 0;
+  }
+
+  private planDescriptorsForLevel(
+    request: PersistentTileRequest,
+    levelOffset: number
+  ): PlannedDescriptor[] {
+    const margin = levelOffset > 0 ? 1 : 0;
+    return visibleTileDescriptors(
+      request.camera,
+      this.currentAspect,
+      this.currentRenderHeight,
+      request.focusX,
+      request.focusY,
+      levelOffset,
+      margin
+    ).map(descriptor => ({ descriptor, levelOffset }));
+  }
+
+  private initialWorkQueue(
+    request: PersistentTileRequest,
+    plan: readonly PlannedDescriptor[]
+  ): ScheduledWork[] {
+    const queue: ScheduledWork[] = [];
+    for (const planned of plan) {
+      const tile = this.tileMap.get(planned.descriptor.key);
+      if (!tile) continue;
+      tile.lastVisibleAt = performance.now();
+      const finalTarget = this.effectiveFinalTarget(tile, request);
+      const chunkIterations = request.interaction === 'moving'
+        ? 64
+        : request.interaction === 'settling' ? 96 : 128;
+      const needsIterations = tile.iterationFrontier < finalTarget;
+      const needsRecolour = Math.abs(tile.palettePhase - request.palettePhase) > 1e-6;
+      const scheduledEnd = needsIterations
+        ? Math.min(finalTarget, tile.iterationFrontier + chunkIterations)
+        : tile.iterationFrontier;
+      const scheduled = this.makeScheduledWork(
+        request,
+        tile,
+        planned.levelOffset,
+        this.maximumPlannedLevel,
+        finalTarget,
+        scheduledEnd,
+        needsIterations ? chunkIterations : 0
+      );
+      const needsAcceptanceUpdate = tile.capPresentationMode !== scheduled.capMode;
+      if (!needsIterations && !needsRecolour && !needsAcceptanceUpdate) continue;
+      queue.push(scheduled);
+    }
+    return queue;
+  }
+
+  private makeScheduledWork(
+    request: PersistentTileRequest,
+    tile: FieldTile,
+    levelOffset: number,
+    maximumLevel: number,
+    finalTarget: number,
+    scheduledEnd: number,
+    chunkIterations: number
+  ): ScheduledWork {
+    const finalChunk = scheduledEnd >= finalTarget;
+    const numericallyFinal = finalTarget >= request.targetIterations;
+    const retainsAuthoritativeCap = tile.capPresentationMode === 2
+      && tile.iterationFrontier >= request.targetIterations;
+    const capMode: CapPresentationMode = retainsAuthoritativeCap
+      ? 2
+      : finalChunk && numericallyFinal && request.interaction === 'settled'
+        ? 2
+        : (levelOffset > 0 || request.interaction === 'moving') ? 1 : 0;
+    const spatialPriority = maximumLevel - levelOffset;
+    const coveragePenalty = tile.coveragePixels > 0 ? 2 : 0;
+    const iterationTier = Math.floor(tile.iterationFrontier / Math.max(1, chunkIterations || 128));
+    const work: PersistentTileWork = {
+      requestId: request.requestId,
+      key: tile.descriptor.key,
+      targetIterations: finalTarget,
+      chunkIterations,
+      acceptIterationCap: capMode > 0,
+      priority: spatialPriority
+        + tile.descriptor.distanceFromFocus * 0.15
+        + coveragePenalty
+        + iterationTier * 0.35
+        + (tile.numericalMode === 'perturbation' ? -0.1 : 0)
+    };
+    return { work, tile, scheduledEnd, finalTarget, levelOffset, capMode };
+  }
+
+  private finishBatch(batch: readonly ScheduledWork[], request: PersistentTileRequest): void {
+    for (const scheduled of batch) {
+      const tile = scheduled.tile;
+      tile.iterationFrontier = Math.max(tile.iterationFrontier, scheduled.scheduledEnd);
+      if (scheduled.work.chunkIterations > 0) tile.lastNumericalUpdateAt = performance.now();
+      tile.lastVisibleAt = performance.now();
+      tile.palettePhase = request.palettePhase;
+      tile.capPresentationMode = scheduled.capMode;
+      const acceptedCoverage = tile.health.escapedPixels
+        + tile.health.analyticInteriorPixels
+        + (scheduled.capMode > 0 ? tile.health.cappedPixels : 0);
+      tile.coveragePixels = Math.max(tile.coveragePixels, acceptedCoverage);
+      const finalAcceptedCap = scheduled.capMode === 2
+        && scheduled.scheduledEnd >= scheduled.finalTarget;
+      const resolvedCoverage = tile.health.escapedPixels
+        + tile.health.analyticInteriorPixels
+        + (finalAcceptedCap ? tile.health.cappedPixels : 0);
+      tile.resolvedPixels = Math.max(tile.resolvedPixels, resolvedCoverage);
+
+      this.maybeRequestRepair(tile, request);
+      const continuingPixels = tile.health.activePixels + tile.health.cappedPixels;
+      if (
+        scheduled.work.chunkIterations > 0
+        && continuingPixels > 0
+        && scheduled.scheduledEnd < scheduled.finalTarget
+        && !this.latestRequest
+      ) {
+        const nextEnd = Math.min(
+          scheduled.finalTarget,
+          scheduled.scheduledEnd + scheduled.work.chunkIterations
+        );
+        this.currentQueue.push(this.makeScheduledWork(
+          request,
+          tile,
+          scheduled.levelOffset,
+          this.maximumPlannedLevel,
+          scheduled.finalTarget,
+          nextEnd,
+          scheduled.work.chunkIterations
+        ));
+      }
+    }
+  }
+
+  private updateStats(): void {
+    const request = this.currentRequest;
+    if (!request) return;
+    const visible = this.currentPlan
+      .map(item => this.tileMap.get(item.descriptor.key))
+      .filter((tile): tile is FieldTile => Boolean(tile));
+    const finest = this.currentPlan
+      .filter(item => item.levelOffset === 0)
+      .map(item => this.tileMap.get(item.descriptor.key))
+      .filter((tile): tile is FieldTile => Boolean(tile));
+    this.statsValue = {
+      requestId: request.requestId,
+      interaction: request.interaction,
+      visibleTiles: visible.length,
+      cachedTiles: this.tileMap.size,
+      activeTiles: visible.filter(tile => tile.resolvedPixels < TILE_PIXEL_COUNT).length,
+      convergedTiles: visible.filter(tile => tile.resolvedPixels >= TILE_PIXEL_COUNT).length,
+      directTiles: visible.filter(tile => tile.numericalMode !== 'perturbation').length,
+      perturbationTiles: visible.filter(tile => tile.numericalMode === 'perturbation').length,
+      finestTiles: finest.length,
+      finestPerturbationTiles: finest.filter(
+        tile => tile.numericalMode === 'perturbation'
+      ).length,
+      pendingReferences: this.referenceAtlas.pendingCount,
+      repairTiles: visible.filter(tile => tile.repairPass > 0).length,
+      referenceFailures: this.referenceAtlas.failureCount,
+      referenceWorkingBits: this.referenceAtlas.maximumWorkingBits,
+      referenceTransportBits: this.referenceAtlas.maximumTransportBits,
+      precisionLimitedTiles: visible.filter(
+        tile => tile.referenceError?.includes('below required')
+      ).length,
+      completedChunks: this.completedChunks,
+      submittedChunks: this.submittedChunks,
+      queuedChunks: this.currentQueue.length,
+      inFlightBatches: this.pendingBatches.length,
+      inFlightTiles: this.pendingBatches.reduce((total, pending) => total + pending.batch.length, 0),
+      atlasPublications: this.atlasPublications,
+      avoidedAtlasCopies: this.avoidedAtlasCopies,
+      lastBatchMs: this.lastBatchMs,
+      numericalFreshnessMs: 0,
+      presentationHistoryMs: 0,
+      sampleExponent: sampleExponentForViewport(
+        request.camera,
+        this.currentRenderHeight,
+        0
+      ),
+      tileSize: PERSISTENT_TILE_SIZE
+    };
+  }
+
+  private ensureReferencePolicy(
+    request: PersistentTileRequest,
+    plan: readonly PlannedDescriptor[]
+  ): void {
+    const referenceTarget = request.targetIterations;
+    let preferredSeeds = 0;
+    for (const planned of plan) {
+      const tile = this.tileMap.get(planned.descriptor.key);
+      if (!tile) continue;
+      const decision = precisionDecision({
+        sampleExponent: tile.descriptor.sampleExponent,
+        interaction: request.interaction,
+        levelOffset: planned.levelOffset,
+        distanceFromFocus: tile.descriptor.distanceFromFocus,
+        coordinateCollapsed: tile.requiresPerturbation,
+        nonFinitePixels: tile.health.nonFinitePixels,
+        doubleFloat: tile.directMode === 1
+      });
+      if (!decision.required && !decision.preferred && tile.numericalMode !== 'perturbation') continue;
+      if (tile.referenceState === 'queued') continue;
+
+      const failurePixels = tile.health.glitchPixels
+        + tile.health.orbitExhaustedPixels
+        + tile.health.nonFinitePixels;
+      const unresolvedPixels = TILE_PIXEL_COUNT - tile.resolvedPixels;
+      if (tile.numericalMode === 'perturbation' && tile.reference) {
+        if (failurePixels > 0) {
+          this.maybeRequestRepair(tile, request);
+          continue;
+        }
+        const needsLongerReference = tile.reference.requestedIterations < referenceTarget
+          && unresolvedPixels > 0;
+        if (!needsLongerReference) continue;
+      }
+      if (tile.referenceState === 'failed' && tile.referenceTarget >= referenceTarget) continue;
+
+      const reusable = this.referenceAtlas.findReusable(
+        tile.descriptor.key,
+        referenceTarget,
+        decision.requiredTransportBits
+      );
+      if (reusable && reusable !== tile.reference) {
+        tile.pendingReference = reusable;
+        tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
+        tile.referenceState = 'ready';
+        tile.referenceTarget = referenceTarget;
+        tile.referenceRequiredTransportBits = decision.requiredTransportBits;
+        this.requestReferenceRefresh();
+        continue;
+      }
+      if (!decision.required && decision.preferred) {
+        if (preferredSeeds >= PREFERRED_REFERENCE_SEED_BUDGET) continue;
+        if (this.referenceAtlas.pendingCount >= MAX_PENDING_REFERENCE_DEMAND) continue;
+        preferredSeeds++;
+      }
+      this.queueReference(
+        tile,
+        tile.repairPass,
+        referenceTarget,
+        decision.requiredTransportBits,
+        request.requestId
+      );
+    }
+  }
+
+  private tileNeedsPerturbation(tile: FieldTile): boolean {
+    if (tile.numericalMode === 'perturbation') return true;
+    if (tile.health.nonFinitePixels > 0) return true;
+    return tile.requiresPerturbation;
+  }
+
+  private queueReference(
+    tile: FieldTile,
+    repairPass: number,
+    referenceTarget: number,
+    requiredTransportBits: number,
+    demandEpoch: number
+  ): void {
+    if (repairPass > MAX_REFERENCE_REPAIR_PASSES) {
+      tile.referenceState = 'failed';
+      tile.referenceTarget = referenceTarget;
+      return;
+    }
+    tile.referenceState = 'queued';
+    tile.referenceTarget = referenceTarget;
+    tile.referenceDemandEpoch = demandEpoch;
+    tile.referenceRequiredTransportBits = requiredTransportBits;
+    tile.referenceError = null;
+    void this.referenceAtlas.request(
+      tile.descriptor,
+      referenceTarget,
+      tile.descriptor.distanceFromFocus + repairPass * 0.05,
+      repairPass,
+      demandEpoch,
+      requiredTransportBits
+    ).then(reference => {
+      if (this.tileMap.get(tile.descriptor.key) !== tile) return;
+      if (tile.referenceDemandEpoch !== demandEpoch) {
+        this.requestReferenceRefresh(true);
+        return;
+      }
+      tile.pendingReference = reference;
+      tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
+      tile.referenceState = 'ready';
+      tile.referenceError = null;
+      tile.repairPass = repairPass;
+      tile.referenceTarget = referenceTarget;
+      this.requestReferenceRefresh();
+    }).catch(error => {
+      if (this.tileMap.get(tile.descriptor.key) !== tile) return;
+      if (tile.referenceDemandEpoch !== demandEpoch) return;
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'Reference request superseded') {
+        tile.referenceState = 'none';
+        tile.referenceError = null;
+        return;
+      }
+      tile.referenceError = message;
+      tile.referenceState = 'failed';
+      tile.referenceTarget = referenceTarget;
+    });
+  }
+
+  private maybeRequestRepair(tile: FieldTile, request: PersistentTileRequest): void {
+    if (tile.numericalMode !== 'perturbation') return;
+    const unresolvedFailures = tile.health.glitchPixels
+      + tile.health.orbitExhaustedPixels
+      + tile.health.nonFinitePixels;
+    if (unresolvedFailures <= 0 || tile.referenceState === 'queued') return;
+    if (this.referenceAtlas.pendingCount >= MAX_PENDING_REFERENCE_DEMAND) return;
+    if (tile.repairPass >= MAX_REFERENCE_REPAIR_PASSES) {
+      tile.referenceState = 'failed';
+      return;
+    }
+    this.queueReference(
+      tile,
+      tile.repairPass + 1,
+      request.targetIterations,
+      tile.referenceRequiredTransportBits || requiredReferenceTransportBits(tile.descriptor.sampleExponent),
+      request.requestId
+    );
+  }
+
+  private requestReferenceRefresh(rescanPolicy = false): void {
+    if (!this.currentRequest || this.latestRequest || this.dead || this.suspended) return;
+    this.referencePolicyRescanPending ||= rescanPolicy;
+    if (this.referenceRefreshPending || this.referenceRefreshTimer) return;
+    this.referenceRefreshTimer = setTimeout(() => {
+      this.referenceRefreshTimer = null;
+      this.referenceRefreshPending = true;
+      if (!this.running) void this.pump();
+    }, REFERENCE_ACTIVATION_COALESCE_MS);
+  }
+
+  private async applyReferenceRefresh(request: PersistentTileRequest): Promise<void> {
+    if (!this.referenceRefreshPending) return;
+    await this.drainPendingBatches();
+    if (this.latestRequest || this.dead || this.suspended) return;
+
+    const rescanPolicy = this.referencePolicyRescanPending;
+    this.referencePolicyRescanPending = false;
+    if (rescanPolicy) this.ensureReferencePolicy(request, this.currentPlan);
+
+    const resetKeys = new Set(
+      [...this.tileMap.values()]
+        .filter(tile => tile.pendingReference && tile.pendingReset)
+        .map(tile => tile.descriptor.key)
+    );
+    if (resetKeys.size > 0) {
+      this.currentQueue = this.currentQueue.filter(
+        scheduled => !resetKeys.has(scheduled.tile.descriptor.key)
+      );
+    }
+
+    const activated = await this.activatePendingReferences();
+    if (this.latestRequest || this.dead || this.suspended) return;
+    if (activated.length > 0) {
+      const activatedKeys = new Set(activated.map(tile => tile.descriptor.key));
+      const activatedPlan = this.currentPlan.filter(
+        planned => activatedKeys.has(planned.descriptor.key)
+      );
+      this.currentQueue.push(...this.initialWorkQueue(request, activatedPlan));
+    }
+
+    // Seed the next bounded reference wave and retry deferred repairs without
+    // rebuilding the spatial plan or momentarily dropping the finest level.
+    this.ensureReferencePolicy(request, this.currentPlan);
+    this.referenceRefreshPending = false;
+    this.updateStats();
+    if (this.referencePolicyRescanPending || [...this.tileMap.values()].some(
+      tile => tile.pendingReference && tile.pendingReset
+    )) {
+      this.requestReferenceRefresh(this.referencePolicyRescanPending);
+    }
+  }
+
+  private async activatePendingReferences(): Promise<FieldTile[]> {
+    const activations = [...this.tileMap.values()]
+      .filter(tile => tile.pendingReference && tile.pendingReset);
+    if (activations.length === 0) return [];
+
+    for (const tile of activations) {
+      const reference = tile.pendingReference;
+      if (!reference) continue;
+      tile.reference = reference;
+      tile.pendingReference = null;
+      tile.numericalMode = 'perturbation';
+      tile.referenceState = 'ready';
+      tile.perturbGroup = this.createPerturbGroup(tile, reference);
+    }
+
+    const encoder = this.device.createCommandEncoder();
+    for (const tile of activations) {
+      const preserveAccepted = tile.pendingReset === 'unresolved';
+      this.device.queue.writeBuffer(
+        tile.resetUniform,
+        0,
+        new Uint32Array([PERSISTENT_TILE_SIZE, preserveAccepted ? 1 : 0, 0, 0])
+      );
+      encoder.clearBuffer(tile.counterBuffer);
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(this.resetPipeline);
+      pass.setBindGroup(0, tile.resetGroup);
+      pass.dispatchWorkgroups(
+        Math.ceil(PERSISTENT_TILE_SIZE / 8),
+        Math.ceil(PERSISTENT_TILE_SIZE / 8)
+      );
+      pass.end();
+    }
+    this.device.queue.submit([encoder.finish()]);
+    await this.device.queue.onSubmittedWorkDone();
+
+    for (const tile of activations) {
+      const preserveAccepted = tile.pendingReset === 'unresolved';
+      tile.pendingReset = null;
+      tile.iterationFrontier = 0;
+      tile.health = {
+        ...EMPTY_HEALTH,
+        activePixels: Math.max(0, TILE_PIXEL_COUNT
+          - (preserveAccepted ? tile.resolvedPixels : 0))
+      };
+      if (!preserveAccepted) tile.resolvedPixels = 0;
+      tile.capPresentationMode = tile.coveragePixels > 0 ? 1 : 0;
+      tile.lastNumericalUpdateAt = performance.now();
+    }
+    return activations;
+  }
+
+  private effectiveFinalTarget(tile: FieldTile, request: PersistentTileRequest): number {
+    if (tile.numericalMode === 'perturbation') return request.targetIterations;
+    if (this.tileNeedsPerturbation(tile)) {
+      return Math.min(request.targetIterations, DIRECT_SAFETY_ITERATIONS);
+    }
+    return request.targetIterations;
+  }
+
+  private async ensureTiles(
+    descriptors: readonly PersistentTileDescriptor[]
+  ): Promise<boolean> {
+    const missing = descriptors.filter(descriptor => !this.tileMap.has(descriptor.key));
+    for (let start = 0; start < missing.length; start += RESOURCE_CREATION_BATCH_TILES) {
+      if (this.latestRequest) return false;
+      const batchDescriptors = missing.slice(start, start + RESOURCE_CREATION_BATCH_TILES);
+      const created: FieldTile[] = [];
+      let atlasCapacityExhausted = false;
+      this.device.pushErrorScope('validation');
+      for (const descriptor of batchDescriptors) {
+        if (this.tileMap.has(descriptor.key)) continue;
+        const tile = this.createTile(descriptor);
+        if (!tile) {
+          atlasCapacityExhausted = true;
+          break;
+        }
+        this.tileMap.set(descriptor.key, tile);
+        created.push(tile);
+      }
+      const validationError = await this.device.popErrorScope();
+      if (validationError || atlasCapacityExhausted) {
+        for (const tile of created) {
+          this.tileMap.delete(tile.descriptor.key);
+          this.destroyTile(tile);
+        }
+        if (atlasCapacityExhausted) return false;
+        if (!validationError) return false;
+        throw new Error(`Tile resource layout validation failed: ${validationError.message}`);
+      }
+      if (created.length > 0) {
+        const encoder = this.device.createCommandEncoder();
+        for (const tile of created) {
+          encoder.clearBuffer(tile.stateBuffer);
+          encoder.clearBuffer(tile.metaBuffer);
+          encoder.clearBuffer(tile.counterBuffer);
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(this.clearPipeline);
+          pass.setBindGroup(0, tile.clearGroup);
+          pass.dispatchWorkgroups(
+            Math.ceil(PERSISTENT_TILE_SIZE / 8),
+            Math.ceil(PERSISTENT_TILE_SIZE / 8)
+          );
+          pass.end();
+        }
+        this.device.queue.submit([encoder.finish()]);
+        await this.device.queue.onSubmittedWorkDone();
+      }
+      if (start + RESOURCE_CREATION_BATCH_TILES < missing.length) await schedulerYield();
+    }
+    return !this.latestRequest;
+  }
+
+  private createTile(descriptor: PersistentTileDescriptor): FieldTile | null {
+    if (this.acceptedAtlas?.availableSlots === 0 && !this.evictOneColdTile()) {
+      return null;
+    }
+    const atlasSlot = this.acceptedAtlas?.allocate() ?? null;
+    if (this.acceptedAtlas && !atlasSlot) return null;
+    const stateBuffer = this.device.createBuffer({
+      size: TILE_PIXEL_COUNT * STATE_BYTES_PER_PIXEL,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    });
+    const metaBuffer = this.device.createBuffer({
+      size: TILE_PIXEL_COUNT * META_BYTES_PER_PIXEL,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    });
+    const counterBuffer = this.device.createBuffer({
+      size: COUNTER_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+    });
+    const resultTexture = this.device.createTexture({
+      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
+      format: 'rgba32float',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+    });
+    const qualityTexture = this.device.createTexture({
+      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+    });
+    const colourTexture = this.device.createTexture({
+      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+    });
+    const evidenceTexture = this.device.createTexture({
+      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
+      format: 'r32uint',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
+    });
+    const directUniform = this.device.createBuffer({
+      size: DIRECT_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    const perturbUniform = this.device.createBuffer({
+      size: PERTURB_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    const colourUniform = this.device.createBuffer({
+      size: COLOUR_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    const presentUniform = this.device.createBuffer({
+      size: PRESENT_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    const resetUniform = this.device.createBuffer({
+      size: RESET_PARAMETER_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+
+    const directGroup = this.device.createBindGroup({
+      layout: this.directPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: directUniform } },
+        { binding: 1, resource: { buffer: stateBuffer } },
+        { binding: 2, resource: { buffer: metaBuffer } },
+        { binding: 3, resource: resultTexture.createView() },
+        { binding: 4, resource: qualityTexture.createView() },
+        { binding: 5, resource: { buffer: counterBuffer } }
+      ]
+    });
+    const colourGroup = this.device.createBindGroup({
+      layout: this.colourPipeline.getBindGroupLayout(0),
+      entries: this.acceptedAtlas && atlasSlot
+        ? [
+          { binding: 0, resource: { buffer: colourUniform } },
+          { binding: 1, resource: resultTexture.createView() },
+          { binding: 2, resource: qualityTexture.createView() },
+          { binding: 3, resource: this.acceptedAtlas.colour.createView() },
+          { binding: 4, resource: this.acceptedAtlas.quality.createView() },
+          { binding: 5, resource: this.acceptedAtlas.evidence.createView() }
+        ]
+        : [
+          { binding: 0, resource: { buffer: colourUniform } },
+          { binding: 1, resource: resultTexture.createView() },
+          { binding: 2, resource: qualityTexture.createView() },
+          { binding: 3, resource: colourTexture.createView() },
+          { binding: 4, resource: evidenceTexture.createView() }
+        ]
+    });
+    const clearGroup = this.device.createBindGroup({
+      layout: this.clearPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.clearUniform } },
+        { binding: 1, resource: resultTexture.createView() },
+        { binding: 2, resource: qualityTexture.createView() },
+        { binding: 3, resource: colourTexture.createView() }
+      ]
+    });
+    const resetGroup = this.device.createBindGroup({
+      layout: this.resetPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: resetUniform } },
+        { binding: 1, resource: { buffer: stateBuffer } },
+        { binding: 2, resource: { buffer: metaBuffer } }
+      ]
+    });
+    const presentLinearGroup = this.createPresentGroup(
+      presentUniform,
+      colourTexture,
+      qualityTexture,
+      this.linearSampler
+    );
+    const presentNearestGroup = this.createPresentGroup(
+      presentUniform,
+      colourTexture,
+      qualityTexture,
+      this.nearestSampler
+    );
+
+    const centerMagnitude = Math.max(
+      1,
+      Math.abs(fixedToNumber(descriptor.centerX)),
+      Math.abs(fixedToNumber(descriptor.centerY))
+    );
+    const sampleStep = Math.pow(2, descriptor.sampleExponent);
+    const directMode: 0 | 1 = sampleStep > centerMagnitude * Math.pow(2, -21) ? 0 : 1;
+    const centerXSplit = fixedSplitF32(descriptor.centerX);
+    const centerYSplit = fixedSplitF32(descriptor.centerY);
+    const nextXSplit = fixedSplitF32(fixedAddScaled(
+      descriptor.centerX,
+      1,
+      descriptor.sampleExponent
+    ));
+    const nextYSplit = fixedSplitF32(fixedAddScaled(
+      descriptor.centerY,
+      1,
+      descriptor.sampleExponent
+    ));
+    const requiresPerturbation = !splitChanged(centerXSplit, nextXSplit)
+      || !splitChanged(centerYSplit, nextYSplit);
+    const now = performance.now();
+    return {
+      descriptor,
+      stateBuffer,
+      metaBuffer,
+      counterBuffer,
+      resultTexture,
+      qualityTexture,
+      colourTexture,
+      evidenceTexture,
+      directUniform,
+      perturbUniform,
+      colourUniform,
+      presentUniform,
+      resetUniform,
+      directGroup,
+      perturbGroup: null,
+      colourGroup,
+      clearGroup,
+      resetGroup,
+      presentLinearGroup,
+      presentNearestGroup,
+      atlasSlot,
+      atlasNeedsClear: atlasSlot !== null,
+      health: { ...EMPTY_HEALTH },
+      iterationFrontier: 0,
+      coveragePixels: 0,
+      resolvedPixels: 0,
+      capPresentationMode: 0,
+      lastVisibleAt: now,
+      lastNumericalUpdateAt: 0,
+      createdAt: now,
+      palettePhase: Number.NaN,
+      directMode,
+      requiresPerturbation,
+      numericalMode: directMode === 0 ? 'f32-direct' : 'double-float-direct',
+      referenceState: 'none',
+      reference: null,
+      pendingReference: null,
+      pendingReset: null,
+      referenceError: null,
+      repairPass: 0,
+      referenceTarget: 0,
+      referenceDemandEpoch: 0,
+      referenceRequiredTransportBits: requiredReferenceTransportBits(descriptor.sampleExponent)
+    };
+  }
+
+  private createPresentGroup(
+    uniform: GPUBuffer,
+    colourTexture: GPUTexture,
+    qualityTexture: GPUTexture,
+    sampler: GPUSampler
+  ): GPUBindGroup {
+    return this.device.createBindGroup({
+      layout: this.presentPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniform } },
+        { binding: 1, resource: sampler },
+        { binding: 2, resource: colourTexture.createView() },
+        { binding: 3, resource: qualityTexture.createView() }
+      ]
+    });
+  }
+
+  private createPerturbGroup(tile: FieldTile, reference: TileGpuReference): GPUBindGroup {
+    return this.device.createBindGroup({
+      layout: this.perturbPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: tile.perturbUniform } },
+        { binding: 1, resource: { buffer: tile.stateBuffer } },
+        { binding: 2, resource: { buffer: tile.metaBuffer } },
+        { binding: 3, resource: tile.resultTexture.createView() },
+        { binding: 4, resource: tile.qualityTexture.createView() },
+        { binding: 5, resource: { buffer: tile.counterBuffer } },
+        { binding: 6, resource: { buffer: reference.buffer } }
+      ]
+    });
+  }
+
+  private submitBatch(
+    batch: readonly ScheduledWork[],
+    request: PersistentTileRequest
+  ): PendingBatch {
+    const keys = new Set(batch.map(scheduled => scheduled.tile.descriptor.key));
+    if (keys.size !== batch.length) throw new Error('A tile was scheduled twice in one GPU batch');
+    for (const pending of this.pendingBatches) {
+      if (pending.batch.some(scheduled => keys.has(scheduled.tile.descriptor.key))) {
+        throw new Error('A tile already has an in-flight GPU mutation');
+      }
+    }
+    const slot = this.readbackSlots.find(candidate => !candidate.busy);
+    if (!slot) throw new Error('Counter readback ring exhausted');
+    slot.busy = true;
+    for (const scheduled of batch) {
+      const tile = scheduled.tile;
+      if (tile.numericalMode === 'perturbation') {
+        this.device.queue.writeBuffer(
+          tile.perturbUniform,
+          0,
+          this.createPerturbParameterData(scheduled)
+        );
+      } else {
+        this.device.queue.writeBuffer(
+          tile.directUniform,
+          0,
+          this.createDirectParameterData(scheduled)
+        );
+      }
+      this.device.queue.writeBuffer(
+        tile.colourUniform,
+        0,
+        this.createColourParameterData(scheduled, request.palettePhase)
+      );
+    }
+
+    const encoder = this.device.createCommandEncoder();
+    encoder.clearBuffer(slot.buffer);
+    for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+      const scheduled = batch[batchIndex];
+      const tile = scheduled.tile;
+      if (this.requiresNumericalDispatch(scheduled)) {
+        encoder.clearBuffer(tile.counterBuffer);
+        const iterationPass = encoder.beginComputePass();
+        if (tile.numericalMode === 'perturbation') {
+          if (!tile.perturbGroup) throw new Error(`Missing perturbation bind group for ${tile.descriptor.key}`);
+          iterationPass.setPipeline(this.perturbPipeline);
+          iterationPass.setBindGroup(0, tile.perturbGroup);
+        } else {
+          iterationPass.setPipeline(this.directPipeline);
+          iterationPass.setBindGroup(0, tile.directGroup);
+        }
+        iterationPass.dispatchWorkgroups(
+          Math.ceil(PERSISTENT_TILE_SIZE / 8),
+          Math.ceil(PERSISTENT_TILE_SIZE / 8)
+        );
+        iterationPass.end();
+      }
+
+      const colourPass = encoder.beginComputePass();
+      colourPass.setPipeline(this.colourPipeline);
+      colourPass.setBindGroup(0, tile.colourGroup);
+      colourPass.dispatchWorkgroups(
+        Math.ceil(PERSISTENT_TILE_SIZE / 8),
+        Math.ceil(PERSISTENT_TILE_SIZE / 8)
+      );
+      colourPass.end();
+      if (this.requiresNumericalDispatch(scheduled)) {
+        encoder.copyBufferToBuffer(
+          tile.counterBuffer,
+          0,
+          slot.buffer,
+          batchIndex * COUNTER_READBACK_STRIDE,
+          COUNTER_BYTES
+        );
+      }
+    }
+    const submittedAt = performance.now();
+    this.device.queue.submit([encoder.finish()]);
+    for (const scheduled of batch) {
+      if (scheduled.tile.atlasSlot) scheduled.tile.atlasNeedsClear = false;
+    }
+    const completed = slot.buffer.mapAsync(GPUMapMode.READ).then(() => {
+      const mapped = new Uint32Array(slot.buffer.getMappedRange());
+      const health = batch.flatMap((scheduled, batchIndex) => {
+        if (!this.requiresNumericalDispatch(scheduled)) return [];
+        const offset = batchIndex * (COUNTER_READBACK_STRIDE / Uint32Array.BYTES_PER_ELEMENT);
+        return [{
+          scheduled,
+          value: {
+            activePixels: mapped[offset] ?? 0,
+            escapedPixels: mapped[offset + 1] ?? 0,
+            analyticInteriorPixels: mapped[offset + 2] ?? 0,
+            cappedPixels: mapped[offset + 3] ?? 0,
+            nonFinitePixels: mapped[offset + 4] ?? 0,
+            glitchPixels: mapped[offset + 5] ?? 0,
+            orbitExhaustedPixels: mapped[offset + 6] ?? 0
+          }
+        }];
+      });
+      slot.buffer.unmap();
+      return { completedAt: performance.now(), health };
+    });
+    this.submittedChunks += batch.length;
+    this.atlasPublications += this.acceptedAtlas ? batch.length : 0;
+    this.avoidedAtlasCopies += this.acceptedAtlas ? batch.length * 3 : 0;
+    return { batch, request, submittedAt, slot, completed };
+  }
+
+  private requiresNumericalDispatch(scheduled: ScheduledWork): boolean {
+    return scheduled.work.chunkIterations > 0
+      || scheduled.capMode > scheduled.tile.capPresentationMode;
+  }
+
+  private createDirectParameterData(scheduled: ScheduledWork): ArrayBuffer {
+    const data = new ArrayBuffer(DIRECT_PARAMETER_BYTES);
+    const floats = new Float32Array(data);
+    const unsigned = new Uint32Array(data);
+    const signed = new Int32Array(data);
+    const tile = scheduled.tile;
+    const [centerXHi, centerXLo] = fixedSplitF32(tile.descriptor.centerX);
+    const [centerYHi, centerYLo] = fixedSplitF32(tile.descriptor.centerY);
+    floats[0] = centerXHi;
+    floats[1] = centerXLo;
+    floats[2] = centerYHi;
+    floats[3] = centerYLo;
+    signed[4] = tile.descriptor.sampleExponent;
+    unsigned[5] = PERSISTENT_TILE_SIZE;
+    unsigned[6] = scheduled.scheduledEnd;
+    unsigned[7] = scheduled.work.chunkIterations;
+    unsigned[8] = tile.directMode;
+    unsigned[9] = scheduled.capMode;
+    return data;
+  }
+
+  private createPerturbParameterData(scheduled: ScheduledWork): ArrayBuffer {
+    const tile = scheduled.tile;
+    const reference = tile.reference;
+    if (!reference) throw new Error(`Missing tile reference for ${tile.descriptor.key}`);
+    const data = new ArrayBuffer(PERTURB_PARAMETER_BYTES);
+    const floats = new Float32Array(data);
+    const unsigned = new Uint32Array(data);
+    const signed = new Int32Array(data);
+    const [centerXHi, centerXLo] = fixedSplitF32(tile.descriptor.centerX);
+    const [centerYHi, centerYLo] = fixedSplitF32(tile.descriptor.centerY);
+    const [deltaXHi, deltaXLo] = fixedSplitF32(fixedSub(tile.descriptor.centerX, reference.centerX));
+    const [deltaYHi, deltaYLo] = fixedSplitF32(fixedSub(tile.descriptor.centerY, reference.centerY));
+    floats[0] = centerXHi;
+    floats[1] = centerXLo;
+    floats[2] = centerYHi;
+    floats[3] = centerYLo;
+    floats[4] = deltaXHi;
+    floats[5] = deltaXLo;
+    floats[6] = deltaYHi;
+    floats[7] = deltaYLo;
+    signed[8] = tile.descriptor.sampleExponent;
+    unsigned[9] = PERSISTENT_TILE_SIZE;
+    unsigned[10] = scheduled.scheduledEnd;
+    unsigned[11] = scheduled.work.chunkIterations;
+    unsigned[12] = reference.length;
+    unsigned[13] = scheduled.capMode;
+    unsigned[14] = reference.bits;
+    unsigned[15] = tile.repairPass;
+    floats[16] = GLITCH_RATIO;
+    return data;
+  }
+
+  private createColourParameterData(
+    scheduled: ScheduledWork,
+    palettePhase: number
+  ): ArrayBuffer {
+    const data = new ArrayBuffer(COLOUR_PARAMETER_BYTES);
+    const unsigned = new Uint32Array(data);
+    const floats = new Float32Array(data);
+    unsigned[0] = PERSISTENT_TILE_SIZE;
+    if (this.acceptedAtlas && scheduled.tile.atlasSlot) {
+      unsigned[1] = Math.abs(scheduled.tile.palettePhase - palettePhase) > 1e-6 ? 1 : 0;
+      unsigned[2] = scheduled.tile.iterationFrontier;
+      const forceCapPublication = scheduled.capMode > scheduled.tile.capPresentationMode;
+      unsigned[3] = (forceCapPublication ? 1 : 0) | (scheduled.tile.atlasNeedsClear ? 2 : 0);
+      unsigned[4] = scheduled.tile.atlasSlot.x;
+      unsigned[5] = scheduled.tile.atlasSlot.y;
+      floats[6] = palettePhase;
+      floats[7] = PALETTE_LENGTH;
+    } else {
+      floats[2] = palettePhase;
+      floats[3] = PALETTE_LENGTH;
+    }
+    return data;
+  }
+
+  private renderHeight(
+    cssWidth: number,
+    cssHeight: number,
+    devicePixelRatio: number
+  ): number {
+    const dpr = clamp(devicePixelRatio, 1, 2);
+    const requestedWidth = Math.max(1, cssWidth * dpr);
+    const requestedHeight = Math.max(1, cssHeight * dpr);
+    const scale = Math.min(1, Math.sqrt(MAX_NUMERICAL_PIXELS / (requestedWidth * requestedHeight)));
+    return Math.max(1, Math.floor(requestedHeight * scale));
+  }
+
+  private async awaitTestBatchPermit(): Promise<boolean> {
+    while (this.testSchedulerPaused
+      && this.testBatchPermits <= 0
+      && !this.dead
+      && !this.suspended
+      && !this.latestRequest) {
+      await new Promise<void>(resolve => this.testGateWaiters.push(resolve));
+    }
+    if (this.testSchedulerPaused && this.testBatchPermits > 0) {
+      this.testBatchPermits--;
+      return true;
+    }
+    return false;
+  }
+
+  private noteTestBatchCompleted(requestId: number): void {
+    this.testBatchRevision++;
+    const requestBatchCount = (this.testRequestBatchCounts.get(requestId) ?? 0) + 1;
+    this.testRequestBatchCounts.set(requestId, requestBatchCount);
+    const ready = this.testBatchWaiters.filter(
+      waiter => waiter.requestId === requestId && waiter.targetCount <= requestBatchCount
+    );
+    this.testBatchWaiters = this.testBatchWaiters.filter(waiter => !ready.includes(waiter));
+    for (const waiter of ready) waiter.resolve({
+      batchRevision: this.testBatchRevision,
+      requestId,
+      requestBatchCount
+    });
+  }
+
+  private quantumBudget(interaction: PersistentTileRequest['interaction']): number {
+    return interaction === 'moving'
+      ? MOVING_QUANTUM_MS
+      : interaction === 'settling' ? SETTLING_QUANTUM_MS : SETTLED_QUANTUM_MS;
+  }
+
+  private batchTarget(interaction: PersistentTileRequest['interaction']): number {
+    return interaction === 'moving'
+      ? MOVING_BATCH_TARGET_MS
+      : interaction === 'settling' ? SETTLING_BATCH_TARGET_MS : SETTLED_BATCH_TARGET_MS;
+  }
+
+  private adaptBatchSize(
+    interaction: PersistentTileRequest['interaction'],
+    elapsedMs: number
+  ): void {
+    const target = this.batchTarget(interaction);
+    const ratio = clamp(target / Math.max(0.25, elapsedMs), 0.6, 1.5);
+    this.adaptiveBatchTiles = Math.round(clamp(
+      this.adaptiveBatchTiles * ratio,
+      MIN_BATCH_TILES,
+      MAX_BATCH_TILES
+    ));
+  }
+
+  private hasCompleteChildren(tile: FieldTile): boolean {
+    const childExponent = tile.descriptor.sampleExponent - 1;
+    const baseX = tile.descriptor.tileX * 2n;
+    const baseY = tile.descriptor.tileY * 2n;
+    for (let y = 0n; y < 2n; y++) {
+      for (let x = 0n; x < 2n; x++) {
+        const key: PersistentTileKey = `${childExponent}:${(baseX + x).toString()}:${(baseY + y).toString()}`;
+        const child = this.tileMap.get(key);
+        if (!child || child.coveragePixels < TILE_PIXEL_COUNT) return false;
+      }
+    }
+    return true;
+  }
+
+  private tileTransform(
+    tile: FieldTile,
+    targetCamera: CameraSnapshot,
+    aspect: number
+  ): { scaleX: number; scaleY: number; offsetX: number; offsetY: number } | null {
+    const spanExponent = tileSpanExponent(tile.descriptor.sampleExponent);
+    const scaleY = scaleOverDyadic(targetCamera.scale, spanExponent);
+    const transform = packTransform({
+      scaleX: scaleY * aspect,
+      scaleY,
+      offsetX: fixedDifferenceOverDyadic(targetCamera.centerX, tile.descriptor.centerX, spanExponent),
+      offsetY: fixedDifferenceOverDyadic(targetCamera.centerY, tile.descriptor.centerY, spanExponent)
+    });
+    return transformIsFinite(transform) ? transform : null;
+  }
+
+  private evictColdTiles(): void {
+    const cacheTarget = Math.max(
+      MAX_CACHED_TILES,
+      this.currentVisibleKeys.size + CACHE_HISTORY_TILE_RESERVE
+    );
+    if (this.tileMap.size <= cacheTarget) return;
+    const candidates = [...this.tileMap.values()]
+      .filter(tile => !this.currentVisibleKeys.has(tile.descriptor.key))
+      .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt);
+    while (this.tileMap.size > cacheTarget && candidates.length > 0) {
+      const tile = candidates.shift();
+      if (!tile) break;
+      this.tileMap.delete(tile.descriptor.key);
+      this.destroyTile(tile);
+    }
+  }
+
+  private evictOneColdTile(): boolean {
+    const tile = [...this.tileMap.values()]
+      .filter(candidate => !this.currentVisibleKeys.has(candidate.descriptor.key))
+      .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt)[0];
+    if (!tile) return false;
+    this.tileMap.delete(tile.descriptor.key);
+    this.destroyTile(tile);
+    return true;
+  }
+
+  private destroyTile(tile: FieldTile): void {
+    if (this.acceptedAtlas && tile.atlasSlot) this.acceptedAtlas.release(tile.atlasSlot);
+    tile.stateBuffer.destroy();
+    tile.metaBuffer.destroy();
+    tile.counterBuffer.destroy();
+    tile.resultTexture.destroy();
+    tile.qualityTexture.destroy();
+    tile.colourTexture.destroy();
+    tile.evidenceTexture.destroy();
+    tile.directUniform.destroy();
+    tile.perturbUniform.destroy();
+    tile.colourUniform.destroy();
+    tile.presentUniform.destroy();
+    tile.resetUniform.destroy();
+  }
+
+  private resizeCanvas(width: number, height: number): void {
+    if (this.displayWidth === width && this.displayHeight === height) return;
+    this.displayWidth = width;
+    this.displayHeight = height;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.context.configure({ device: this.device, format: this.canvasFormat, alphaMode: 'opaque' });
+  }
+
+  private static async assertShaderValid(module: GPUShaderModule, label: string): Promise<void> {
+    const compilation = await module.getCompilationInfo();
+    const errors = compilation.messages.filter((message: { type: string }) => message.type === 'error');
+    if (errors.length === 0) return;
+    const first = errors[0];
+    throw new Error(`${label} WGSL line ${first.lineNum}: ${first.message}`);
+  }
+}
