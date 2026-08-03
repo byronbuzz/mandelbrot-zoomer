@@ -56,8 +56,8 @@ const STATUS_INTERIOR = 2u;
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= p.tileSize || gid.y >= p.tileSize) { return; }
   let index = gid.y * p.tileSize + gid.x;
-  let meta = recurrenceMeta[index];
-  if (p.preserveAccepted != 0u && (meta.y == STATUS_ESCAPED || meta.y == STATUS_INTERIOR)) {
+  let pixelMeta = recurrenceMeta[index];
+  if (p.preserveAccepted != 0u && (pixelMeta.y == STATUS_ESCAPED || pixelMeta.y == STATUS_INTERIOR)) {
     return;
   }
   let pixel = vec2i(gid.xy);
