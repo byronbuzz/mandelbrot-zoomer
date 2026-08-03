@@ -1,6 +1,8 @@
 import type { InteractionState } from '../tiles/types';
 
-export const REFERENCE_CONTRACT_VERSION = 1;
+export const REFERENCE_CONTRACT_VERSION = 2;
+export const LEGACY_REFERENCE_TRANSPORT_BITS = 96;
+export const WIDE_REFERENCE_TRANSPORT_BITS = 192;
 export const REFERENCE_TRANSPORT_GUARD_BITS = 32;
 export const PERTURBATION_OVERLAP_SAMPLE_EXPONENT = -23;
 export const PREFERRED_REFERENCE_SEED_BUDGET = 16;

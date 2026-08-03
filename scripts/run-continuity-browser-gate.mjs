@@ -219,6 +219,37 @@ try {
     }
   }
 
+  const beforeLoss = await page.evaluate(() => window.__ZOOMER_DIAGNOSTICS__());
+  await page.evaluate(() => window.__ZOOMER_FORCE_DEVICE_LOSS__());
+  await page.waitForFunction(
+    previousEpoch => {
+      const diagnostics = window.__ZOOMER_DIAGNOSTICS__();
+      return diagnostics.rendererEpoch > previousEpoch && !diagnostics.recovering;
+    },
+    beforeLoss.rendererEpoch,
+    { timeout: 20_000 }
+  );
+  const recoveredTarget = await page.evaluate(
+    camera => window.__ZOOMER_TEST__.setExactCamera(camera, 'settled'),
+    cameraAtOrder(fixture.deepOrder)
+  );
+  const recoveredFrame = await page.evaluate(
+    ({ viewRevision, requestId }) => window.__ZOOMER_TEST__.waitForResolved(viewRevision, requestId, 0),
+    recoveredTarget
+  );
+  assertFrame(recoveredFrame, 'device-loss recovered frame', recoveredTarget.requestId);
+  const afterLoss = await page.evaluate(() => window.__ZOOMER_DIAGNOSTICS__());
+  records.push({
+    direction: 'device-loss-recovery',
+    target: recoveredTarget,
+    transformed: recoveredFrame,
+    rendererEpochBefore: beforeLoss.rendererEpoch,
+    rendererEpochAfter: afterLoss.rendererEpoch
+  });
+  await page.screenshot({
+    path: resolve(outputDirectory, 'device-loss-recovered.png'), type: 'png'
+  });
+
   const finalDiagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
   if (
     /swiftshader|software|llvmpipe/i.test(finalDiagnostics.adapterLabel)

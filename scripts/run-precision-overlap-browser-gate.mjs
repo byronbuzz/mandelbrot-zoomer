@@ -11,7 +11,9 @@ mkdirSync(outputDirectory, { recursive: true });
 const port = Number(process.env.PRECISION_PORT ?? 4179);
 const expectReferenceDrain = process.env.PRECISION_EXPECT_DRAIN !== '0';
 const stressMs = Math.max(0, Number(process.env.PRECISION_STRESS_MS ?? 0));
-const url = `http://127.0.0.1:${port}/mandelbrot-zoomer/?testIterations=${fixture.iterationTarget}&continuityTest=1`;
+const referenceTransport = process.env.PRECISION_REFERENCE_TRANSPORT;
+const transportQuery = referenceTransport ? `&referenceTransport=${referenceTransport}` : '';
+const url = `http://127.0.0.1:${port}/mandelbrot-zoomer/?testIterations=${fixture.iterationTarget}&continuityTest=1${transportQuery}`;
 const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
 const server = spawn(process.execPath, [
   viteEntry, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--configLoader', 'runner'
@@ -165,7 +167,14 @@ try {
     failures.push('Reference demand did not drain after settling.');
   }
   if (field?.referenceFailures !== 0) failures.push(`Reference failures: ${field.referenceFailures}.`);
-  if (field?.referenceTransportBits !== 96) failures.push(`Expected declared 96-bit transport, got ${field?.referenceTransportBits}.`);
+  const expectedTransportBits = Number(
+    process.env.PRECISION_EXPECT_TRANSPORT
+      ?? fixture.expectedTransportBits
+      ?? (referenceTransport === '96' ? 96 : 144)
+  );
+  if (field?.referenceTransportBits !== expectedTransportBits) {
+    failures.push(`Expected declared ${expectedTransportBits}-bit transport, got ${field?.referenceTransportBits}.`);
+  }
   if ((field?.referenceWorkingBits ?? 0) < 224) failures.push(`Expected at least 224 working bits, got ${field?.referenceWorkingBits}.`);
   if (field?.precisionLimitedTiles !== 0) failures.push('Overlap canary was incorrectly precision-limited.');
   if (presentation?.validationErrors !== 0) failures.push('WebGPU validation errors were reported.');

@@ -6,6 +6,8 @@
   },
   "include": [
     "numerical/direct-gpu-harness.ts",
+    "numerical/reference-transport-harness.ts",
+    "numerical/perturbation-gpu-harness.ts",
     "../src/numerical/tileDirectShader.ts"
   ]
 }

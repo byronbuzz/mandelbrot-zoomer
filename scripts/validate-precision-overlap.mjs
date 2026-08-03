@@ -23,7 +23,12 @@ const requirements = [
   ['reference activation preserves the spatial plan', renderer, 'applyReferenceRefresh(request)'],
   ['transport contract rejection', atlas, 'response.transportBits < active.requiredTransportBits'],
   ['worker reports working precision', worker, 'workingBits: bits'],
-  ['worker reports finite transport ceiling', worker, 'REFERENCE_TRANSPORT_BITS = 96']
+  ['versioned wide reference contract', policy, 'REFERENCE_CONTRACT_VERSION = 2'],
+  ['legacy reference transport remains selectable', renderer, "get('referenceTransport') === '96'"],
+  ['wide reference transport ceiling', worker, 'WIDE_REFERENCE_TRANSPORT_BITS = 192'],
+  ['exact fixed deep reference recurrence', worker, 'buildExactFixedReference'],
+  ['dynamic orbit stride', renderer, 'reference.floatsPerPoint'],
+  ['scaled perturbation headroom', renderer, 'tile.descriptor.sampleExponent + 64']
 ];
 
 const failures = requirements
@@ -32,11 +37,12 @@ const failures = requirements
 
 const requiredBits = sampleExponent => Math.max(48, -Math.floor(sampleExponent) + 32);
 if (requiredBits(-26) > 96) failures.push('The 10^5 overlap band must fit the declared current transport.');
-if (requiredBits(-126) <= 96) failures.push('The 10^35 band must reject the declared current transport.');
+if (requiredBits(-126) <= 96) failures.push('The 10^35 band must reject legacy transport.');
+if (requiredBits(-126) > 192) failures.push('The 10^35 band must fit the wide transport contract.');
 
 const frozen = new Map([
   ['src/numerical/tileDirectShader.ts', '6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1'],
-  ['src/numerical/tilePerturbationShader.ts', '963b5954163aa924525040d5923643c6d18167c4eae081a0bc1296f5e7b8e8d7']
+  ['src/numerical/tilePerturbationShader.ts', 'ebef51fc3883ea8f6bcea3243f07974854165aff20f4be72b289e67ff7a8b8dd']
 ]);
 for (const [path, expected] of frozen) {
   const actual = createHash('sha256').update(read(path)).digest('hex');

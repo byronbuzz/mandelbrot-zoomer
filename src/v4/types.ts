@@ -27,6 +27,7 @@ export type ReferenceRequest = Readonly<{
   centerY: SerializedFixed;
   iterations: number;
   probeIterations: number;
+  maxTransportBits: 96 | 192;
   candidates: readonly ReferenceCandidate[];
 }>;
 
@@ -37,6 +38,7 @@ export type ReferenceResponse = Readonly<{
   bits: number;
   workingBits: number;
   transportBits: number;
+  floatsPerPoint: 8 | 16;
   contractVersion: number;
   length: number;
   escaped: boolean;

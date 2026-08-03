@@ -178,6 +178,7 @@ export class ReferenceManager {
       centerY: serializeFixed(camera.centerY),
       iterations,
       probeIterations,
+      maxTransportBits: 96,
       candidates
     };
     this.pending.set(id, {

@@ -1,7 +1,6 @@
 import {
   fixedAddScaled,
   fixedSplitF32,
-  fixedSub,
   fixedToNumber
 } from '../bigFixed';
 import type { CameraSnapshot } from '../camera/types';
@@ -221,6 +220,11 @@ function splitChanged(
   return before[0] !== after[0] || before[1] !== after[1];
 }
 
+function splitNumberF32(value: number): readonly [number, number] {
+  const hi = Math.fround(value);
+  return [hi, Math.fround(value - hi)];
+}
+
 export class TileFieldRenderer {
   private readonly tileMap = new Map<PersistentTileKey, FieldTile>();
   private readonly directPipeline: GPUComputePipeline;
@@ -326,7 +330,12 @@ export class TileFieldRenderer {
       addressModeU: 'clamp-to-edge',
       addressModeV: 'clamp-to-edge'
     });
-    this.referenceAtlas = new TileReferenceAtlas(device);
+    const legacyReferenceTransport = new URLSearchParams(location.search)
+      .get('referenceTransport') === '96';
+    this.referenceAtlas = new TileReferenceAtlas(
+      device,
+      legacyReferenceTransport ? 96 : 192
+    );
     this.readbackSlots = Array.from({ length: MAX_IN_FLIGHT_BATCHES }, (_, index) => ({
       buffer: device.createBuffer({
         label: `tile-counter-readback-ring-${index}`,
@@ -1826,8 +1835,16 @@ export class TileFieldRenderer {
     const signed = new Int32Array(data);
     const [centerXHi, centerXLo] = fixedSplitF32(tile.descriptor.centerX);
     const [centerYHi, centerYLo] = fixedSplitF32(tile.descriptor.centerY);
-    const [deltaXHi, deltaXLo] = fixedSplitF32(fixedSub(tile.descriptor.centerX, reference.centerX));
-    const [deltaYHi, deltaYLo] = fixedSplitF32(fixedSub(tile.descriptor.centerY, reference.centerY));
+    const [deltaXHi, deltaXLo] = splitNumberF32(fixedDifferenceOverDyadic(
+      tile.descriptor.centerX,
+      reference.centerX,
+      tile.descriptor.sampleExponent + 64
+    ));
+    const [deltaYHi, deltaYLo] = splitNumberF32(fixedDifferenceOverDyadic(
+      tile.descriptor.centerY,
+      reference.centerY,
+      tile.descriptor.sampleExponent + 64
+    ));
     floats[0] = centerXHi;
     floats[1] = centerXLo;
     floats[2] = centerYHi;
@@ -1842,7 +1859,7 @@ export class TileFieldRenderer {
     unsigned[11] = scheduled.work.chunkIterations;
     unsigned[12] = reference.length;
     unsigned[13] = scheduled.capMode;
-    unsigned[14] = reference.bits;
+    unsigned[14] = reference.floatsPerPoint;
     unsigned[15] = tile.repairPass;
     floats[16] = GLITCH_RATIO;
     return data;
