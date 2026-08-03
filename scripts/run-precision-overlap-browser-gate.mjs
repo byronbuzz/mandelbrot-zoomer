@@ -112,8 +112,10 @@ try {
   );
   const settledDeadline = Date.now() + 60_000;
   let diagnostics;
+  const settledTrace = [];
   while (Date.now() < settledDeadline) {
     diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
+    settledTrace.push({ phase: 'settling', elapsedMs: 60_000 - (settledDeadline - Date.now()), ...diagnostics });
     if (diagnostics.requestId === settledTarget.requestId
       && diagnostics.field.requestId === settledTarget.requestId
       && diagnostics.field.perturbationTiles > 0
@@ -122,13 +124,19 @@ try {
     await page.waitForTimeout(100);
   }
   if (stressMs > 0) {
-    await page.waitForTimeout(stressMs);
+    const stressStarted = Date.now();
+    while (Date.now() - stressStarted < stressMs) {
+      diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
+      settledTrace.push({ phase: 'stress', elapsedMs: Date.now() - stressStarted, ...diagnostics });
+      await page.waitForTimeout(Math.min(250, Math.max(0, stressMs - (Date.now() - stressStarted))));
+    }
     diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
+    settledTrace.push({ phase: 'stress', elapsedMs: Date.now() - stressStarted, ...diagnostics });
   }
   await page.screenshot({ path: resolve(outputDirectory, 'precision-overlap-settled.png'), type: 'png' });
   const report = {
     capturedAt: new Date().toISOString(), executablePath, fixture,
-    movingTarget, movingDiagnostics, settledTarget, diagnostics, errors
+    movingTarget, movingDiagnostics, settledTarget, diagnostics, settledTrace, errors
   };
   writeFileSync(resolve(outputDirectory, 'report.json'), JSON.stringify(report, null, 2));
 
@@ -161,6 +169,27 @@ try {
   if ((field?.referenceWorkingBits ?? 0) < 224) failures.push(`Expected at least 224 working bits, got ${field?.referenceWorkingBits}.`);
   if (field?.precisionLimitedTiles !== 0) failures.push('Overlap canary was incorrectly precision-limited.');
   if (presentation?.validationErrors !== 0) failures.push('WebGPU validation errors were reported.');
+  const firstAdmittedIndex = settledTrace.findIndex(sample => (sample.field?.finestTiles ?? 0) > 0);
+  if (firstAdmittedIndex >= 0 && settledTrace.slice(firstAdmittedIndex).some(
+    sample => sample.field?.finestTiles === 0
+  )) {
+    failures.push('Finest spatial level disappeared during reference activation.');
+  }
+  if (stressMs >= 5_000) {
+    const quietWindow = settledTrace.filter(
+      sample => sample.phase === 'stress' && sample.elapsedMs >= stressMs - 5_000
+    );
+    if (quietWindow.length === 0 || quietWindow.some(sample => sample.busy
+      || sample.field?.pendingReferences !== 0
+      || sample.field?.queuedChunks !== 0
+      || sample.field?.inFlightBatches !== 0)) {
+      failures.push('Renderer did not remain continuously quiet for the final five seconds.');
+    }
+    if (quietWindow.some(sample => sample.requestId !== settledTarget.requestId
+      || sample.field?.requestId !== settledTarget.requestId)) {
+      failures.push('The settled request identity changed during the final quiet window.');
+    }
+  }
   if (/swiftshader|software|llvmpipe/i.test(diagnostics?.adapterLabel ?? '')) {
     failures.push(`Hardware GPU required, got ${diagnostics?.adapterLabel}.`);
   }

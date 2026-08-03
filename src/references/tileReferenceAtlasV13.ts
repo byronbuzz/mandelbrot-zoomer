@@ -20,7 +20,10 @@ const ORBIT_BYTES_PER_POINT = 8 * Float32Array.BYTES_PER_ELEMENT;
 const MAX_REFERENCE_ITERATIONS = 65_536;
 const REQUEST_TIMEOUT_MS = 30_000;
 const INITIAL_REFERENCE_GROUP_TILE_SPAN = 2n;
-const MAX_REUSE_COVERAGE_DISTANCE = 8;
+// A reference is only shared within its immediate coverage neighbourhood.
+// Wider reuse looked attractive for throughput, but at boundary locations it
+// produced references whose perturbations were too large to remain stable.
+const MAX_REUSE_COVERAGE_DISTANCE = 1;
 const MIN_REFERENCE_WORKING_BITS = 224;
 
 const INITIAL_CANDIDATE_GRID = [-0.34, 0, 0.34] as const;
@@ -292,6 +295,7 @@ export class TileReferenceAtlas {
       if (reference.length < 2) continue;
       if (reference.contractVersion !== REFERENCE_CONTRACT_VERSION
         || reference.transportBits < requiredTransportBits) continue;
+      if (reference.requestedIterations < iterations) continue;
       const [tileCenterX, tileCenterY] = centerForTileKey(tileKey, reference.coverageCenterX.bits);
       const coverageSpan = Math.pow(2, reference.coverageExponent);
       if (!Number.isFinite(coverageSpan) || coverageSpan <= 0) continue;
@@ -302,16 +306,17 @@ export class TileReferenceAtlas {
 
       const exactTileBonus = reference.tileKey === tileKey ? -0.75 : 0;
       const sameInitialGroupBonus = reference.tileKey === exactInitialGroup ? -0.35 : 0;
-      const iterationPenalty = reference.requestedIterations >= iterations ? 0 : 0.35;
       const escapedPenalty = reference.escaped ? 0.04 : 0;
       const score = coverageDistance
         + exactTileBonus
         + sameInitialGroupBonus
-        + iterationPenalty
         + escapedPenalty;
       if (
         score < bestScore
         || (score === bestScore && reference.length > (best?.length ?? 0))
+        || (score === bestScore
+          && reference.length === (best?.length ?? 0)
+          && reference.cacheKey < (best?.cacheKey ?? ''))
       ) {
         best = reference;
         bestScore = score;
@@ -363,7 +368,10 @@ export class TileReferenceAtlas {
       centerX: serializeFixed(fixedRescale(request.geometry.centerX, bits)),
       centerY: serializeFixed(fixedRescale(request.geometry.centerY, bits)),
       iterations: request.iterations,
-      probeIterations: Math.min(request.iterations, request.repairPass === 0 ? 1024 : 4096),
+      // Candidate selection must cover the requested horizon. A reference that
+      // survives a short probe can still escape thousands of iterations later,
+      // which previously triggered repeated repair waves at deep boundaries.
+      probeIterations: request.iterations,
       candidates: this.candidates(request, bits)
     };
     slot.worker.postMessage(workerRequest);
