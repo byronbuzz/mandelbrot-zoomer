@@ -56,8 +56,6 @@ struct ResetParams { tileSize: u32, preserveAccepted: u32, _pad0: vec2u }
 @group(0) @binding(0) var<uniform> p: ResetParams;
 @group(0) @binding(1) var<storage, read_write> recurrenceState: array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> recurrenceMeta: array<vec4u>;
-@group(0) @binding(3) var resultTexture: texture_storage_2d<rgba32float, write>;
-@group(0) @binding(4) var qualityTexture: texture_storage_2d<rgba8unorm, write>;
 const STATUS_ESCAPED = 1u;
 const STATUS_INTERIOR = 2u;
 @compute @workgroup_size(8, 8)
@@ -68,11 +66,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (p.preserveAccepted != 0u && (pixelMeta.y == STATUS_ESCAPED || pixelMeta.y == STATUS_INTERIOR)) {
     return;
   }
-  let pixel = vec2i(gid.xy);
   recurrenceState[index] = vec4f(0.0);
   recurrenceMeta[index] = vec4u(0u);
-  textureStore(resultTexture, pixel, vec4f(0.0));
-  textureStore(qualityTexture, pixel, vec4f(0.0));
 }`;
 
 export const tilePresentShader = /* wgsl */ `
