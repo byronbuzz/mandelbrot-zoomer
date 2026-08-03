@@ -41,7 +41,11 @@ export function sampleExponentForViewport(
   levelOffset = 0
 ): number {
   const pixelExponent = scaleLog2(camera.scale) - Math.log2(Math.max(1, renderHeight));
-  return Math.floor(pixelExponent) + levelOffset;
+
+  // The base lattice should be approximately one numerical sample per display pixel.
+  // Flooring this value oversampled by up to 2x in each axis, producing roughly four
+  // times as many persistent tiles and reference requests as the pixel budget allowed.
+  return Math.ceil(pixelExponent) + levelOffset;
 }
 
 export function tileSpanExponent(sampleExponent: number): number {
