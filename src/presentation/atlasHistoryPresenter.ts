@@ -376,4 +376,632 @@ export class AtlasHistoryPresenter {
       validationErrors: this.validationErrors,
       rollingFrames: Math.max(0, this.frames - this.fallbackFrames),
       snapshotCount: this.snapshots.length + (this.stableCheckpoint ? 1 : 0),
-      reducedFrame: this.continuityReduceß®·¶‰žËkºwµçeÑ•´¹¥¹ÍÑ…¹”¹Í±½Ð¹à°(€€€€€€€¥Ñ•´¹¥¹ÍÑ…¹”¹Í±½Ð¹ä°(€€€€€€€¥Ñ•´¹¥¹ÍÑ…¹”¹Í±½Ð¹¥¹‘•à°(€€€€€€€¥Ñ•´¹¥¹ÍÑ…¹”¹Í±½Ð¹±•…Í”°(€€€€€€€5…Ñ ¹µ…à À°5…Ñ ¹™±½½È¡¥Ñ•´¹¥¹ÍÑ…¹”¹¥Ñ•É…Ñ¥½¹É½¹Ñ¥•È¤¤°(€€€€€€€¥Ñ•´¹¥¹ÍÑ…¹”¹…Á5½‘”°(€€€€€€€¥Ñ•´¹É…¹¬°(€€€€€€€5…Ñ ¹µ…à À°5…Ñ ¹™±½½È¡¥Ñ•´¹¥¹ÍÑ…¹”¹Ñ…É•Ñ%Ñ•É…Ñ¥½¹Ì¤¤(€€€€€t°‰…Í”€¬€Ð¤ì(€€€ô¤ì(€€€É•ÑÕÉ¸ì‘…Ñ„°½Õ¹Ðè…•ÁÑ•¹±•¹Ñ ôì(€ô((€ÁÉ¥Ù…Ñ”¥¹¥Ñ¥…±!•…¡É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð°É½±±¥¹œèI½±±¥¹!•…ð¹Õ±°¤èÉ…µ•MÕÉ™…”ì(€€€¥˜€¡É½±±¥¹œü¹½Ý¹•È€ôôôÉ•Í½ÕÉ•Ì€˜˜É½±±¥¹œ¹ÍÕÉ™…”€ôôôÉ•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÁt¤É•ÑÕÉ¸É•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÅtì(€€€É•ÑÕÉ¸É•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÁtì(€ô((€ÁÉ¥Ù…Ñ”½Ñ¡•ÉMÕÉ™…”¡É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð°ÕÉÉ•¹ÐèÉ…µ•MÕÉ™…”¤èÉ…µ•MÕÉ™…”ì(€€€É•ÑÕÉ¸ÕÉÉ•¹Ð€ôôôÉ•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÁt€üÉ•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÅt€èÉ•Í½ÕÉ•Ì¹ÍÕÉ™…•ÍlÁtì(€ô((€ÁÉ¥Ù…Ñ”±•…ÉMÕÉ™…”¡•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°ÍÕÉ™…”èÉ…µ•MÕÉ™…”¤èÙ½¥ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹I•¹‘•ÉA…ÍÌ¡ì½±½ÉÑÑ…¡µ•¹ÑÌèÑ¡¥Ì¹ÍÕÉ™…•ÑÑ…¡µ•¹ÑÌ¡ÍÕÉ™…”¤ô¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•¹‘•É!¥ÍÑ½Éå…¹‘¥‘…Ñ” (€€€•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°(€€€‘•ÍÑ¥¹…Ñ¥½¸èÉ…µ•MÕÉ™…”°(€€€Í½ÕÉ”è!¥ÍÑ½ÉåM½ÕÉ”€˜ìÑÉ…¹Í™½É´èA…­•‘QÉ…¹Í™½É´ô°(€€€Ñ…É•Ðèá…ÑY¥•Ü°(€€€Õ¹¥™½Éµ%¹‘•àè¹Õµ‰•È(€€¤èÙ½¥ì(€€€½¹ÍÐ½™™Í•Ð€ôÕ¹¥™½Éµ%¹‘•à€¨IAI=)Q}U9%=I5}MQI%ì(€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹ÝÉ¥Ñ•	Õ™™•È¡Ñ¡¥Ì¹É•ÁÉ½©•ÑU¹¥™½É´°½™™Í•Ð°¹•Ü±½…ÐÌÉÉÉ…ä¡l(€€€€€Í½ÕÉ”¹ÑÉ…¹Í™½É´¹Í…±•`°Í½ÕÉ”¹ÑÉ…¹Í™½É´¹Í…±•d°(€€€€€Í½ÕÉ”¹ÑÉ…¹Í™½É´¹½™™Í•Ñ`°Í½ÕÉ”¹ÑÉ…¹Í™½É´¹½™™Í•Ñd(€€€t¤¤ì(€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹ÝÉ¥Ñ•	Õ™™•È¡Ñ¡¥Ì¹É•ÁÉ½©•ÑU¹¥™½É´°½™™Í•Ð€¬€ÄØ°¹•ÜU¥¹ÐÌÉÉÉ…ä¡l(€€€€€€Ä°(€€€€€™½½ÑÁÉ¥¹ÑI…¹­•±Ñ„¡Í½ÕÉ”¹ÑÉ…¹Í™½É´°Í½ÕÉ”¹Ù¥•Ü°Ñ…É•Ð¤€øøø€À°(€€€€€Í½ÕÉ”¹½É¥¥¸°(€€€€€Í…µ•I•Í½±Ù•‘Y¥•Ü¡Í½ÕÉ”¹Ù¥•Ü°Ñ…É•Ð¤€ü€Ä€è€À(€€€t¤¤ì(€€€½¹ÍÐÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕÐèÑ¡¥Ì¹É•ÁÉ½©•ÑA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕÐ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¡¥Ì¹É•ÁÉ½©•ÑU¹¥™½É´°½™™Í•Ð°Í¥é”èIAI=)Q}U9%=I5}	eQLôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èÑ¡¥Ì¹Í…µÁ±•Èô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”èÍ½ÕÉ”¹ÍÕÉ™…”¹½±½ÕÈ¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”èÍ½ÕÉ”¹ÍÕÉ™…”¹ÁÉ½Ù•¹…¹”¹É•…Ñ•Y¥•Ü ¤ô(€€€€€t(€€€ô¤ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹I•¹‘•ÉA…ÍÌ¡ì½±½ÉÑÑ…¡µ•¹ÑÌèÑ¡¥Ì¹ÍÕÉ™…•ÑÑ…¡µ•¹ÑÌ¡‘•ÍÑ¥¹…Ñ¥½¸¤ô¤ì(€€€Á…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹É•ÁÉ½©•ÑA¥Á•±¥¹”¤ì(€€€Á…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°É½ÕÀ¤ì(€€€Á…ÍÌ¹‘É…Ü Ì¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•¹‘•ÉÑ±…Í…¹‘¥‘…Ñ” (€€€•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°(€€€É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð°(€€€É½ÕÀèAU	¥¹‘É½ÕÀ°(€€€¥¹ÍÑ…¹•½Õ¹Ðè¹Õµ‰•È(€€¤èÙ½¥ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹I•¹‘•ÉA…ÍÌ¡ì(€€€€€½±½ÉÑÑ…¡µ•¹ÑÌèÑ¡¥Ì¹ÍÕÉ™…•ÑÑ…¡µ•¹ÑÌ¡É•Í½ÕÉ•Ì¹…¹‘¥‘…Ñ”¤°(€€€€€‘•ÁÑ¡MÑ•¹¥±ÑÑ…¡µ•¹Ðèì(€€€€€€€Ù¥•ÜèÉ•Í½ÕÉ•Ì¹…¹‘¥‘…Ñ••ÁÑ ¹É•…Ñ•Y¥•Ü ¤°(€€€€€€€‘•ÁÑ¡±•…ÉY…±Õ”è€À°(€€€€€€€‘•ÁÑ¡1½…‘=Àè€±•…Èœ°(€€€€€€€‘•ÁÑ¡MÑ½É•=Àè€‘¥Í…Éœ(€€€€€ô(€€€ô¤ì(€€€Á…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹½Ù•É±…åA¥Á•±¥¹”¤ì(€€€Á…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°É½ÕÀ¤ì(€€€Á…ÍÌ¹‘É…Ü Ø°¥¹ÍÑ…¹•½Õ¹Ð¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€ô((€ÁÉ¥Ù…Ñ”µ•É•MÕÉ™…•Ì (€€€•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°(€€€‰…Í”èÉ…µ•MÕÉ™…”°(€€€…¹‘¥‘…Ñ”èÉ…µ•MÕÉ™…”°(€€€½ÕÑÁÕÐèÉ…µ•MÕÉ™…”(€€¤èÙ½¥ì(€€€½¹ÍÐÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕÐèÑ¡¥Ì¹µ•É•A¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕÐ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”è‰…Í”¹½±½ÕÈ¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”è‰…Í”¹ÁÉ½Ù•¹…¹”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”è…¹‘¥‘…Ñ”¹½±½ÕÈ¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”è…¹‘¥‘…Ñ”¹ÁÉ½Ù•¹…¹”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ð°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå½Õ¹Ñ•É	Õ™™•Èôô(€€€€€t(€€€ô¤ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹I•¹‘•ÉA…ÍÌ¡ì½±½ÉÑÑ…¡µ•¹ÑÌèÑ¡¥Ì¹ÍÕÉ™…•ÑÑ…¡µ•¹ÑÌ¡½ÕÑÁÕÐ¤ô¤ì(€€€Á…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹µ•É•A¥Á•±¥¹”¤ì(€€€Á…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°É½ÕÀ¤ì(€€€Á…ÍÌ¹‘É…Ü Ì¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•¹‘•É…¹Ù…Ì¡•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°Í½ÕÉ”èÉ…µ•MÕÉ™…”¤èÙ½¥ì(€€€½¹ÍÐÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕÐèÑ¡¥Ì¹ÁÉ•Í•¹ÑA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕÐ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èÑ¡¥Ì¹Í…µÁ±•Èô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èÍ½ÕÉ”¹½±½ÕÈ¹É•…Ñ•Y¥•Ü ¤ô(€€€€€t(€€€ô¤ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹I•¹‘•ÉA…ÍÌ¡ì½±½ÉÑÑ…¡µ•¹ÑÌèmì(€€€€€Ù¥•ÜèÑ¡¥Ì¹½¹Ñ•áÐ¹•ÑÕÉÉ•¹ÑQ•áÑÕÉ” ¤¹É•…Ñ•Y¥•Ü ¤°(€€€€€±•…ÉY…±Õ”èìÈè€À¸ÀÀà°œè€À¸ÀÄ°ˆè€À¸ÀÄÐ°„è€Äô°(€€€€€±½…‘=Àè€±•…Èœ°ÍÑ½É•=Àè€ÍÑ½É”œ(€€€õtô¤ì(€€€Á…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹ÁÉ•Í•¹ÑA¥Á•±¥¹”¤ì(€€€Á…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°É½ÕÀ¤ì(€€€Á…ÍÌ¹‘É…Ü Ì¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€ô((€ÁÉ¥Ù…Ñ”ÍÕÉ™…•ÑÑ…¡µ•¹ÑÌ¡ÍÕÉ™…”èÉ…µ•MÕÉ™…”¤èAUI•¹‘•ÉA…ÍÍ½±½ÉÑÑ…¡µ•¹Ñmtì(€€€É•ÑÕÉ¸l(€€€€€ì(€€€€€€€Ù¥•ÜèÍÕÉ™…”¹½±½ÕÈ¹É•…Ñ•Y¥•Ü ¤°(€€€€€€€±•…ÉY…±Õ”èìÈè€À¸ÀÀà°œè€À¸ÀÄ°ˆè€À¸ÀÄÐ°„è€Äô°(€€€€€€€±½…‘=Àè€±•…Èœ°ÍÑ½É•=Àè€ÍÑ½É”œ(€€€€€ô°(€€€€€ì(€€€€€€€Ù¥•ÜèÍÕÉ™…”¹ÁÉ½Ù•¹…¹”¹É•…Ñ•Y¥•Ü ¤°(€€€€€€€±•…ÉY…±Õ”èìÈè€À°œè€À°ˆè€À°„è€Àô°(€€€€€€€±½…‘=Àè€±•…Èœ°ÍÑ½É•=Àè€ÍÑ½É”œ(€€€€€ô(€€€tì(€ô((€ÁÉ¥Ù…Ñ”•¹½‘•½¹Ñ¥¹Õ¥ÑåI•‘ÕÑ¥½¸ (€€€•¹½‘•ÈèAU½µµ…¹‘¹½‘•È°(€€€ÁÉ½Ù•¹…¹”èAUQ•áÑÕÉ”°(€€€Ý¥‘Ñ è¹Õµ‰•È°(€€€¡•¥¡Ðè¹Õµ‰•È°(€€€™É…µ•%è¹Õµ‰•È°(€€€Ù¥•ÝI•Ù¥Í¥½¸è¹Õµ‰•È°(€€€É•ÅÕ•ÍÑ%è¹Õµ‰•È°(€€€½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸è¹Õµ‰•È(€€¤èì(€€€Í±½ÐèI•…‘‰…­M±½Ðì(€€€™É…µ•%è¹Õµ‰•Èì(€€€Ù¥•ÝI•Ù¥Í¥½¸è¹Õµ‰•Èì(€€€É•ÅÕ•ÍÑ%è¹Õµ‰•Èì(€€€½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸è¹Õµ‰•Èì(€ôð¹Õ±°ì(€€€±•ÐÍ•±•Ñ•èI•…‘‰…­M±½Ðð¹Õ±°€ô¹Õ±°ì(€€€™½È€¡±•Ð½™™Í•Ð€ô€Àì½™™Í•Ð€ðÑ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­Ì¹±•¹Ñ ì½™™Í•Ð¬¬¤ì(€€€€€½¹ÍÐ¥¹‘•à€ô€¡Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­ÕÉÍ½È€¬½™™Í•Ð¤€”Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­Ì¹±•¹Ñ ì(€€€€€½¹ÍÐ…¹‘¥‘…Ñ”€ôÑ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­Ím¥¹‘•átì(€€€€€¥˜€¡…¹‘¥‘…Ñ”€˜˜€……¹‘¥‘…Ñ”¹‰ÕÍä¤ì(€€€€€€€Í•±•Ñ•€ô…¹‘¥‘…Ñ”ì(€€€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­ÕÉÍ½È€ô€¡¥¹‘•à€¬€Ä¤€”Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•…‘‰…­Ì¹±•¹Ñ ì(€€€€€€€‰É•…¬ì(€€€€€ô(€€€ô(€€€¥˜€ …Í•±•Ñ•¤ìÑ¡¥Ì¹‘É½ÁÁ•‘I•…‘‰…­Ì¬¬ìÉ•ÑÕÉ¸¹Õ±°ìô(€€€Í•±•Ñ•¹‰ÕÍä€ôÑÉÕ”ì(€€€½¹ÍÐÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕÐèÑ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕÐ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èÁÉ½Ù•¹…¹”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå½Õ¹Ñ•É	Õ™™•Èôô(€€€€€t(€€€ô¤ì(€€€½¹ÍÐÁ…ÍÌ€ô•¹½‘•È¹‰•¥¹½µÁÕÑ•A…ÍÌ¡ì±…‰•°è€ÁÉ•Í•¹Ñ…Ñ¥½¸µ½¹Ñ¥¹Õ¥ÑäµÉ•‘ÕÑ¥½¸œô¤ì(€€€Á…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåA¥Á•±¥¹”¤ì(€€€Á…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°É½ÕÀ¤ì(€€€Á…ÍÌ¹‘¥ÍÁ…Ñ¡]½É­É½ÕÁÌ¡5…Ñ ¹•¥°¡Ý¥‘Ñ €¼€à¤°5…Ñ ¹•¥°¡¡•¥¡Ð€¼€à¤¤ì(€€€Á…ÍÌ¹•¹ ¤ì(€€€•¹½‘•È¹½Áå	Õ™™•ÉQ½	Õ™™•È¡Ñ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå½Õ¹Ñ•É	Õ™™•È°€À°Í•±•Ñ•¹‰Õ™™•È°€À°=9Q%9U%Qe}=U9QI}	eQL¤ì(€€€É•ÑÕÉ¸ìÍ±½ÐèÍ•±•Ñ•°™É…µ•%°Ù¥•ÝI•Ù¥Í¥½¸°É•ÅÕ•ÍÑ%°½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸ôì(€ô((€ÁÉ¥Ù…Ñ”™¥¹¥Í¡½¹Ñ¥¹Õ¥ÑåI•…‘‰…¬¡É•…‘‰…¬èì(€€€Í±½ÐèI•…‘‰…­M±½Ðì(€€€™É…µ•%è¹Õµ‰•Èì(€€€Ù¥•ÝI•Ù¥Í¥½¸è¹Õµ‰•Èì(€€€É•ÅÕ•ÍÑ%è¹Õµ‰•Èì(€€€½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸è¹Õµ‰•Èì(€ô¤èÙ½¥ì(€€€Ù½¥É•…‘‰…¬¹Í±½Ð¹‰Õ™™•È¹µ…ÁÍå¹Œ¡AU5…Á5½‘”¹I¤¹Ñ¡•¸  ¤€ôøì(€€€€€½¹ÍÐÙ…±Õ•Ì€ô¹•ÜU¥¹ÐÌÉÉÉ…ä¡É•…‘‰…¬¹Í±½Ð¹‰Õ™™•È¹•Ñ5…ÁÁ•‘I…¹” ¤¤¹Í±¥” ¤ì(€€€€€É•…‘‰…¬¹Í±½Ð¹‰Õ™™•È¹Õ¹µ…À ¤ì(€€€€€É•…‘‰…¬¹Í±½Ð¹‰ÕÍä€ô™…±Í”ì(€€€€€¥˜€¡Ñ¡¥Ì¹‘•ÍÑÉ½å•¤É•ÑÕÉ¸ì(€€€€€½¹ÍÐ¡•­Á½¥¹Ñ±¥¥‰±”€ô€¡Ù…±Õ•ÍlÁt€üü€À¤€ø€À(€€€€€€€€˜˜€¡Ù…±Õ•ÍlÅt€üü€À¤€ôôô€À(€€€€€€€€˜˜€¡Ù…±Õ•ÍlÕt€üü€À¤€ôôô€À(€€€€€€€€˜˜€¡Ù…±Õ•Ílát€üü€À¤€ôôô€À(€€€€€€€€˜˜€¡Ù…±Õ•Ílåt€üü€À¤€ôôô€À(€€€€€€€€˜˜€¡Ù…±Õ•ÍlÄÉt€üü€À¤€ôôô€À(€€€€€€€€˜˜€¡Ù…±Õ•ÍlÑt€üü€À¤€ø€À(€€€€€€€€˜˜€¡Ù…±Õ•ÍlÙt€üü€À¤€¬€¡Ù…±Õ•ÍlÝt€üü€À¤€ôôô€¡Ù…±Õ•ÍlÁt€üü€À¤ì(€€€€€½¹ÍÐ™É…µ”è½¹Ñ¥¹Õ¥ÑåÉ…µ”€ôì(€€€€€€€™É…µ•%èÉ•…‘‰…¬¹™É…µ•%°(€€€€€€€Ù¥•ÝI•Ù¥Í¥½¸èÉ•…‘‰…¬¹Ù¥•ÝI•Ù¥Í¥½¸°(€€€€€€€É•ÅÕ•ÍÑ%èÉ•…‘‰…¬¹É•ÅÕ•ÍÑ%°(€€€€€€€½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸èÉ•…‘‰…¬¹½µÁ±•Ñ•‘	…Ñ¡I•Ù¥Í¥½¸°(€€€€€€€Ñ½Ñ…±A¥á•±ÌèÙ…±Õ•ÍlÁt€üü€À°(€€€€€€€¥¹Ù…±¥‘A¥á•±ÌèÙ…±Õ•ÍlÅt€üü€À°(€€€€€€€¡¥ÍÑ½ÉåA¥á•±ÌèÙ…±Õ•ÍlÉt€üü€À°(€€€€€€€É•Ñ…¥¹•‘A¥á•±ÌèÙ…±Õ•ÍlÍt€üü€À°(€€€€€€€ÕÉÉ•¹ÑA¥á•±ÌèÙ…±Õ•ÍlÑt€üü€À°(€€€€€€€ÁÉ½Ù¥Í¥½¹…±…ÁA¥á•±ÌèÙ…±Õ•ÍlÕt€üü€À°(€€€€€€€™¥¹…±…ÁA¥á•±ÌèÙ…±Õ•ÍlÙt€üü€À°(€€€€€€€Ñ•Éµ¥¹…±A¥á•±ÌèÙ…±Õ•ÍlÝt€üü€À°(€€€€€€€ÅÕ…±¥ÑåI•É•ÍÍ¥½¹A¥á•±ÌèÙ…±Õ•Ílát€üü€À°(€€€€€€€•Í…Á•‘Q½AÉ½Ù¥Í¥½¹…±	±…­A¥á•±ÌèÙ…±Õ•Ílåt€üü€À°(€€€€€€€…¹‘¥‘…Ñ•I•©•Ñ•‘1½Ý•ÉEÕ…±¥ÑåA¥á•±ÌèÙ…±Õ•ÍlÄÁt€üü€À°(€€€€€€€Í•µ…¹Ñ¥½¹™±¥ÑÙ•¹ÑÌèÙ…±Õ•ÍlÄÅt€üü€À°(€€€€€€€½¹™±¥ÑA¥á•±ÌèÙ…±Õ•ÍlÄÉt€üü€À°(€€€€€€€¡•­Á½¥¹Ñ±¥¥‰±”°(€€€€€€€‘É½ÁÁ•‘I•…‘‰…­ÌèÑ¡¥Ì¹‘É½ÁÁ•‘I•…‘‰…­Ì(€€€€€ôì(€€€€€¥˜€¡™É…µ”¹™É…µ•%€øôÑ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•‘Õ•‘É…µ”¤ì(€€€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåY…±Õ•Ì€ôÙ…±Õ•Ìì(€€€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåI•‘Õ•‘É…µ”€ô™É…µ”¹™É…µ•%ì(€€€€€ô(€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåÉ…µ•Ì¹ÁÕÍ ¡™É…µ”¤ì(€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåÉ…µ•Ì¹Í½ÉÐ ¡±•™Ð°É¥¡Ð¤€ôø±•™Ð¹™É…µ•%€´É¥¡Ð¹™É…µ•%¤ì(€€€€€Ý¡¥±”€¡Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåÉ…µ•Ì¹±•¹Ñ €ø=9Q%9U%Qe}I5}!%MQ=Id¤Ñ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåÉ…µ•Ì¹Í¡¥™Ð ¤ì(€€€€€Ñ¡¥Ì¹É•Í½±Ù•½¹Ñ¥¹Õ¥Ñå]…¥Ñ•ÉÌ ¤ì(€€€€€¥˜€¡Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ðü¹™É…µ•%€ôôô™É…µ”¹™É…µ•%¤ì(€€€€€€€½¹ÍÐÁ•¹‘¥¹œ€ôÑ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ðì(€€€€€€€Ù½¥Á•¹‘¥¹œ¹Ù…±¥‘…Ñ¥½¸¹Ñ¡•¸¡•ÉÉ½È€ôøì(€€€€€€€€€¥˜€¡Ñ¡¥Ì¹‘•ÍÑÉ½å•ñðÑ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€„ôôÁ•¹‘¥¹œ¤É•ÑÕÉ¸ì(€€€€€€€€€Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€ô¹Õ±°ì(€€€€€€€€€¥˜€¡•ÉÉ½Èñð€…™É…µ”¹¡•­Á½¥¹Ñ±¥¥‰±”¤ì(€€€€€€€€€€€¥˜€¡•ÉÉ½È¤Ñ¡¥Ì¹Ù…±¥‘…Ñ¥½¹ÉÉ½ÉÌ¬¬ì(€€€€€€€€€€€Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡Á•¹‘¥¹œ¹Í¹…ÁÍ¡½Ð¹ÍÕÉ™…”¤ì(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€ô(€€€€€€€€€Ñ¡¥Ì¹ÁÉ½µ½Ñ•¡•­Á½¥¹Ð¡Á•¹‘¥¹œ¹Í¹…ÁÍ¡½Ð¤ì(€€€€€€€ô°€ ¤€ôøì(€€€€€€€€€¥˜€ …Ñ¡¥Ì¹‘•ÍÑÉ½å•¤Ñ¡¥Ì¹Ù…±¥‘…Ñ¥½¹ÉÉ½ÉÌ¬¬ì(€€€€€€€€€¥˜€¡Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€ôôôÁ•¹‘¥¹œ¤Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€ô¹Õ±°ì(€€€€€€€€€Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡Á•¹‘¥¹œ¹Í¹…ÁÍ¡½Ð¹ÍÕÉ™…”¤ì(€€€€€€€ô¤ì(€€€€€ô(€€€ô°€ ¤€ôøì(€€€€€É•…‘‰…¬¹Í±½Ð¹‰ÕÍä€ô™…±Í”ì(€€€€€¥˜€ …Ñ¡¥Ì¹‘•ÍÑÉ½å•¤ì(€€€€€€€Ñ¡¥Ì¹‘É½ÁÁ•‘I•…‘‰…­Ì¬¬ì(€€€€€€€¥˜€¡Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ðü¹™É…µ•%€ôôôÉ•…‘‰…¬¹™É…µ•%¤ì(€€€€€€€€€½¹ÍÐ™…¥±•€ôÑ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ðì(€€€€€€€€€Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€ô¹Õ±°ì(€€€€€€€€€Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡™…¥±•¹Í¹…ÁÍ¡½Ð¹ÍÕÉ™…”¤ì(€€€€€€€ô(€€€€€ô(€€€ô¤ì(€ô((€ÁÉ¥Ù…Ñ”É•Í½±Ù•½¹Ñ¥¹Õ¥Ñå]…¥Ñ•ÉÌ ¤èÙ½¥ì(€€€½¹ÍÐÁ•¹‘¥¹œ€ôl¸¸¹Ñ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå]…¥Ñ•ÉÍtì(€€€™½È€¡½¹ÍÐÝ…¥Ñ•È½˜Á•¹‘¥¹œ¤ì(€€€€€½¹ÍÐÉ•…‘ä€ôÑ¡¥Ì¹½¹Ñ¥¹Õ¥ÑåÉ…µ•Ì¹™¥¹¡™É…µ”€ôø™É…µ”¹™É…µ•%€øÝ…¥Ñ•È¹…™Ñ•ÉÉ…µ”¤ì(€€€€€¥˜€ …É•…‘ä¤½¹Ñ¥¹Õ”ì(€€€€€±•…ÉQ¥µ•½ÕÐ¡Ý…¥Ñ•È¹Ñ¥µ•½ÕÐ¤ì(€€€€€Ñ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå]…¥Ñ•ÉÌ€ôÑ¡¥Ì¹½¹Ñ¥¹Õ¥Ñå]…¥Ñ•ÉÌ¹™¥±Ñ•È¡¥Ñ•´€ôø¥Ñ•´€„ôôÝ…¥Ñ•È¤ì(€€€€€Ý…¥Ñ•È¹É•Í½±Ù”¡É•…‘ä¤ì(€€€ô(€ô((€ÁÉ¥Ù…Ñ”ÁÉ½µ½Ñ•¡•­Á½¥¹Ð¡Í¹…ÁÍ¡½ÐèM¹…ÁÍ¡½Ð¤èÙ½¥ì(€€€½¹ÍÐÁÉ•Ù¥½ÕÌ€ôÑ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ðì(€€€Ñ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ð€ôÍ¹…ÁÍ¡½Ðì(€€€Ñ¡¥Ì¹…¹¡½ÉAÉ½µ½Ñ¥½¹Ì¬¬ì(€€€¥˜€¡ÁÉ•Ù¥½ÕÌ¤ì(€€€€€½¹ÍÐ±…Ñ•ÍÐ€ôÑ¡¥Ì¹Í¹…ÁÍ¡½ÑÍmÑ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹±•¹Ñ €´€Åt€üü¹Õ±°ì(€€€€€½¹ÍÐ™…É¹½Õ €ô€…±…Ñ•ÍÐ(€€€€€€€ñð5…Ñ ¹…‰Ì¡Ù¥•ÝM…±•=Ñ…Ù•Ì¡ÁÉ•Ù¥½ÕÌ¹Ù¥•Ü¤€´Ù¥•ÝM…±•=Ñ…Ù•Ì¡±…Ñ•ÍÐ¹Ù¥•Ü¤¤€øôM9AM!=Q}%9QIY1}=QYLì(€€€€€¥˜€¡™…É¹½Õ ¤Ñ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹ÁÕÍ ¡ÁÉ•Ù¥½ÕÌ¤ì(€€€€€•±Í”Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡ÁÉ•Ù¥½ÕÌ¹ÍÕÉ™…”¤ì(€€€ô(€€€Ñ¡¥Ì¹ÑÉ¥µI•Ñ…¥¹•‘!¥ÍÑ½Éä ¤ì(€ô((€ÁÉ¥Ù…Ñ”ÑÉ¥µI•Ñ…¥¹•‘!¥ÍÑ½Éä ¤èÙ½¥ì(€€€½¹ÍÐÍÑ…‰±•	åÑ•Ì€ôÑ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ð€üÍÕÉ™…•	åÑ•Ì¡Ñ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ð¹Ù¥•Ü¤€è€Àì(€€€±•ÐÉ•Ñ…¥¹•‘	åÑ•Ì€ôÍÑ…‰±•	åÑ•Ì€¬Ñ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹É•‘Õ” ¡ÍÕ´°¥Ñ•´¤€ôøÍÕ´€¬ÍÕÉ™…•	åÑ•Ì¡¥Ñ•´¹Ù¥•Ü¤°€À¤ì(€€€Ý¡¥±”€¡Ñ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹±•¹Ñ €ø5a}M9AM!=QLñðÉ•Ñ…¥¹•‘	åÑ•Ì€øIQ%9}55=Ie}	UQ}	eQL¤ì(€€€€€½¹ÍÐ½±‘•ÍÐ€ôÑ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹Í¡¥™Ð ¤ì(€€€€€¥˜€ …½±‘•ÍÐ¤‰É•…¬ì(€€€€€É•Ñ…¥¹•‘	åÑ•Ì€´ôÍÕÉ™…•	åÑ•Ì¡½±‘•ÍÐ¹Ù¥•Ü¤ì(€€€€€Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡½±‘•ÍÐ¹ÍÕÉ™…”¤ì(€€€ô(€ô((€ÁÉ¥Ù…Ñ”ÁÉ•Í•¹Ñ…Ñ¥½¹	åÑ•Ì (€€€É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð°(€€€…Ñ±…Ìè•ÁÑ•‘Q¥±•Ñ±…Ì°(€€€…‘‘¥Ñ¥½¹…±I•Ñ…¥¹•‘	åÑ•Ìè¹Õµ‰•È(€€¤è¹Õµ‰•Èì(€€€½¹ÍÐ±¥Ù•MÕÉ™…•Í¹‘•ÁÑ €ôÉ•Í½ÕÉ•Ì¹Ý¥‘Ñ €¨É•Í½ÕÉ•Ì¹¡•¥¡Ð€¨€Èàì(€€€½¹ÍÐ…Ñ±…Í	åÑ•Ì€ô…Ñ±…Ì¹Ý¥‘Ñ €¨…Ñ±…Ì¹¡•¥¡Ð€¨€ÄÈì(€€€½¹ÍÐÍÑ…‰±•	åÑ•Ì€ôÑ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ð€üÍÕÉ™…•	åÑ•Ì¡Ñ¡¥Ì¹ÍÑ…‰±•¡•­Á½¥¹Ð¹Ù¥•Ü¤€è€Àì(€€€½¹ÍÐÍ¹…ÁÍ¡½Ñ	åÑ•Ì€ôÑ¡¥Ì¹Í¹…ÁÍ¡½ÑÌ¹É•‘Õ” ¡ÍÕ´°¥Ñ•´¤€ôøÍÕ´€¬ÍÕÉ™…•	åÑ•Ì¡¥Ñ•´¹Ù¥•Ü¤°€À¤ì(€€€½¹ÍÐÁ•¹‘¥¹	åÑ•Ì€ôÑ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð€üÍÕÉ™…•	åÑ•Ì¡Ñ¡¥Ì¹Á•¹‘¥¹¡•­Á½¥¹Ð¹Í¹…ÁÍ¡½Ð¹Ù¥•Ü¤€è€Àì(€€€É•ÑÕÉ¸±¥Ù•MÕÉ™…•Í¹‘•ÁÑ €¬…Ñ±…Í	åÑ•Ì€¬ÍÑ…‰±•	åÑ•Ì€¬Í¹…ÁÍ¡½Ñ	åÑ•Ì(€€€€€€¬Á•¹‘¥¹	åÑ•Ì€¬…‘‘¥Ñ¥½¹…±I•Ñ…¥¹•‘	åÑ•Ìì(€ô((€ÁÉ¥Ù…Ñ”•¹ÍÕÉ•M¥é”¡Ý¥‘Ñ è¹Õµ‰•È°¡•¥¡Ðè¹Õµ‰•È¤èÙ½¥ì(€€€¥˜€¡Ñ¡¥Ì¹É•Í½ÕÉ•Ìü¹Ý¥‘Ñ €ôôôÝ¥‘Ñ €˜˜Ñ¡¥Ì¹É•Í½ÕÉ•Ì¹¡•¥¡Ð€ôôô¡•¥¡Ð¤É•ÑÕÉ¸ì(€€€Ñ¡¥Ì¹É•Í½ÕÉ•Á½ ¬¬ì(€€€Ñ¡¥Ì¹É•Í½ÕÉ•Ì€ôÑ¡¥Ì¹É•…Ñ•M•Ð¡Ý¥‘Ñ °¡•¥¡Ð°Ñ¡¥Ì¹É•Í½ÕÉ•Á½ ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•M•Ð¡Ý¥‘Ñ è¹Õµ‰•È°¡•¥¡Ðè¹Õµ‰•È°•Á½ è¹Õµ‰•È¤èI•Í½ÕÉ•M•Ðì(€€€½¹ÍÐÉ•…Ñ•MÕÉ™…”€ô€¡±…‰•°èÍÑÉ¥¹œ¤èÉ…µ•MÕÉ™…”€ôø€¡ì(€€€€€½±½ÕÈèÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•Q•áÑÕÉ”¡ì(€€€€€€€±…‰•°è€‘í±…‰•±ôµ½±½ÕÉ€°Í¥é”èmÝ¥‘Ñ °¡•¥¡Ñt°™½Éµ…Ðè€É‰„áÕ¹½É´œ°(€€€€€€€ÕÍ…”èAUQ•áÑÕÉ•UÍ…”¹I9I}QQ!59PðAUQ•áÑÕÉ•UÍ…”¹QaQUI}	%9%9ðAUQ•áÑÕÉ•UÍ…”¹=Ae}MI(€€€€€ô¤°(€€€€€ÁÉ½Ù•¹…¹”èÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•Q•áÑÕÉ”¡ì(€€€€€€€±…‰•°è€‘í±…‰•±ôµÁÉ½Ù•¹…¹•€°Í¥é”èmÝ¥‘Ñ °¡•¥¡Ñt°™½Éµ…Ðè€ÈÌÉÕ¥¹Ðœ°(€€€€€€€ÕÍ…”èAUQ•áÑÕÉ•UÍ…”¹I9I}QQ!59PðAUQ•áÑÕÉ•UÍ…”¹QaQUI}	%9%9ðAUQ•áÑÕÉ•UÍ…”¹=Ae}MI(€€€€€ô¤(€€€ô¤ì(€€€É•ÑÕÉ¸ì(€€€€€ÍÕÉ™…•ÌèmÉ•…Ñ•MÕÉ™…”¡É½±±¥¹œ´‘í•Á½¡ô´Á€¤°É•…Ñ•MÕÉ™…”¡É½±±¥¹œ´‘í•Á½¡ô´Å€¥t°(€€€€€…¹‘¥‘…Ñ”èÉ•…Ñ•MÕÉ™…”¡…¹‘¥‘…Ñ”´‘í•Á½¡õ€¤°(€€€€€…¹‘¥‘…Ñ••ÁÑ èÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•Q•áÑÕÉ”¡ì(€€€€€€€±…‰•°è…¹‘¥‘…Ñ”µ‘•ÁÑ ´‘í•Á½¡õ€°(€€€€€€€Í¥é”èmÝ¥‘Ñ °¡•¥¡Ñt°(€€€€€€€™½Éµ…Ðè€‘•ÁÑ ÌÉ™±½…Ðœ°(€€€€€€€ÕÍ…”èAUQ•áÑÕÉ•UÍ…”¹I9I}QQ!59P(€€€€€ô¤°(€€€€€Ý¥‘Ñ °¡•¥¡Ð°•Á½ (€€€ôì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•I•Ñ…¥¹•‘MÕÉ™…”¡Ý¥‘Ñ è¹Õµ‰•È°¡•¥¡Ðè¹Õµ‰•È°•¹•É…Ñ¥½¸è¹Õµ‰•È¤èÉ…µ•MÕÉ™…”ì(€€€É•ÑÕÉ¸ì(€€€€€½±½ÕÈèÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•Q•áÑÕÉ”¡ì(€€€€€€€±…‰•°èÉ•Í½±Ù•µ¡•­Á½¥¹Ðµ½±½ÕÈ´‘í•¹•É…Ñ¥½¹õ€°Í¥é”èmÝ¥‘Ñ °¡•¥¡Ñt°™½Éµ…Ðè€É‰„áÕ¹½É´œ°(€€€€€€€ÕÍ…”èAUQ•áÑÕÉ•UÍ…”¹QaQUI}	%9%9ðAUQ•áÑÕÉ•UÍ…”¹=Ae}MP(€€€€€ô¤°(€€€€€ÁÉ½Ù•¹…¹”èÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•Q•áÑÕÉ”¡ì(€€€€€€€±…‰•°èÉ•Í½±Ù•µ¡•­Á½¥¹ÐµÁÉ½Ù•¹…¹”´‘í•¹•É…Ñ¥½¹õ€°Í¥é”èmÝ¥‘Ñ °¡•¥¡Ñt°™½Éµ…Ðè€ÈÌÉÕ¥¹Ðœ°(€€€€€€€ÕÍ…”èAUQ•áÑÕÉ•UÍ…”¹QaQUI}	%9%9ðAUQ•áÑÕÉ•UÍ…”¹=Ae}MP(€€€€€ô¤(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”É•Ñ¥É•M•Ñ™Ñ•ÉMÕ‰µ¥ÑÑ•‘]½É¬¡É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð¤èÙ½¥ì(€€€¥˜€¡Ñ¡¥Ì¹É•Ñ¥É¥¹M•ÑÌ¹¡…Ì¡É•Í½ÕÉ•Ì¤¤É•ÑÕÉ¸ì(€€€Ñ¡¥Ì¹É•Ñ¥É¥¹M•ÑÌ¹…‘¡É•Í½ÕÉ•Ì¤ì(€€€Ù½¥Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹½¹MÕ‰µ¥ÑÑ•‘]½É­½¹” ¤¹Ñ¡•¸  ¤€ôøì(€€€€€¥˜€¡Ñ¡¥Ì¹É•Ñ¥É¥¹M•ÑÌ¹‘•±•Ñ”¡É•Í½ÕÉ•Ì¤¤Ñ¡¥Ì¹‘•ÍÑÉ½åM•Ð¡É•Í½ÕÉ•Ì¤ì(€€€ô°€ ¤€ôøì(€€€€€¥˜€¡Ñ¡¥Ì¹É•Ñ¥É¥¹M•ÑÌ¹‘•±•Ñ”¡É•Í½ÕÉ•Ì¤¤Ñ¡¥Ì¹‘•ÍÑÉ½åM•Ð¡É•Í½ÕÉ•Ì¤ì(€€€ô¤ì(€ô((€ÁÉ¥Ù…Ñ”‘•ÍÑÉ½åMÕÉ™…”¡ÍÕÉ™…”èÉ…µ•MÕÉ™…”¤èÙ½¥ì(€€€ÍÕÉ™…”¹½±½ÕÈ¹‘•ÍÑÉ½ä ¤ì(€€€ÍÕÉ™…”¹ÁÉ½Ù•¹…¹”¹‘•ÍÑÉ½ä ¤ì(€ô((€ÁÉ¥Ù…Ñ”‘•ÍÑÉ½åM•Ð¡É•Í½ÕÉ•ÌèI•Í½ÕÉ•M•Ð¤èÙ½¥ì(€€€™½È€¡½¹ÍÐÍÕÉ™…”½˜É•Í½ÕÉ•Ì¹ÍÕÉ™…•Ì¤Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡ÍÕÉ™…”¤ì(€€€Ñ¡¥Ì¹‘•ÍÑÉ½åMÕÉ™…”¡É•Í½ÕÉ•Ì¹…¹‘¥‘…Ñ”¤ì(€€€É•Í½ÕÉ•Ì¹…¹‘¥‘…Ñ••ÁÑ ¹‘•ÍÑÉ½ä ¤ì(€ô((€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ…Íå¹Œ…ÍÍ•ÉÑM¡…‘•ÉY…±¥¡µ½‘Õ±”èAUM¡…‘•É5½‘Õ±”°±…‰•°èÍÑÉ¥¹œ¤èAÉ½µ¥Í”ñÙ½¥øì(€€€½¹ÍÐ¥¹™¼€ô…Ý…¥Ðµ½‘Õ±”¹•Ñ½µÁ¥±…Ñ¥½¹%¹™¼ ¤ì(€€€½¹ÍÐ•ÉÉ½ÉÌ€ô¥¹™¼¹µ•ÍÍ…•Ì¹™¥±Ñ•È ¡µ•ÍÍ…”èìÑåÁ”èÍÑÉ¥¹œô¤€ôøµ•ÍÍ…”¹ÑåÁ”€ôôô€•ÉÉ½Èœ¤ì(€€€¥˜€¡•ÉÉ½ÉÌ¹±•¹Ñ €ôôô€À¤É•ÑÕÉ¸ì(€€€½¹ÍÐ™¥ÉÍÐ€ô•ÉÉ½ÉÍlÁtì(€€€Ñ¡É½Ü¹•ÜÉÉ½È¡€‘í±…‰•±ô]M0±¥¹”€‘í™¥ÉÍÐ¹±¥¹•9Õµôè€‘í™¥ÉÍÐ¹µ•ÍÍ…•õ€¤ì(€ô)ô(
+      reducedFrame: this.continuityReducedFrame,
+      totalPixels: this.continuityValues[0] ?? 0,
+      invalidPixels: this.continuityValues[1] ?? 0,
+      historyPixels: this.continuityValues[2] ?? 0,
+      retainedPixels: this.continuityValues[3] ?? 0,
+      currentPixels: this.continuityValues[4] ?? 0,
+      provisionalCapPixels: this.continuityValues[5] ?? 0,
+      finalCapPixels: this.continuityValues[6] ?? 0,
+      terminalPixels: this.continuityValues[7] ?? 0,
+      qualityRegressionPixels: this.continuityValues[8] ?? 0,
+      escapedToProvisionalBlackPixels: this.continuityValues[9] ?? 0,
+      candidateRejectedLowerQualityPixels: this.continuityValues[10] ?? 0,
+      semanticConflictEvents: this.continuityValues[11] ?? 0,
+      conflictPixels: this.continuityValues[12] ?? 0,
+      droppedReadbacks: this.droppedReadbacks
+    };
+  }
+
+  get hasPendingPromotion(): boolean { return this.pendingCheckpoint !== null; }
+
+  nextContinuityFrame(afterFrame: number): Promise<ContinuityFrame> {
+    if (!this.continuityTest) return Promise.reject(new Error('Continuity frames require ?continuityTest=1'));
+    const ready = this.continuityFrames.find(frame => frame.frameId > afterFrame);
+    if (ready) return Promise.resolve(ready);
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        afterFrame,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          this.continuityWaiters = this.continuityWaiters.filter(item => item !== waiter);
+          reject(new Error(`Timed out waiting for a continuity frame after ${afterFrame}`));
+        }, CONTINUITY_TIMEOUT_MS)
+      };
+      this.continuityWaiters.push(waiter);
+    });
+  }
+
+  present(
+    camera: CameraSnapshot,
+    aspect: number,
+    width: number,
+    height: number,
+    atlas: AcceptedTileAtlas,
+    instances: readonly AtlasInstance[],
+    authoritative: boolean,
+    targetIterations: number,
+    palettePhase: number,
+    requestId: number,
+    completedBatchRevision: number
+  ): boolean {
+    const started = performance.now();
+    if (this.destroyed || width <= 0 || height <= 0) return false;
+    this.ensureSize(width, height);
+    const resources = this.resources;
+    if (!resources) return false;
+    const view: ExactView = {
+      camera,
+      aspect,
+      width,
+      height,
+      targetIterations,
+      palettePhase,
+      contentRevision: completedBatchRevision
+    };
+    const rollingBefore = this.rollingHead;
+    // A resolved field is deliberately recomposed without history. This is the
+    // only transition allowed to clear a conflict carried by rolling evidence;
+    // GPU coverage/provenance reduction must validate it before retention.
+    const histories = authoritative ? [] : this.historySources(view);
+    this.worstReprojectionErrorTexels = histories.reduce((worst, source) => Math.max(worst, source.error), 0);
+    if (histories.length > 0) this.historyFrames++; else this.fallbackFrames++;
+
+    const packed = this.packInstances(instances, width, height);
+    this.instanceCount = packed.count;
+    if (packed.count > 0) this.device.queue.writeBuffer(this.instanceBuffer, 0, packed.data);
+
+    const hasReadbackCapacity = this.continuityReadbacks.some(slot => !slot.busy);
+    const checkpointFitsBudget = this.presentationBytes(resources, atlas, surfaceBytes(view))
+      <= PRESENTATION_MEMORY_BUDGET_BYTES;
+    const wantsCheckpoint = authoritative
+      && !this.pendingCheckpoint
+      && !sameCheckpointIdentity(this.stableCheckpoint?.view ?? null, view)
+      && hasReadbackCapacity
+      && checkpointFitsBudget;
+    const wantsReadback = this.continuityTest || wantsCheckpoint;
+    const validationScoped = this.continuityTest || wantsCheckpoint;
+    if (validationScoped) this.device.pushErrorScope('validation');
+    const encoder = this.device.createCommandEncoder({ label: 'explicit-provenance-presentation-frame' });
+    const frameId = this.frames + 1;
+    if (wantsReadback) encoder.clearBuffer(this.continuityCounterBuffer);
+
+    let head = this.initialHead(resources, rollingBefore);
+    this.clearSurface(encoder, head);
+    let historyIndex = 0;
+    for (const item of histories.slice(0, MAX_HISTORY_SOURCES)) {
+      this.renderHistoryCandidate(encoder, resources.candidate, item, view, historyIndex++);
+      const output = this.otherSurface(resources, head);
+      this.mergeSurfaces(encoder, head, resources.candidate, output);
+      head = output;
+    }
+
+    const overlayGroup = packed.count > 0 ? this.device.createBindGroup({
+      layout: this.overlayPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.instanceBuffer } },
+        { binding: 1, resource: atlas.colour.createView() },
+        { binding: 2, resource: atlas.quality.createView() },
+        { binding: 3, resource: atlas.evidence.createView() },
+        { binding: 4, resource: { buffer: atlas.leaseDirectory } }
+      ]
+    }) : null;
+    if (overlayGroup && packed.count > 0) {
+      this.renderAtlasCandidate(encoder, resources, overlayGroup, packed.count);
+      const output = this.otherSurface(resources, head);
+      this.mergeSurfaces(encoder, head, resources.candidate, output);
+      head = output;
+    }
+
+    let checkpointCandidate: Snapshot | null = null;
+    if (wantsCheckpoint) {
+      checkpointCandidate = {
+        surface: this.createRetainedSurface(width, height, this.snapshotGeneration + 1),
+        view,
+        generation: ++this.snapshotGeneration
+      };
+      encoder.copyTextureToTexture({ texture: head.colour }, { texture: checkpointCandidate.surface.colour }, { width, height });
+      encoder.copyTextureToTexture({ texture: head.provenance }, { texture: checkpointCandidate.surface.provenance }, { width, height });
+    }
+
+    const readback = wantsReadback
+      ? this.encodeContinuityReduction(
+        encoder,
+        head.provenance,
+        width,
+        height,
+        frameId,
+        camera.generation,
+        requestId,
+        completedBatchRevision
+      )
+      : null;
+    this.renderCanvas(encoder, head);
+    this.device.queue.submit([encoder.finish()]);
+    const validation = validationScoped ? this.device.popErrorScope() : Promise.resolve(null);
+    this.frames = frameId;
+    this.rollingHead = { surface: head, owner: resources, view };
+    if (checkpointCandidate && readback) {
+      this.pendingCheckpoint = { snapshot: checkpointCandidate, frameId, validation };
+    } else {
+      if (checkpointCandidate) this.destroySurface(checkpointCandidate.surface);
+      void validation.then(error => { if (error && !this.destroyed) this.validationErrors++; });
+    }
+    if (readback) this.finishContinuityReadback(readback);
+
+    const previousOwner = rollingBefore?.owner ?? null;
+    if (previousOwner && previousOwner !== resources) this.retireSetAfterSubmittedWork(previousOwner);
+    this.lastFrameCpuMs = performance.now() - started;
+    return true;
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    const owners = new Set<ResourceSet>(this.retiringSets);
+    if (this.resources) owners.add(this.resources);
+    if (this.rollingHead) owners.add(this.rollingHead.owner);
+    for (const owner of owners) this.destroySet(owner);
+    if (this.stableCheckpoint) this.destroySurface(this.stableCheckpoint.surface);
+    for (const snapshot of this.snapshots) this.destroySurface(snapshot.surface);
+    if (this.pendingCheckpoint) this.destroySurface(this.pendingCheckpoint.snapshot.surface);
+    this.resources = null;
+    this.rollingHead = null;
+    this.stableCheckpoint = null;
+    this.snapshots = [];
+    this.pendingCheckpoint = null;
+    for (const waiter of this.continuityWaiters) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(new Error('Presenter destroyed while waiting for continuity frame'));
+    }
+    this.continuityWaiters = [];
+    this.reprojectUniform.destroy();
+    this.instanceBuffer.destroy();
+    this.continuityCounterBuffer.destroy();
+    for (const slot of this.continuityReadbacks) slot.buffer.destroy();
+  }
+
+  private historySources(target: ExactView): Array<HistorySource & { transform: PackedTransform; error: number }> {
+    const rolling: HistorySource | null = this.rollingHead ? {
+      surface: this.rollingHead.surface,
+      view: this.rollingHead.view,
+      owner: this.rollingHead.owner,
+      origin: 1
+    } : null;
+    const retained: HistorySource[] = [];
+    if (this.stableCheckpoint && this.stableCheckpoint.view.palettePhase === target.palettePhase) retained.push({
+      surface: this.stableCheckpoint.surface,
+      view: this.stableCheckpoint.view,
+      owner: null,
+      origin: 2
+    });
+    for (const snapshot of this.snapshots) {
+      if (snapshot.view.palettePhase !== target.palettePhase) continue;
+      retained.push({ surface: snapshot.surface, view: snapshot.view, owner: null, origin: 2 });
+    }
+    const admit = (candidate: HistorySource) => {
+      const admission = admitHistory(historyTransform(candidate.view, target), candidate.view, target);
+      return admission.accepted ? { ...candidate, transform: admission.packed, error: admission.error } : null;
+    };
+    const admittedRolling = rolling ? admit(rolling) : null;
+    const rollingCoverage = admittedRolling ? transformCoverage(admittedRolling.transform) : 0;
+    const bestRetained = retained.map(admit).filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .map(item => ({ item, coverage: transformCoverage(item.transform) }))
+      .filter(entry => entry.coverage > rollingCoverage + 1e-6)
+      .sort((left, right) => right.coverage - left.coverage)[0]?.item ?? null;
+    return [admittedRolling, bestRetained].filter(
+      (item): item is NonNullable<typeof item> => Boolean(item)
+    );
+  }
+
+  private packInstances(instances: readonly AtlasInstance[], width: number, height: number): {
+    data: ArrayBuffer;
+    count: number;
+  } {
+    const accepted = instances.flatMap(instance => {
+      const { transform } = instance;
+      if (!transformIsFinite(transform) || transform.scaleX <= 0 || transform.scaleY <= 0) return [];
+      const left = 0.5 + (-0.5 - transform.offsetX) / transform.scaleX;
+      const top = 0.5 + (-0.5 - transform.offsetY) / transform.scaleY;
+      const right = 0.5 + (0.5 - transform.offsetX) / transform.scaleX;
+      const bottom = 0.5 + (0.5 - transform.offsetY) / transform.scaleY;
+      if (right <= 0 || bottom <= 0 || left >= 1 || top >= 1) return [];
+      return [{
+        instance,
+        rect: [left, top, right, bottom] as const,
+        rank: footprintRank(right - left, bottom - top, width, height)
+      }];
+    }).sort((left, right) => left.rank - right.rank).slice(0, MAX_INSTANCES);
+    const data = new ArrayBuffer(accepted.length * INSTANCE_WORDS * Uint32Array.BYTES_PER_ELEMENT);
+    const floats = new Float32Array(data);
+    const words = new Uint32Array(data);
+    accepted.forEach((item, index) => {
+      const base = index * INSTANCE_WORDS;
+      floats.set(item.rect, base);
+      words.set([
+        item.instance.slot.x,
+        item.instance.slot.y,
+        item.instance.slot.index,
+        item.instance.slot.lease,
+        Math.max(0, Math.floor(item.instance.iterationFrontier)),
+        item.instance.capMode,
+        item.rank,
+        Math.max(0, Math.floor(item.instance.targetIterations))
+      ], base + 4);
+    });
+    return { data, count: accepted.length };
+  }
+
+  private initialHead(resources: ResourceSet, rolling: RollingHead | null): FrameSurface {
+    if (rolling?.owner === resources && rolling.surface === resources.surfaces[0]) return resources.surfaces[1];
+    return resources.surfaces[0];
+  }
+
+  private otherSurface(resources: ResourceSet, current: FrameSurface): FrameSurface {
+    return current === resources.surfaces[0] ? resources.surfaces[1] : resources.surfaces[0];
+  }
+
+  private clearSurface(encoder: GPUCommandEncoder, surface: FrameSurface): void {
+    const pass = encoder.beginRenderPass({ colorAttachments: this.surfaceAttachments(surface) });
+    pass.end();
+  }
+
+  private renderHistoryCandidate(
+    encoder: GPUCommandEncoder,
+    destination: FrameSurface,
+    source: HistorySource & { transform: PackedTransform },
+    target: ExactView,
+    uniformIndex: number
+  ): void {
+    const offset = uniformIndex * REPROJECT_UNIFORM_STRIDE;
+    this.device.queue.writeBuffer(this.reprojectUniform, offset, new Float32Array([
+      source.transform.scaleX, source.transform.scaleY,
+      source.transform.offsetX, source.transform.offsetY
+    ]));
+    this.device.queue.writeBuffer(this.reprojectUniform, offset + 16, new Uint32Array([
+      1,
+      footprintRankDelta(source.transform, source.view, target) >>> 0,
+      source.origin,
+      sameResolvedView(source.view, target) ? 1 : 0
+    ]));
+    const group = this.device.createBindGroup({
+      layout: this.reprojectPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.reprojectUniform, offset, size: REPROJECT_UNIFORM_BYTES } },
+        { binding: 1, resource: this.sampler },
+        { binding: 2, resource: source.surface.colour.createView() },
+        { binding: 3, resource: source.surface.provenance.createView() }
+      ]
+    });
+    const pass = encoder.beginRenderPass({ colorAttachments: this.surfaceAttachments(destination) });
+    pass.setPipeline(this.reprojectPipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(3);
+    pass.end();
+  }
+
+  private renderAtlasCandidate(
+    encoder: GPUCommandEncoder,
+    resources: ResourceSet,
+    group: GPUBindGroup,
+    instanceCount: number
+  ): void {
+    const pass = encoder.beginRenderPass({
+      colorAttachments: this.surfaceAttachments(resources.candidate),
+      depthStencilAttachment: {
+        view: resources.candidateDepth.createView(),
+        depthClearValue: 0,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'discard'
+      }
+    });
+    pass.setPipeline(this.overlayPipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(6, instanceCount);
+    pass.end();
+  }
+
+  private mergeSurfaces(
+    encoder: GPUCommandEncoder,
+    base: FrameSurface,
+    candidate: FrameSurface,
+    output: FrameSurface
+  ): void {
+    const group = this.device.createBindGroup({
+      layout: this.mergePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: base.colour.createView() },
+        { binding: 1, resource: base.provenance.createView() },
+        { binding: 2, resource: candidate.colour.createView() },
+        { binding: 3, resource: candidate.provenance.createView() },
+        { binding: 4, resource: { buffer: this.continuityCounterBuffer } }
+      ]
+    });
+    const pass = encoder.beginRenderPass({ colorAttachments: this.surfaceAttachments(output) });
+    pass.setPipeline(this.mergePipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(3);
+    pass.end();
+  }
+
+  private renderCanvas(encoder: GPUCommandEncoder, source: FrameSurface): void {
+    const group = this.device.createBindGroup({
+      layout: this.presentPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.sampler },
+        { binding: 1, resource: source.colour.createView() }
+      ]
+    });
+    const pass = encoder.beginRenderPass({ colorAttachments: [{
+      view: this.context.getCurrentTexture().createView(),
+      clearValue: { r: 0.008, g: 0.01, b: 0.014, a: 1 },
+      loadOp: 'clear', storeOp: 'store'
+    }] });
+    pass.setPipeline(this.presentPipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(3);
+    pass.end();
+  }
+
+  private surfaceAttachments(surface: FrameSurface): GPURenderPassColorAttachment[] {
+    return [
+      {
+        view: surface.colour.createView(),
+        clearValue: { r: 0.008, g: 0.01, b: 0.014, a: 1 },
+        loadOp: 'clear', storeOp: 'store'
+      },
+      {
+        view: surface.provenance.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        loadOp: 'clear', storeOp: 'store'
+      }
+    ];
+  }
+
+  private encodeContinuityReduction(
+    encoder: GPUCommandEncoder,
+    provenance: GPUTexture,
+    width: number,
+    height: number,
+    frameId: number,
+    viewRevision: number,
+    requestId: number,
+    completedBatchRevision: number
+  ): {
+    slot: ReadbackSlot;
+    frameId: number;
+    viewRevision: number;
+    requestId: number;
+    completedBatchRevision: number;
+  } | null {
+    let selected: ReadbackSlot | null = null;
+    for (let offset = 0; offset < this.continuityReadbacks.length; offset++) {
+      const index = (this.continuityReadbackCursor + offset) % this.continuityReadbacks.length;
+      const candidate = this.continuityReadbacks[index];
+      if (candidate && !candidate.busy) {
+        selected = candidate;
+        this.continuityReadbackCursor = (index + 1) % this.continuityReadbacks.length;
+        break;
+      }
+    }
+    if (!selected) { this.droppedReadbacks++; return null; }
+    selected.busy = true;
+    const group = this.device.createBindGroup({
+      layout: this.continuityPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: provenance.createView() },
+        { binding: 1, resource: { buffer: this.continuityCounterBuffer } }
+      ]
+    });
+    const pass = encoder.beginComputePass({ label: 'presentation-continuity-reduction' });
+    pass.setPipeline(this.continuityPipeline);
+    pass.setBindGroup(0, group);
+    pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+    pass.end();
+    encoder.copyBufferToBuffer(this.continuityCounterBuffer, 0, selected.buffer, 0, CONTINUITY_COUNTER_BYTES);
+    return { slot: selected, frameId, viewRevision, requestId, completedBatchRevision };
+  }
+
+  private finishContinuityReadback(readback: {
+    slot: ReadbackSlot;
+    frameId: number;
+    viewRevision: number;
+    requestId: number;
+    completedBatchRevision: number;
+  }): void {
+    void readback.slot.buffer.mapAsync(GPUMapMode.READ).then(() => {
+      const values = new Uint32Array(readback.slot.buffer.getMappedRange()).slice();
+      readback.slot.buffer.unmap();
+      readback.slot.busy = false;
+      if (this.destroyed) return;
+      const checkpointEligible = (values[0] ?? 0) > 0
+        && (values[1] ?? 0) === 0
+        && (values[5] ?? 0) === 0
+        && (values[8] ?? 0) === 0
+        && (values[9] ?? 0) === 0
+        && (values[12] ?? 0) === 0
+        && (values[4] ?? 0) > 0
+        && (values[6] ?? 0) + (values[7] ?? 0) === (values[0] ?? 0);
+      const frame: ContinuityFrame = {
+        frameId: readback.frameId,
+        viewRevision: readback.viewRevision,
+        requestId: readback.requestId,
+        completedBatchRevision: readback.completedBatchRevision,
+        totalPixels: values[0] ?? 0,
+        invalidPixels: values[1] ?? 0,
+        historyPixels: values[2] ?? 0,
+        retainedPixels: values[3] ?? 0,
+        currentPixels: values[4] ?? 0,
+        provisionalCapPixels: values[5] ?? 0,
+        finalCapPixels: values[6] ?? 0,
+        terminalPixels: values[7] ?? 0,
+        qualityRegressionPixels: values[8] ?? 0,
+        escapedToProvisionalBlackPixels: values[9] ?? 0,
+        candidateRejectedLowerQualityPixels: values[10] ?? 0,
+        semanticConflictEvents: values[11] ?? 0,
+        conflictPixels: values[12] ?? 0,
+        checkpointEligible,
+        droppedReadbacks: this.droppedReadbacks
+      };
+      if (frame.frameId >= this.continuityReducedFrame) {
+        this.continuityValues = values;
+        this.continuityReducedFrame = frame.frameId;
+      }
+      this.continuityFrames.push(frame);
+      this.continuityFrames.sort((left, right) => left.frameId - right.frameId);
+      while (this.continuityFrames.length > CONTINUITY_FRAME_HISTORY) this.continuityFrames.shift();
+      this.resolveContinuityWaiters();
+      if (this.pendingCheckpoint?.frameId === frame.frameId) {
+        const pending = this.pendingCheckpoint;
+        void pending.validation.then(error => {
+          if (this.destroyed || this.pendingCheckpoint !== pending) return;
+          this.pendingCheckpoint = null;
+          if (error || !frame.checkpointEligible) {
+            if (error) this.validationErrors++;
+            this.destroySurface(pending.snapshot.surface);
+            return;
+          }
+          this.promoteCheckpoint(pending.snapshot);
+        }, () => {
+          if (!this.destroyed) this.validationErrors++;
+          if (this.pendingCheckpoint === pending) this.pendingCheckpoint = null;
+          this.destroySurface(pending.snapshot.surface);
+        });
+      }
+    }, () => {
+      readback.slot.busy = false;
+      if (!this.destroyed) {
+        this.droppedReadbacks++;
+        if (this.pendingCheckpoint?.frameId === readback.frameId) {
+          const failed = this.pendingCheckpoint;
+          this.pendingCheckpoint = null;
+          this.destroySurface(failed.snapshot.surface);
+        }
+      }
+    });
+  }
+
+  private resolveContinuityWaiters(): void {
+    const pending = [...this.continuityWaiters];
+    for (const waiter of pending) {
+      const ready = this.continuityFrames.find(frame => frame.frameId > waiter.afterFrame);
+      if (!ready) continue;
+      clearTimeout(waiter.timeout);
+      this.continuityWaiters = this.continuityWaiters.filter(item => item !== waiter);
+      waiter.resolve(ready);
+    }
+  }
+
+  private promoteCheckpoint(snapshot: Snapshot): void {
+    const previous = this.stableCheckpoint;
+    this.stableCheckpoint = snapshot;
+    this.anchorPromotions++;
+    if (previous) {
+      const latest = this.snapshots[this.snapshots.length - 1] ?? null;
+      const farEnough = !latest
+        || Math.abs(viewScaleOctaves(previous.view) - viewScaleOctaves(latest.view)) >= SNAPSHOT_INTERVAL_OCTAVES;
+      if (farEnough) this.snapshots.push(previous);
+      else this.destroySurface(previous.surface);
+    }
+    this.trimRetainedHistory();
+  }
+
+  private trimRetainedHistory(): void {
+    const stableBytes = this.stableCheckpoint ? surfaceBytes(this.stableCheckpoint.view) : 0;
+    let retainedBytes = stableBytes + this.snapshots.reduce((sum, item) => sum + surfaceBytes(item.view), 0);
+    while (this.snapshots.length > MAX_SNAPSHOTS || retainedBytes > RETAINED_MEMORY_BUDGET_BYTES) {
+      const oldest = this.snapshots.shift();
+      if (!oldest) break;
+      retainedBytes -= surfaceBytes(oldest.view);
+      this.destroySurface(oldest.surface);
+    }
+  }
+
+  private presentationBytes(
+    resources: ResourceSet,
+    atlas: AcceptedTileAtlas,
+    additionalRetainedBytes: number
+  ): number {
+    const liveSurfacesAndDepth = resources.width * resources.height * 28;
+    const atlasBytes = atlas.width * atlas.height * 12;
+    const stableBytes = this.stableCheckpoint ? surfaceBytes(this.stableCheckpoint.view) : 0;
+    const snapshotBytes = this.snapshots.reduce((sum, item) => sum + surfaceBytes(item.view), 0);
+    const pendingBytes = this.pendingCheckpoint ? surfaceBytes(this.pendingCheckpoint.snapshot.view) : 0;
+    return liveSurfacesAndDepth + atlasBytes + stableBytes + snapshotBytes
+      + pendingBytes + additionalRetainedBytes;
+  }
+
+  private ensureSize(width: number, height: number): void {
+    if (this.resources?.width === width && this.resources.height === height) return;
+    this.resourceEpoch++;
+    this.resources = this.createSet(width, height, this.resourceEpoch);
+  }
+
+  private createSet(width: number, height: number, epoch: number): ResourceSet {
+    const createSurface = (label: string): FrameSurface => ({
+      colour: this.device.createTexture({
+        label: `${label}-colour`, size: [width, height], format: 'rgba8unorm',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+      }),
+      provenance: this.device.createTexture({
+        label: `${label}-provenance`, size: [width, height], format: 'r32uint',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+      })
+    });
+    return {
+      surfaces: [createSurface(`rolling-${epoch}-0`), createSurface(`rolling-${epoch}-1`)],
+      candidate: createSurface(`candidate-${epoch}`),
+      candidateDepth: this.device.createTexture({
+        label: `candidate-depth-${epoch}`,
+        size: [width, height],
+        format: 'depth32float',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT
+      }),
+      width, height, epoch
+    };
+  }
+
+  private createRetainedSurface(width: number, height: number, generation: number): FrameSurface {
+    return {
+      colour: this.device.createTexture({
+        label: `resolved-checkpoint-colour-${generation}`, size: [width, height], format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+      }),
+      provenance: this.device.createTexture({
+        label: `resolved-checkpoint-provenance-${generation}`, size: [width, height], format: 'r32uint',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+      })
+    };
+  }
+
+  private retireSetAfterSubmittedWork(resources: ResourceSet): void {
+    if (this.retiringSets.has(resources)) return;
+    this.retiringSets.add(resources);
+    void this.device.queue.onSubmittedWorkDone().then(() => {
+      if (this.retiringSets.delete(resources)) this.destroySet(resources);
+    }, () => {
+      if (this.retiringSets.delete(resources)) this.destroySet(resources);
+    });
+  }
+
+  private destroySurface(surface: FrameSurface): void {
+    surface.colour.destroy();
+    surface.provenance.destroy();
+  }
+
+  private destroySet(resources: ResourceSet): void {
+    for (const surface of resources.surfaces) this.destroySurface(surface);
+    this.destroySurface(resources.candidate);
+    resources.candidateDepth.destroy();
+  }
+
+  private static async assertShaderValid(module: GPUShaderModule, label: string): Promise<void> {
+    const info = await module.getCompilationInfo();
+    const errors = info.messages.filter((message: { type: string }) => message.type === 'error');
+    if (errors.length === 0) return;
+    const first = errors[0];
+    throw new Error(`${label} WGSL line ${first.lineNum}: ${first.message}`);
+  }
+}
