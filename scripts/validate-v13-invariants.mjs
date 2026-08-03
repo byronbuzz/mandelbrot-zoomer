@@ -80,8 +80,10 @@ if (resetShader.includes('resultTexture') || resetShader.includes('qualityTextur
   failures.push('Numerical reset must not erase accepted presentation resources.');
 }
 for (const [label, shader] of [['direct', directShader], ['perturbation', perturbShader]]) {
-  const activeTail = shader.slice(shader.lastIndexOf('recurrenceMeta[index] = vec4u(iteration, STATUS_ACTIVE'));
-  if (/textureStore\(qualityTexture[\s\S]{0,240}atomicAdd\(&counters\.activePixels/.test(activeTail)) {
+  const activeCounter = shader.lastIndexOf('atomicAdd(&counters.activePixels, 1u);');
+  const capReturn = shader.lastIndexOf('return;', activeCounter);
+  const unresolvedTail = shader.slice(capReturn + 'return;'.length, activeCounter);
+  if (activeCounter < 0 || capReturn < 0 || unresolvedTail.includes('textureStore(')) {
     failures.push(`${label} active continuation must not erase prior accepted presentation.`);
   }
 }
