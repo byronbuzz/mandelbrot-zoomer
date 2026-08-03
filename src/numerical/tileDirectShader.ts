@@ -140,8 +140,6 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   if (!finiteDs(zx) || !finiteDs(zy) || !finiteF32(radiusSquared)) {
     recurrenceMeta[index] = vec4u(iteration, STATUS_NON_FINITE, 0u, 0u);
-    textureStore(resultTexture, pixel, vec4f(0.0, 3.0, f32(iteration), 0.0));
-    textureStore(qualityTexture, pixel, vec4f(0.0, 0.0, 1.0, 0.0));
     atomicAdd(&counters.nonFinitePixels, 1u);
     return;
   }
@@ -158,14 +156,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   recurrenceState[index] = vec4f(zx, zy);
   recurrenceMeta[index] = vec4u(iteration, STATUS_ACTIVE, 0u, 0u);
   if (iteration >= p.iterationTarget) {
-    let accepted = select(0.0, 1.0, p.acceptIterationCap != 0u);
-    textureStore(resultTexture, pixel, vec4f(f32(iteration), 4.0, f32(iteration), 0.0));
-    textureStore(qualityTexture, pixel, vec4f(accepted, 1.0, 0.75, select(0.1, 0.3, p.mode != 0u)));
+    if (p.acceptIterationCap != 0u) {
+      textureStore(resultTexture, pixel, vec4f(f32(iteration), 4.0, f32(iteration), 0.0));
+      textureStore(qualityTexture, pixel, vec4f(1.0, 1.0, 0.75, select(0.1, 0.3, p.mode != 0u)));
+    }
     atomicAdd(&counters.cappedPixels, 1u);
     return;
   }
-  let progress = clamp(f32(iteration) / max(1.0, f32(p.iterationTarget)), 0.0, 1.0);
-  textureStore(resultTexture, pixel, vec4f(f32(iteration), 0.0, f32(iteration), 0.0));
-  textureStore(qualityTexture, pixel, vec4f(0.0, progress, 0.0, select(0.1, 0.3, p.mode != 0u)));
   atomicAdd(&counters.activePixels, 1u);
 }`;
