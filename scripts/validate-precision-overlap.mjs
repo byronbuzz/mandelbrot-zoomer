@@ -46,8 +46,8 @@ if (requiredBits(-126) <= 96) failures.push('The 10^35 band must reject legacy t
 if (requiredBits(-126) > 192) failures.push('The 10^35 band must fit the wide transport contract.');
 
 const frozen = new Map([
-  ['src/numerical/tileDirectShader.ts', '6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1'],
-  ['src/numerical/tilePerturbationShader.ts', '6f91c8dbd5594943a78c35697f9de54c6e49e3a5dc66da0ec569b2db4ba30113']
+  ['src/numerical/tileDirectShader.ts', '0f6261ff503093de650fc5ae7a881592fa4581c0bdc82ec2ce9b440aae17e41a'],
+  ['src/numerical/tilePerturbationShader.ts', '5812682a3a61bfc969d6bbce1b27b3108a5aa60ea396769a6bb7d48c7da51a24']
 ]);
 for (const [path, expected] of frozen) {
   const actual = createHash('sha256').update(read(path)).digest('hex');
@@ -59,3 +59,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log('Validated bounded precision overlap, demand epochs, transport ceiling, and frozen kernels.');
+

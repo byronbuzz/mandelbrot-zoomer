@@ -14,8 +14,12 @@ type Scenario = Readonly<{
   centerXRaw: bigint;
   centerYRaw: bigint;
   centerBits: number;
+  referenceXRaw?: bigint;
+  referenceYRaw?: bigint;
+  referenceBits?: number;
   sampleExponent: number;
   target: number;
+  requireSafeUnresolved?: boolean;
 }>;
 
 const scenarios: readonly Scenario[] = [
@@ -34,6 +38,26 @@ const scenarios: readonly Scenario[] = [
     centerBits: 192,
     sampleExponent: -64,
     target: 1200
+  },
+  {
+    // This is the user's 10^9 failure region. The tested center is the
+    // longest-lived sample found in its local tile while the deliberately
+    // shorter-lived reference comes from the same neighbourhood. The exact
+    // pixels escape around iteration 1,240, after several orbit-end rebases.
+    name: 'user-boundary-1e9-repeated-rebase',
+    centerXRaw: -1081452738034521679887916459983893489865208102912n
+      - (112n << 120n),
+    centerYRaw: -223372278238499148635421809484210213853258055680n
+      - (40n << 120n),
+    centerBits: 160,
+    referenceXRaw: -1081452738034521679887916459983893489865208102912n
+      + (352n << 120n),
+    referenceYRaw: -223372278238499148635421809484210213853258055680n
+      + (512n << 120n),
+    referenceBits: 160,
+    sampleExponent: -40,
+    target: 1500,
+    requireSafeUnresolved: true
   }
 ];
 
@@ -85,6 +109,15 @@ function exactCenter(scenario: Scenario): readonly [bigint, bigint] {
   ];
 }
 
+function exactReferenceCenter(scenario: Scenario): readonly [bigint, bigint] {
+  return [
+    shiftRounded(scenario.referenceXRaw ?? scenario.centerXRaw,
+      ORACLE_BITS - (scenario.referenceBits ?? scenario.centerBits)),
+    shiftRounded(scenario.referenceYRaw ?? scenario.centerYRaw,
+      ORACLE_BITS - (scenario.referenceBits ?? scenario.centerBits))
+  ];
+}
+
 function exactPixel(scenario: Scenario, pixelX: number, pixelY: number) {
   const [centerX, centerY] = exactCenter(scenario);
   const step = 1n << BigInt(ORACLE_BITS + scenario.sampleExponent);
@@ -105,7 +138,7 @@ function exactPixel(scenario: Scenario, pixelX: number, pixelY: number) {
 }
 
 function referenceOrbit(scenario: Scenario): { values: Float32Array; length: number } {
-  const [cx, cy] = exactCenter(scenario);
+  const [cx, cy] = exactReferenceCenter(scenario);
   const escapeSquared = 256n << BigInt(ORACLE_BITS * 2);
   let zx = 0n;
   let zy = 0n;
@@ -137,6 +170,19 @@ function uniformData(scenario: Scenario, orbitLength: number): ArrayBuffer {
   floats[1] = centerXLo;
   floats[2] = centerYHi;
   floats[3] = centerYLo;
+  const [centerX, centerY] = exactCenter(scenario);
+  const [referenceX, referenceY] = exactReferenceCenter(scenario);
+  const scaledUnitBits = ORACLE_BITS + scenario.sampleExponent + 64;
+  const [referenceDeltaXHi, referenceDeltaXLo] = splitNumber(
+    fixedToNumber(centerX - referenceX, scaledUnitBits)
+  );
+  const [referenceDeltaYHi, referenceDeltaYLo] = splitNumber(
+    fixedToNumber(centerY - referenceY, scaledUnitBits)
+  );
+  floats[4] = referenceDeltaXHi;
+  floats[5] = referenceDeltaXLo;
+  floats[6] = referenceDeltaYHi;
+  floats[7] = referenceDeltaYLo;
   signed[8] = scenario.sampleExponent;
   unsigned[9] = TILE_SIZE;
   unsigned[10] = scenario.target;
@@ -208,11 +254,20 @@ async function runScenario(device: GPUDevice, pipeline: GPUComputePipeline, scen
       comparisons.push({
         x, y,
         expected: exactPixel(scenario, x, y),
-        gpu: { iteration: mapped[index * 4], status: mapped[index * 4 + 1] }
+        gpu: {
+          iteration: mapped[index * 4],
+          status: mapped[index * 4 + 1],
+          rebases: mapped[index * 4 + 3]
+        }
       });
     }
   }
-  return { name: scenario.name, orbitLength: reference.length, comparisons };
+  return {
+    name: scenario.name,
+    orbitLength: reference.length,
+    requireSafeUnresolved: scenario.requireSafeUnresolved ?? false,
+    comparisons
+  };
 }
 
 async function run() {
@@ -246,3 +301,4 @@ async function run() {
 }
 
 window.__PERTURBATION_ORACLE__ = run();
+
