@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const canonicalKernelSource = source => source.replace(/\r\n/g, '\n').replace(/\n+$/, '');
 const policy = read('src/numerical/precisionPolicy.ts');
 const renderer = read('src/presentation/progressiveTileFieldRenderer.ts');
 const atlas = read('src/references/tileReferenceAtlasV13.ts');
@@ -46,11 +47,11 @@ if (requiredBits(-126) <= 96) failures.push('The 10^35 band must reject legacy t
 if (requiredBits(-126) > 192) failures.push('The 10^35 band must fit the wide transport contract.');
 
 const frozen = new Map([
-  ['src/numerical/tileDirectShader.ts', '0f6261ff503093de650fc5ae7a881592fa4581c0bdc82ec2ce9b440aae17e41a'],
-  ['src/numerical/tilePerturbationShader.ts', '5812682a3a61bfc969d6bbce1b27b3108a5aa60ea396769a6bb7d48c7da51a24']
+  ['src/numerical/tileDirectShader.ts', 'e5ae92fcc35c04ecfbd1ffb4bf56bdbbdb2b6664e9669b89f9ff91f48b0add23'],
+  ['src/numerical/tilePerturbationShader.ts', '475639182ce5471bee7cc35c58a5b59d89f90a396e05904c1f2c54b95254dd6f']
 ]);
 for (const [path, expected] of frozen) {
-  const actual = createHash('sha256').update(read(path)).digest('hex');
+  const actual = createHash('sha256').update(canonicalKernelSource(read(path))).digest('hex');
   if (actual !== expected) failures.push(`${path} changed outside the numerical-kernel phase.`);
 }
 
