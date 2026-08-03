@@ -10,11 +10,12 @@ The numerical kernels are unchanged. The optimized build changes GPU submission/
 
 At approximately one second after the moving request:
 
-- deployed baseline: 5,158 retired numerical tile-chunks;
+- deployed baseline: 5,446 retired numerical tile-chunks;
 - optimized build: 30,637 retired numerical tile-chunks;
-- ratio: 5.940×.
+- ratio: 5.625×.
 
 The optimized trace observed the full three-batch submission window during active work and retired every submitted chunk. WebGPU validation errors were zero.
+The gate asserts that the comparison page identifies itself as build `1.4 · 501804c`; it fails instead of silently comparing against a later Pages deployment.
 
 After the moving trace, both builds were changed to `settled` at the identical camera. The optimized build reached 479/479 converged tiles with no queued or in-flight work. The synchronized continuity reduction reported:
 

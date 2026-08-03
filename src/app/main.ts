@@ -494,6 +494,7 @@ if (continuityTestEnabled) {
       }
     },
     diagnostics: () => ({
+      build: BUILD_LABEL,
       batchRevision: renderer.completedTestBatchRevision,
       requestId: renderer.currentTestRequestId,
       adapterLabel: renderer.adapterLabel,

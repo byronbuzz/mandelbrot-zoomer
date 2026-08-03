@@ -43,7 +43,7 @@ struct PublishParams {
   tileSize: u32,
   paletteChanged: u32,
   previousFrontier: u32,
-  forceCapPublication: u32,
+  publishFlags: u32,
   atlasOrigin: vec2u,
   palettePhase: f32,
   paletteLength: f32,
@@ -65,7 +65,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let local = vec2i(gid.xy);
   let destination = vec2i(p.atlasOrigin) + local;
   let quality = textureLoad(qualityTexture, local, 0);
-  let firstPublication = p.previousFrontier == 0u;
+  let forceCapPublication = (p.publishFlags & 1u) != 0u;
+  let firstPublication = (p.publishFlags & 2u) != 0u;
 
   // A fresh lease must overwrite invalid pixels as well as accepted ones.
   if (firstPublication) {
@@ -81,7 +82,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let newlyEscaped = status == 1u && pixelEvidence > p.previousFrontier;
   let newlyAnalytic = status == 2u && firstPublication;
   let capAdvanced = status == 4u && (
-    pixelEvidence > p.previousFrontier || firstPublication || p.forceCapPublication != 0u
+    pixelEvidence > p.previousFrontier || firstPublication || forceCapPublication
   );
   let recolour = p.paletteChanged != 0u && status == 1u;
   if (!(newlyEscaped || newlyAnalytic || capAdvanced || recolour)) { return; }

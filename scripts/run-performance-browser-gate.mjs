@@ -11,6 +11,7 @@ const port = Number(process.env.PERFORMANCE_PORT ?? 4177);
 const localUrl = `http://127.0.0.1:${port}/mandelbrot-zoomer/`;
 const baselineUrl = process.env.PERFORMANCE_BASELINE
   ?? 'https://byronbuzz.github.io/mandelbrot-zoomer/?deploy=501804c';
+const expectedBaselineBuild = process.env.PERFORMANCE_BASELINE_BUILD ?? '1.4 · 501804c';
 const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
 const server = spawn(process.execPath, [
   viteEntry, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--configLoader', 'runner'
@@ -51,7 +52,7 @@ function serializedCamera() {
   };
 }
 
-async function measure(context, url, label) {
+async function measure(context, url, label, expectedBuild = null) {
   const page = await context.newPage();
   const errors = [];
   page.on('console', message => {
@@ -65,6 +66,12 @@ async function measure(context, url, label) {
     waitUntil: 'domcontentloaded'
   });
   await page.waitForFunction(() => Boolean(window.__ZOOMER_TEST__), null, { timeout: 20_000 });
+  const loadedBuild = await page.evaluate(() => (
+    window.__ZOOMER_TEST__.diagnostics().build ?? window.__ZOOMER_DIAGNOSTICS__?.().build
+  ));
+  if (expectedBuild !== null && loadedBuild !== expectedBuild) {
+    throw new Error(`${label} loaded ${loadedBuild}; expected immutable baseline ${expectedBuild}.`);
+  }
   await page.evaluate(() => window.__ZOOMER_TEST__.setSchedulerGate('paused'));
   const target = await page.evaluate(
     camera => window.__ZOOMER_TEST__.setExactCamera(camera, 'moving'),
@@ -91,7 +98,7 @@ async function measure(context, url, label) {
   const settledDiagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
   await page.screenshot({ path: resolve(outputDirectory, `${label}-settled.png`), type: 'png' });
   await page.close();
-  return { label, target, samples, settledTarget, settledFrame, settledDiagnostics, errors };
+  return { label, loadedBuild, target, samples, settledTarget, settledFrame, settledDiagnostics, errors };
 }
 
 let browser;
@@ -103,7 +110,7 @@ try {
     args: ['--enable-unsafe-webgpu', '--disable-background-timer-throttling']
   });
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
-  const baseline = await measure(context, baselineUrl, 'baseline-501804c');
+  const baseline = await measure(context, baselineUrl, 'baseline-501804c', expectedBaselineBuild);
   const optimized = await measure(context, localUrl, 'optimized');
   const baseline1000 = baseline.samples.find(sample => sample.elapsedMs >= 1000).field.completedChunks;
   const optimized1000 = optimized.samples.find(sample => sample.elapsedMs >= 1000).field.completedChunks;
@@ -113,6 +120,7 @@ try {
     adapter: optimized.samples.at(-1).adapterLabel,
     fixture: fixture.id,
     baselineUrl,
+    expectedBaselineBuild,
     baseline,
     optimized,
     comparison: {

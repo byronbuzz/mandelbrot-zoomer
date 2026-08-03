@@ -14,6 +14,8 @@ const required = [
   ['submission-scoped readback ring', renderer, 'tile-counter-readback-ring-'],
   ['one aggregate map per batch', hotPath, 'slot.buffer.mapAsync(GPUMapMode.READ)'],
   ['FIFO retirement', renderer, 'private async retireOldestBatch()'],
+  ['retiring batch remains FIFO-owned until host commit', renderer, 'const pending = this.pendingBatches[0]'],
+  ['atlas clear is explicit lease state', renderer, 'atlasNeedsClear: atlasSlot !== null'],
   ['request preemption drains old work', renderer, 'await this.drainPendingBatches()'],
   ['same-tile overlap rejection', renderer, 'A tile already has an in-flight GPU mutation'],
   ['counter total assertion', renderer, 'Invalid tile counter total'],

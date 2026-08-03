@@ -50,7 +50,7 @@
         "requestId": 4
       },
       "transformed": {
-        "frameId": 54,
+        "frameId": 75,
         "viewRevision": 3,
         "requestId": 4,
         "completedBatchRevision": 696,
@@ -79,7 +79,7 @@
         "requestId": 7
       },
       "transformed": {
-        "frameId": 138,
+        "frameId": 168,
         "viewRevision": 6,
         "requestId": 7,
         "completedBatchRevision": 1711,
@@ -105,7 +105,7 @@
         "requestBatchCount": 1
       },
       "afterBatch": {
-        "frameId": 146,
+        "frameId": 176,
         "viewRevision": 6,
         "requestId": 7,
         "completedBatchRevision": 1712,
@@ -134,7 +134,7 @@
         "requestId": 8
       },
       "transformed": {
-        "frameId": 148,
+        "frameId": 177,
         "viewRevision": 7,
         "requestId": 8,
         "completedBatchRevision": 1712,
@@ -160,7 +160,7 @@
         "requestBatchCount": 1
       },
       "afterBatch": {
-        "frameId": 164,
+        "frameId": 193,
         "viewRevision": 7,
         "requestId": 8,
         "completedBatchRevision": 1713,
@@ -183,22 +183,23 @@
     }
   ],
   "finalDiagnostics": {
+    "build": "1.4 · dev",
     "batchRevision": 1713,
     "requestId": 8,
     "adapterLabel": "amd",
     "presentation": {
-      "frames": 165,
-      "historyFrames": 121,
-      "fallbackFrames": 44,
-      "anchorPromotions": 6,
+      "frames": 194,
+      "historyFrames": 142,
+      "fallbackFrames": 52,
+      "anchorPromotions": 5,
       "instanceCount": 162,
       "resourceEpoch": 1,
       "worstReprojectionErrorTexels": 0.00009288750888458708,
-      "lastFrameCpuMs": 0.20000004768371582,
+      "lastFrameCpuMs": 0.40000009536743164,
       "validationErrors": 0,
-      "rollingFrames": 121,
+      "rollingFrames": 142,
       "snapshotCount": 4,
-      "reducedFrame": 165,
+      "reducedFrame": 194,
       "totalPixels": 1440000,
       "invalidPixels": 0,
       "historyPixels": 0,
@@ -233,9 +234,9 @@
       "inFlightTiles": 0,
       "atlasPublications": 24,
       "avoidedAtlasCopies": 72,
-      "lastBatchMs": 3,
-      "numericalFreshnessMs": 40.700000047683716,
-      "presentationHistoryMs": 312.09999990463257,
+      "lastBatchMs": 3.5,
+      "numericalFreshnessMs": 37.09999990463257,
+      "presentationHistoryMs": 300.2999999523163,
       "sampleExponent": -19,
       "tileSize": 128
     }
