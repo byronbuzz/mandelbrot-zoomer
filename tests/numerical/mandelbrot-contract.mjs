@@ -11,6 +11,12 @@ export const DirectStatus = Object.freeze({
   CAP: 4
 });
 
+export const QualityClassByte = Object.freeze({
+  ESCAPED: 64,
+  ANALYTIC_INTERIOR: 128,
+  CAP: 191
+});
+
 export function analyticInterior(cx, cy) {
   const shiftedX = cx - 0.25;
   const ySquared = cy * cy;
@@ -157,20 +163,24 @@ export function normalizeGpuResult(meta, result, quality, targetIterations) {
   const metaStatus = meta[1];
   const resultStatus = Math.round(result[1]);
   const resultEvidence = Math.round(result[2]);
-  const accepted = (quality?.[0] ?? 0) > 0;
+  const accepted = (quality?.[0] ?? 0) === 255 && (quality?.[1] ?? 0) === 255;
+  const qualityClass = quality?.[2] ?? 0;
   if (metaStatus === DirectStatus.NON_FINITE) {
     return { status: DirectStatus.NON_FINITE, iteration, smooth: null };
   }
   if (accepted && metaStatus === DirectStatus.ESCAPED
-    && resultStatus === DirectStatus.ESCAPED && resultEvidence === iteration) {
+    && resultStatus === DirectStatus.ESCAPED && resultEvidence === iteration
+    && qualityClass === QualityClassByte.ESCAPED) {
     return { status: DirectStatus.ESCAPED, iteration, smooth: result[0] };
   }
   if (accepted && metaStatus === DirectStatus.ANALYTIC_INTERIOR
-    && resultStatus === DirectStatus.ANALYTIC_INTERIOR && iteration === 0) {
+    && resultStatus === DirectStatus.ANALYTIC_INTERIOR && iteration === 0
+    && qualityClass === QualityClassByte.ANALYTIC_INTERIOR) {
     return { status: DirectStatus.ANALYTIC_INTERIOR, iteration, smooth: null };
   }
   if (accepted && metaStatus === DirectStatus.ACTIVE && iteration === targetIterations
-    && resultStatus === DirectStatus.CAP && resultEvidence === iteration) {
+    && resultStatus === DirectStatus.CAP && resultEvidence === iteration
+    && qualityClass === QualityClassByte.CAP) {
     return { status: DirectStatus.CAP, iteration, smooth: null };
   }
   return { status: DirectStatus.ACTIVE, iteration, smooth: null };

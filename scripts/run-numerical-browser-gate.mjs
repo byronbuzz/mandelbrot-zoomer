@@ -323,7 +323,7 @@ try {
   if (suppressedNormalized.status !== DirectStatus.ACTIVE || suppressedNormalized.iteration !== 2) {
     failures.push('Suppressed cap did not retain active recurrence metadata at iteration 2.');
   }
-  if (suppressed.quality[0] !== 0) failures.push('Suppressed cap published accepted quality.');
+  if (suppressed.quality.some(value => value !== 0)) failures.push('Suppressed cap published quality data.');
   if (publishedNormalized.status !== DirectStatus.CAP || publishedNormalized.iteration !== 2) {
     failures.push('Accepted cap was not published at iteration 2.');
   }
