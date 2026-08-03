@@ -20,7 +20,7 @@ const ORBIT_BYTES_PER_POINT = 8 * Float32Array.BYTES_PER_ELEMENT;
 const MAX_REFERENCE_ITERATIONS = 65_536;
 const REQUEST_TIMEOUT_MS = 30_000;
 const INITIAL_REFERENCE_GROUP_TILE_SPAN = 2n;
-const MAX_REUSE_COVERAGE_DISTANCE = 0.75;
+const MAX_REUSE_COVERAGE_DISTANCE = 8;
 const MIN_REFERENCE_WORKING_BITS = 224;
 
 const INITIAL_CANDIDATE_GRID = [-0.34, 0, 0.34] as const;
@@ -204,6 +204,20 @@ export class TileReferenceAtlas {
     return this.cache.size;
   }
 
+  get maximumWorkingBits(): number {
+    return [...this.cache.values()].reduce(
+      (maximum, reference) => Math.max(maximum, reference.workingBits),
+      0
+    );
+  }
+
+  get maximumTransportBits(): number {
+    return [...this.cache.values()].reduce(
+      (maximum, reference) => Math.max(maximum, reference.transportBits),
+      0
+    );
+  }
+
   setDemandEpoch(epoch: number): void {
     if (!Number.isInteger(epoch) || epoch <= this.demandEpoch) return;
     this.demandEpoch = epoch;
@@ -214,16 +228,10 @@ export class TileReferenceAtlas {
       this.pendingByKey.delete(queued.cacheKey);
       queued.reject(new Error('Reference request superseded'));
     }
-    for (const slot of this.workers) {
-      const active = slot.active;
-      if (!active || active.demandEpoch >= epoch) continue;
-      if (slot.timeout) clearTimeout(slot.timeout);
-      slot.timeout = null;
-      slot.active = null;
-      this.pendingByKey.delete(active.cacheKey);
-      active.reject(new Error('Reference request superseded'));
-      this.restartWorker(slot);
-    }
+    // Submitted CPU work cannot be made useful by repeatedly restarting it at
+    // navigation frequency. Keep the bounded active worker set alive; only the
+    // obsolete backlog is discarded. Completed stale-demand references remain
+    // cache candidates for the current exact tile geometry.
     this.pump();
   }
 

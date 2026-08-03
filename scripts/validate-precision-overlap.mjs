@@ -8,13 +8,15 @@ const atlas = read('src/references/tileReferenceAtlasV13.ts');
 const worker = read('src/v4/referenceWorker.ts');
 
 const requirements = [
-  ['bounded focus overlap', policy, 'PREFERRED_REFERENCE_TILE_BUDGET = 4'],
+  ['bounded viewport seeding', policy, 'PREFERRED_REFERENCE_SEED_BUDGET = 16'],
+  ['bounded reference demand', policy, 'MAX_PENDING_REFERENCE_DEMAND = 16'],
   ['overlap before coordinate collapse', policy, 'PERTURBATION_OVERLAP_SAMPLE_EXPONENT = -23'],
   ['separate required and preferred decisions', policy, 'required: boolean'],
   ['transport demand includes guard bits', policy, '-Math.floor(sampleExponent) + REFERENCE_TRANSPORT_GUARD_BITS'],
   ['request epochs enter the atlas', renderer, 'setDemandEpoch(request.requestId)'],
   ['stale queued reference cancellation', atlas, "queued.reject(new Error('Reference request superseded'))"],
-  ['stale active worker cancellation', atlas, 'this.restartWorker(slot)'],
+  ['active work survives navigation epochs', atlas, 'Keep the bounded active worker set alive'],
+  ['moving viewport reference reuse', atlas, 'MAX_REUSE_COVERAGE_DISTANCE = 8'],
   ['transport contract rejection', atlas, 'response.transportBits < active.requiredTransportBits'],
   ['worker reports working precision', worker, 'workingBits: bits'],
   ['worker reports finite transport ceiling', worker, 'REFERENCE_TRANSPORT_BITS = 96']

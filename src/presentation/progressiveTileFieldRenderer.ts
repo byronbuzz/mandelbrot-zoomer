@@ -23,7 +23,8 @@ import {
   tileResetNumericalShader
 } from '../numerical/tileFieldShadersV13';
 import {
-  PREFERRED_REFERENCE_TILE_BUDGET,
+  PREFERRED_REFERENCE_SEED_BUDGET,
+  MAX_PENDING_REFERENCE_DEMAND,
   precisionDecision,
   requiredReferenceTransportBits
 } from '../numerical/precisionPolicy';
@@ -98,6 +99,8 @@ const EMPTY_STATS: PersistentFieldStats = {
   convergedTiles: 0,
   directTiles: 0,
   perturbationTiles: 0,
+  finestTiles: 0,
+  finestPerturbationTiles: 0,
   pendingReferences: 0,
   repairTiles: 0,
   referenceFailures: 0,
@@ -545,14 +548,8 @@ export class TileFieldRenderer {
       cachedTiles: this.tileMap.size,
       pendingReferences: this.referenceAtlas.pendingCount,
       referenceFailures: this.referenceAtlas.failureCount,
-      referenceWorkingBits: visibleTiles.reduce(
-        (maximum, tile) => Math.max(maximum, tile.reference?.workingBits ?? 0),
-        0
-      ),
-      referenceTransportBits: visibleTiles.reduce(
-        (maximum, tile) => Math.max(maximum, tile.reference?.transportBits ?? 0),
-        0
-      ),
+      referenceWorkingBits: this.referenceAtlas.maximumWorkingBits,
+      referenceTransportBits: this.referenceAtlas.maximumTransportBits,
       precisionLimitedTiles: visibleTiles.filter(
         tile => tile.referenceError?.includes('below required')
       ).length,
@@ -920,6 +917,11 @@ export class TileFieldRenderer {
     this.currentAspect = Math.max(1, request.cssWidth) / Math.max(1, request.cssHeight);
     this.pendingLevelOffsets = [2, 1, 0];
     this.maximumPlannedLevel = 2;
+    for (const levelOffset of this.pendingLevelOffsets) {
+      for (const planned of this.planDescriptorsForLevel(request, levelOffset)) {
+        this.currentVisibleKeys.add(planned.descriptor.key);
+      }
+    }
     await this.activatePendingReferences();
     await this.admitNextSpatialLevel(request);
     this.updateStats();
@@ -1081,6 +1083,10 @@ export class TileFieldRenderer {
     const visible = this.currentPlan
       .map(item => this.tileMap.get(item.descriptor.key))
       .filter((tile): tile is FieldTile => Boolean(tile));
+    const finest = this.currentPlan
+      .filter(item => item.levelOffset === 0)
+      .map(item => this.tileMap.get(item.descriptor.key))
+      .filter((tile): tile is FieldTile => Boolean(tile));
     this.statsValue = {
       requestId: request.requestId,
       interaction: request.interaction,
@@ -1090,17 +1096,15 @@ export class TileFieldRenderer {
       convergedTiles: visible.filter(tile => tile.resolvedPixels >= TILE_PIXEL_COUNT).length,
       directTiles: visible.filter(tile => tile.numericalMode !== 'perturbation').length,
       perturbationTiles: visible.filter(tile => tile.numericalMode === 'perturbation').length,
+      finestTiles: finest.length,
+      finestPerturbationTiles: finest.filter(
+        tile => tile.numericalMode === 'perturbation'
+      ).length,
       pendingReferences: this.referenceAtlas.pendingCount,
       repairTiles: visible.filter(tile => tile.repairPass > 0).length,
       referenceFailures: this.referenceAtlas.failureCount,
-      referenceWorkingBits: visible.reduce(
-        (maximum, tile) => Math.max(maximum, tile.reference?.workingBits ?? 0),
-        0
-      ),
-      referenceTransportBits: visible.reduce(
-        (maximum, tile) => Math.max(maximum, tile.reference?.transportBits ?? 0),
-        0
-      ),
+      referenceWorkingBits: this.referenceAtlas.maximumWorkingBits,
+      referenceTransportBits: this.referenceAtlas.maximumTransportBits,
       precisionLimitedTiles: visible.filter(
         tile => tile.referenceError?.includes('below required')
       ).length,
@@ -1128,7 +1132,7 @@ export class TileFieldRenderer {
     plan: readonly PlannedDescriptor[]
   ): void {
     const referenceTarget = request.targetIterations;
-    let preferredTiles = 0;
+    let preferredSeeds = 0;
     for (const planned of plan) {
       const tile = this.tileMap.get(planned.descriptor.key);
       if (!tile) continue;
@@ -1141,9 +1145,7 @@ export class TileFieldRenderer {
         nonFinitePixels: tile.health.nonFinitePixels,
         doubleFloat: tile.directMode === 1
       });
-      const preferred = decision.preferred && preferredTiles < PREFERRED_REFERENCE_TILE_BUDGET;
-      if (!decision.required && !preferred && tile.numericalMode !== 'perturbation') continue;
-      if (preferred) preferredTiles++;
+      if (!decision.required && !decision.preferred && tile.numericalMode !== 'perturbation') continue;
       if (tile.referenceState === 'queued') continue;
 
       const failurePixels = tile.health.glitchPixels
@@ -1151,7 +1153,10 @@ export class TileFieldRenderer {
         + tile.health.nonFinitePixels;
       const unresolvedPixels = TILE_PIXEL_COUNT - tile.resolvedPixels;
       if (tile.numericalMode === 'perturbation' && tile.reference) {
-        if (failurePixels > 0) continue;
+        if (failurePixels > 0) {
+          this.maybeRequestRepair(tile, request);
+          continue;
+        }
         const needsLongerReference = tile.reference.requestedIterations < referenceTarget
           && unresolvedPixels > 0;
         if (!needsLongerReference) continue;
@@ -1171,6 +1176,11 @@ export class TileFieldRenderer {
         tile.referenceRequiredTransportBits = decision.requiredTransportBits;
         this.requestCurrentAgain();
         continue;
+      }
+      if (!decision.required && decision.preferred) {
+        if (preferredSeeds >= PREFERRED_REFERENCE_SEED_BUDGET) continue;
+        if (this.referenceAtlas.pendingCount >= MAX_PENDING_REFERENCE_DEMAND) continue;
+        preferredSeeds++;
       }
       this.queueReference(
         tile,
@@ -1214,7 +1224,10 @@ export class TileFieldRenderer {
       requiredTransportBits
     ).then(reference => {
       if (this.tileMap.get(tile.descriptor.key) !== tile) return;
-      if (tile.referenceDemandEpoch !== demandEpoch) return;
+      if (tile.referenceDemandEpoch !== demandEpoch) {
+        this.requestCurrentAgain();
+        return;
+      }
       tile.pendingReference = reference;
       tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
       tile.referenceState = 'ready';
@@ -1243,6 +1256,7 @@ export class TileFieldRenderer {
       + tile.health.orbitExhaustedPixels
       + tile.health.nonFinitePixels;
     if (unresolvedFailures <= 0 || tile.referenceState === 'queued') return;
+    if (this.referenceAtlas.pendingCount >= MAX_PENDING_REFERENCE_DEMAND) return;
     if (tile.repairPass >= MAX_REFERENCE_REPAIR_PASSES) {
       tile.referenceState = 'failed';
       return;

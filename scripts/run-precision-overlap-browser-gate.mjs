@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 
 const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(.:)/, '$1'));
-const fixture = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/precision-overlap-boundary.json'), 'utf8'));
+const fixturePath = resolve(root, process.env.PRECISION_FIXTURE ?? 'tests/fixtures/precision-user-failure-2026-08-03.json');
+const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 const outputDirectory = resolve(root, process.env.PRECISION_OUTPUT ?? 'test-results/precision-overlap-canary');
 mkdirSync(outputDirectory, { recursive: true });
 const port = Number(process.env.PRECISION_PORT ?? 4179);
@@ -66,7 +67,8 @@ try {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(window.__ZOOMER_TEST__), null, { timeout: 20_000 });
 
-  // Cancel several obsolete demands, then require the settled focus canary to win.
+  // Supersede several queued demands, then require active reference work to
+  // survive and activate perturbation while the final request is still moving.
   for (let exponent = -11; exponent >= -14; exponent--) {
     await page.evaluate(
       ({ exactCamera, scaleExponent }) => window.__ZOOMER_TEST__.setExactCamera(
@@ -75,28 +77,70 @@ try {
       { exactCamera: camera, scaleExponent: exponent }
     );
   }
-  const target = await page.evaluate(
-    exactCamera => window.__ZOOMER_TEST__.setExactCamera(exactCamera, 'settled'),
+  const movingTarget = await page.evaluate(
+    exactCamera => window.__ZOOMER_TEST__.setExactCamera(exactCamera, 'moving'),
     camera
   );
 
-  const deadline = Date.now() + 60_000;
+  const movingDeadline = Date.now() + 60_000;
+  let movingDiagnostics;
+  while (Date.now() < movingDeadline) {
+    movingDiagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
+    if (movingDiagnostics.requestId === movingTarget.requestId
+      && movingDiagnostics.field.requestId === movingTarget.requestId
+      && movingDiagnostics.field.interaction === 'moving'
+      && movingDiagnostics.field.finestTiles > 0
+      && movingDiagnostics.field.finestPerturbationTiles > 0
+      && movingDiagnostics.field.finestPerturbationTiles
+        >= Math.ceil(movingDiagnostics.field.finestTiles * 0.9)
+      && movingDiagnostics.field.submittedChunks > 0) break;
+    await page.waitForTimeout(100);
+  }
+  await page.screenshot({ path: resolve(outputDirectory, 'precision-overlap-moving.png'), type: 'png' });
+
+  const settledTarget = await page.evaluate(
+    exactCamera => window.__ZOOMER_TEST__.setExactCamera(exactCamera, 'settled'),
+    camera
+  );
+  const settledDeadline = Date.now() + 60_000;
   let diagnostics;
-  while (Date.now() < deadline) {
+  while (Date.now() < settledDeadline) {
     diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
-    if (diagnostics.field.perturbationTiles > 0
+    if (diagnostics.requestId === settledTarget.requestId
+      && diagnostics.field.requestId === settledTarget.requestId
+      && diagnostics.field.perturbationTiles > 0
       && diagnostics.field.pendingReferences === 0
       && diagnostics.field.submittedChunks > 0) break;
     await page.waitForTimeout(100);
   }
   await page.screenshot({ path: resolve(outputDirectory, 'precision-overlap-settled.png'), type: 'png' });
-  const report = { capturedAt: new Date().toISOString(), executablePath, fixture, target, diagnostics, errors };
+  const report = {
+    capturedAt: new Date().toISOString(), executablePath, fixture,
+    movingTarget, movingDiagnostics, settledTarget, diagnostics, errors
+  };
   writeFileSync(resolve(outputDirectory, 'report.json'), JSON.stringify(report, null, 2));
 
   const failures = [...errors];
+  const movingField = movingDiagnostics?.field;
   const field = diagnostics?.field;
   const presentation = diagnostics?.presentation;
+  if (movingDiagnostics?.requestId !== movingTarget.requestId
+    || movingField?.requestId !== movingTarget.requestId) {
+    failures.push(`Moving diagnostics belonged to request ${movingDiagnostics?.requestId}/${movingField?.requestId}, expected ${movingTarget.requestId}.`);
+  }
+  if (movingField?.interaction !== 'moving' || movingField?.perturbationTiles <= 0) {
+    failures.push('No perturbation tile activated during continuous movement.');
+  }
+  if ((movingField?.finestPerturbationTiles ?? 0) < Math.ceil((movingField?.finestTiles ?? 1) * 0.9)) {
+    failures.push(
+      `Moving finest-level perturbation coverage was ${movingField?.finestPerturbationTiles ?? 0}/${movingField?.finestTiles ?? 0}; expected at least 90%.`
+    );
+  }
   if (!field || field.perturbationTiles <= 0) failures.push('No focus tile activated perturbation in the overlap band.');
+  if (diagnostics?.requestId !== settledTarget.requestId
+    || field?.requestId !== settledTarget.requestId) {
+    failures.push(`Settled diagnostics belonged to request ${diagnostics?.requestId}/${field?.requestId}, expected ${settledTarget.requestId}.`);
+  }
   if (field?.pendingReferences !== 0) failures.push('Reference demand did not drain after settling.');
   if (field?.referenceFailures !== 0) failures.push(`Reference failures: ${field.referenceFailures}.`);
   if (field?.referenceTransportBits !== 96) failures.push(`Expected declared 96-bit transport, got ${field?.referenceTransportBits}.`);
