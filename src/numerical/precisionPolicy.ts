@@ -31,7 +31,6 @@ export function precisionDecision(input: Readonly<{
   const required = input.coordinateCollapsed || input.nonFinitePixels > 0;
   const preferred = !required
     && input.doubleFloat
-    && input.levelOffset === 0
     && input.sampleExponent <= PERTURBATION_OVERLAP_SAMPLE_EXPONENT
     && Number.isFinite(input.distanceFromFocus);
   return {

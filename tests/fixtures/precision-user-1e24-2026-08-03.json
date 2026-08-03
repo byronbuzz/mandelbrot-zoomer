@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-user-1e24-2026-08-03",
+  "description": "Exact user-reported 10^24.020584 position that previously required hundreds of repair waves.",
+  "capturedAt": "2026-08-03T16:20:54.574Z",
+  "build": "1.4-4dbe048",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "camera": {
+    "centerX": {
+      "raw": "-4630493738332497217887211616296166233403519090147765256192",
+      "bits": 192
+    },
+    "centerY": {
+      "raw": "-1062389749950687985116215472008873316841056141351510343680",
+      "bits": 192
+    },
+    "scale": {
+      "mantissa": 0.8647218346340971,
+      "exponent": -78
+    },
+    "log10Magnification": 24.020584
+  },
+  "viewport": {
+    "cssWidth": 1725,
+    "cssHeight": 1153,
+    "devicePixelRatio": 1
+  }
+}

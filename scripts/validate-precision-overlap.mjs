@@ -6,6 +6,7 @@ const policy = read('src/numerical/precisionPolicy.ts');
 const renderer = read('src/presentation/progressiveTileFieldRenderer.ts');
 const atlas = read('src/references/tileReferenceAtlasV13.ts');
 const worker = read('src/v4/referenceWorker.ts');
+const perturbationShader = read('src/numerical/tilePerturbationShader.ts');
 
 const requirements = [
   ['bounded viewport seeding', policy, 'PREFERRED_REFERENCE_SEED_BUDGET = 16'],
@@ -28,7 +29,11 @@ const requirements = [
   ['wide reference transport ceiling', worker, 'WIDE_REFERENCE_TRANSPORT_BITS = 192'],
   ['exact fixed deep reference recurrence', worker, 'buildExactFixedReference'],
   ['dynamic orbit stride', renderer, 'reference.floatsPerPoint'],
-  ['scaled perturbation headroom', renderer, 'tile.descriptor.sampleExponent + 64']
+  ['scaled perturbation headroom', renderer, 'tile.descriptor.sampleExponent + 64'],
+  ['all planned deep levels prefer perturbation', policy, '&& input.sampleExponent <= PERTURBATION_OVERLAP_SAMPLE_EXPONENT'],
+  ['pending references keep renderer busy', renderer, 'this.referenceAtlas.pendingCount > 0'],
+  ['escaped reference sample is transported', worker, 'zx * zx + zy * zy > escapeSquared'],
+  ['scaled orbit-end rebasing', perturbationShader, 'referenceExhausted || perturbationDominates']
 ];
 
 const failures = requirements
@@ -42,7 +47,7 @@ if (requiredBits(-126) > 192) failures.push('The 10^35 band must fit the wide tr
 
 const frozen = new Map([
   ['src/numerical/tileDirectShader.ts', '6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1'],
-  ['src/numerical/tilePerturbationShader.ts', 'ebef51fc3883ea8f6bcea3243f07974854165aff20f4be72b289e67ff7a8b8dd']
+  ['src/numerical/tilePerturbationShader.ts', '6f91c8dbd5594943a78c35697f9de54c6e49e3a5dc66da0ec569b2db4ba30113']
 ]);
 for (const [path, expected] of frozen) {
   const actual = createHash('sha256').update(read(path)).digest('hex');

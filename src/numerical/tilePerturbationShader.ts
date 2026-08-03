@@ -30,6 +30,7 @@ const STATUS_INTERIOR = 2u;
 const STATUS_NON_FINITE = 3u;
 const STATUS_GLITCH = 5u;
 const STATUS_ORBIT_EXHAUSTED = 6u;
+const MAX_LOCAL_REBASES = 64u;
 
 @group(0) @binding(0) var<uniform> p: PerturbParams;
 @group(0) @binding(1) var<storage, read_write> recurrenceState: array<vec4f>;
@@ -152,6 +153,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var referenceIndex = pixelMeta.z;
   let iterationEnd = min(p.iterationTarget, iteration + p.chunkIterations);
   var radiusSquared = 0.0;
+  var localRebases = 0u;
 
   loop {
     if (referenceIndex >= p.orbitLength) {
@@ -174,6 +176,24 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
     let referenceRadius = dsValue(referenceX) * dsValue(referenceX)
       + dsValue(referenceY) * dsValue(referenceY);
+    let deltaRadius = dsValue(actualDx) * dsValue(actualDx)
+      + dsValue(actualDy) * dsValue(actualDy);
+    let referenceExhausted = referenceIndex + 1u >= p.orbitLength;
+    let perturbationDominates = referenceIndex > 0u && radiusSquared < deltaRadius;
+    if (referenceExhausted || perturbationDominates) {
+      let inversePerturbationScale = ldexp(1.0, -p.sampleExponent - 64);
+      dx = dsScale(currentX, inversePerturbationScale);
+      dy = dsScale(currentY, inversePerturbationScale);
+      referenceIndex = 0u;
+      localRebases++;
+      if (!finiteDs(dx) || !finiteDs(dy) || localRebases > MAX_LOCAL_REBASES) {
+        recurrenceMeta[index] = vec4u(iteration, STATUS_GLITCH, referenceIndex, p.repairPass);
+        atomicAdd(&counters.glitchPixels, 1u);
+        return;
+      }
+      continue;
+    }
+
     let cancellationGlitch = iteration > 8u
       && referenceRadius > 1e-24
       && radiusSquared < p.glitchRatio * referenceRadius;

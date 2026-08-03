@@ -22,6 +22,7 @@ import {
   tileResetNumericalShader
 } from '../numerical/tileFieldShadersV13';
 import {
+  PERTURBATION_OVERLAP_SAMPLE_EXPONENT,
   PREFERRED_REFERENCE_SEED_BUDGET,
   MAX_PENDING_REFERENCE_DEMAND,
   precisionDecision,
@@ -545,6 +546,8 @@ export class TileFieldRenderer {
   get isBusy(): boolean {
     return this.running
       || this.latestRequest !== null
+      || this.referenceAtlas.pendingCount > 0
+      || this.referenceRefreshTimer !== null
       || this.referenceRefreshPending
       || this.currentQueue.length > 0
       || this.pendingBatches.length > 0
@@ -1229,6 +1232,10 @@ export class TileFieldRenderer {
   private tileNeedsPerturbation(tile: FieldTile): boolean {
     if (tile.numericalMode === 'perturbation') return true;
     if (tile.health.nonFinitePixels > 0) return true;
+    if (
+      tile.directMode === 1
+      && tile.descriptor.sampleExponent <= PERTURBATION_OVERLAP_SAMPLE_EXPONENT
+    ) return true;
     return tile.requiresPerturbation;
   }
 

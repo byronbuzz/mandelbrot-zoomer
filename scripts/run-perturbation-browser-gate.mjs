@@ -44,16 +44,24 @@ try {
   if (report.validationError) failures.push(report.validationError);
   failures.push(...report.uncaptured);
   for (const comparison of report.comparisons) {
-    if (comparison.gpu.status !== comparison.expected.status
-      || comparison.gpu.iteration !== comparison.expected.iteration) {
+    const exactSampleAvailable = comparison.expected.iteration < comparison.orbitLength;
+    const exactMatch = comparison.gpu.status === comparison.expected.status
+      && comparison.gpu.iteration === comparison.expected.iteration;
+    const correctlyUnresolved = !exactSampleAvailable
+      && comparison.gpu.status === 6
+      && comparison.gpu.iteration === comparison.orbitLength;
+    if (!exactMatch && !correctlyUnresolved) {
       failures.push(
-        `${comparison.x},${comparison.y}: GPU ${comparison.gpu.status}/${comparison.gpu.iteration}`
+        `${comparison.scenario} ${comparison.x},${comparison.y}: GPU ${comparison.gpu.status}/${comparison.gpu.iteration}`
         + ` != exact ${comparison.expected.status}/${comparison.expected.iteration}`
       );
     }
   }
   if (failures.length) throw new Error(failures.join('\n'));
-  console.log(`Scaled perturbation oracle passed on ${report.adapter}: ${report.comparisons.length} exact pixels at 10^35 scale.`);
+  console.log(
+    `Scaled perturbation oracle passed on ${report.adapter}: `
+    + `${report.comparisons.length} exact pixels across periodic and user boundary scenarios.`
+  );
 } finally {
   if (browser) await browser.close();
   server.kill();

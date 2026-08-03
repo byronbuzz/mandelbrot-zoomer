@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-mixed-mode-1e12-2026-08-03",
+  "description": "Exact user-reported 10^12.061 position showing a blank precision-unsafe moving frame.",
+  "capturedAt": "2026-08-03T16:02:52.427Z",
+  "build": "1.4-4dbe048",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "deepOrder": 12.061267,
+  "coarseOrder": 10.845869,
+  "camera": {
+    "centerX": {
+      "raw": "-1078120837531759785952907832758733945926257213440",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-247356889291846360066725979944089301241814843392",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.716134111866808,
+      "exponent": -38
+    },
+    "log10Magnification": 12.061267
+  },
+  "viewport": {
+    "cssWidth": 1525,
+    "cssHeight": 1121,
+    "devicePixelRatio": 1
+  }
+}
