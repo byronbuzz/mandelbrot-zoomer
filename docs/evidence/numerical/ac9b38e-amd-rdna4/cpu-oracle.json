@@ -1,0 +1,517 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-03T12:22:51.924Z",
+  "contractVersion": 1,
+  "fixture": {
+    "path": "tests/fixtures/shallow-direct-v1.json",
+    "sha256": "50dbc8e2b80520fb3448ef079e32ebe97863f3ab176f32155a418153901fe943",
+    "strictCases": 16,
+    "sensitivityCases": 4,
+    "gridCases": 1
+  },
+  "productionShader": {
+    "path": "src/numerical/tileDirectShader.ts",
+    "sha256": "6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1"
+  },
+  "environment": {
+    "node": "v24.14.0",
+    "os": "win32 10.0.26200"
+  },
+  "strictResults": [
+    {
+      "id": "zero-target-analytic",
+      "status": 2,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "zero-target",
+          "chunks": 1
+        }
+      ]
+    },
+    {
+      "id": "zero-target-nonanalytic-cap",
+      "status": 4,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "zero-target",
+          "chunks": 1
+        }
+      ]
+    },
+    {
+      "id": "cardioid-origin",
+      "status": 2,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 64
+        },
+        {
+          "id": "prime-7",
+          "chunks": 10
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 8
+        }
+      ]
+    },
+    {
+      "id": "period-two-centre",
+      "status": 2,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 64
+        },
+        {
+          "id": "prime-7",
+          "chunks": 10
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 8
+        }
+      ]
+    },
+    {
+      "id": "inclusive-cardioid-cusp",
+      "status": 2,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 64
+        },
+        {
+          "id": "prime-7",
+          "chunks": 10
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 8
+        }
+      ]
+    },
+    {
+      "id": "inclusive-shared-boundary",
+      "status": 2,
+      "iteration": 0,
+      "radiusSquared": 0,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 64
+        },
+        {
+          "id": "prime-7",
+          "chunks": 10
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 8
+        }
+      ]
+    },
+    {
+      "id": "period-three-nonanalytic-cap",
+      "status": 4,
+      "iteration": 128,
+      "radiusSquared": 0.7548776662466925,
+      "previousRadiusSquared": 0.5698402909980528,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 128
+        },
+        {
+          "id": "prime-7",
+          "chunks": 19
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 2
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 15
+        }
+      ]
+    },
+    {
+      "id": "target-edge-cap",
+      "status": 4,
+      "iteration": 2,
+      "radiusSquared": 36,
+      "previousRadiusSquared": 4,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 2
+        },
+        {
+          "id": "prime-7",
+          "chunks": 1
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 2
+        }
+      ]
+    },
+    {
+      "id": "target-edge-escape",
+      "status": 1,
+      "iteration": 3,
+      "radiusSquared": 1444,
+      "previousRadiusSquared": 36,
+      "smooth": 1.6082522070100267,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 3
+        },
+        {
+          "id": "prime-7",
+          "chunks": 1
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 2
+        }
+      ]
+    },
+    {
+      "id": "short-escape",
+      "status": 1,
+      "iteration": 4,
+      "radiusSquared": 676,
+      "previousRadiusSquared": 25,
+      "smooth": 2.7672042752292847,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 64
+        },
+        {
+          "id": "prime-7",
+          "chunks": 10
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 8
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": 3
+        }
+      ]
+    },
+    {
+      "id": "strict-bailout-equality-cap",
+      "status": 4,
+      "iteration": 1,
+      "radiusSquared": 256,
+      "previousRadiusSquared": 0,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 1
+        },
+        {
+          "id": "prime-7",
+          "chunks": 1
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 1
+        }
+      ]
+    },
+    {
+      "id": "strict-bailout-equality-then-escape",
+      "status": 1,
+      "iteration": 2,
+      "radiusSquared": 73984,
+      "previousRadiusSquared": 256,
+      "smooth": -0.015687178497167942,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 2
+        },
+        {
+          "id": "prime-7",
+          "chunks": 1
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 1
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 2
+        }
+      ]
+    },
+    {
+      "id": "minus-two-boundary-cap",
+      "status": 4,
+      "iteration": 128,
+      "radiusSquared": 4,
+      "previousRadiusSquared": 4,
+      "smooth": null,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 128
+        },
+        {
+          "id": "prime-7",
+          "chunks": 19
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 2
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 15
+        }
+      ]
+    },
+    {
+      "id": "left-exterior",
+      "status": 1,
+      "iteration": 5,
+      "radiusSquared": 12935.173994537741,
+      "previousRadiusSquared": 115.8579063839386,
+      "smooth": 3.2282187893768732,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 128
+        },
+        {
+          "id": "prime-7",
+          "chunks": 19
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 2
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 15
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": 3
+        }
+      ]
+    },
+    {
+      "id": "conjugate-positive",
+      "status": 1,
+      "iteration": 35,
+      "radiusSquared": 3877.2982105287633,
+      "previousRadiusSquared": 62.58705436786122,
+      "smooth": 33.42458649243402,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 256
+        },
+        {
+          "id": "prime-7",
+          "chunks": 37
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 4
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 24
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": 3
+        }
+      ]
+    },
+    {
+      "id": "conjugate-negative",
+      "status": 1,
+      "iteration": 35,
+      "radiusSquared": 3877.2982105287633,
+      "previousRadiusSquared": 62.58705436786122,
+      "smooth": 33.42458649243402,
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": 1
+        },
+        {
+          "id": "ones",
+          "chunks": 256
+        },
+        {
+          "id": "prime-7",
+          "chunks": 37
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": 4
+        },
+        {
+          "id": "fibonacci",
+          "chunks": 24
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": 3
+        }
+      ]
+    }
+  ],
+  "gridResults": [
+    {
+      "id": "dyadic-coordinate-grid-16",
+      "pixels": 256,
+      "classes": {
+        "escaped": 245,
+        "analytic": 7,
+        "capped": 4,
+        "nonFinite": 0
+      },
+      "explicitIterations": 857
+    }
+  ],
+  "cpuBenchmark": {
+    "scene": "boundary-throughput-128",
+    "metric": "CPU f64 oracle wall time; excludes I/O",
+    "samplesMs": [
+      8.064099999999996,
+      5.358699999999999,
+      5.999400000000001
+    ],
+    "medianMs": 5.999400000000001,
+    "classes": {
+      "escaped": 16081,
+      "analytic": 0,
+      "capped": 303,
+      "nonFinite": 0
+    },
+    "explicitIterations": 2442855
+  },
+  "failures": []
+}

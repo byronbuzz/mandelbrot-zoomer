@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "runId": "ac9b38e-amd-rdna4",
+  "status": "passed",
+  "startedAt": "2026-08-03T12:22:52.664Z",
+  "completedAt": "2026-08-03T12:22:54.684Z",
+  "commit": "ac9b38ed600e15fbe04ded7b1b4109cd379eea8a",
+  "report": "browser-report.json",
+  "failure": null,
+  "error": null
+}
