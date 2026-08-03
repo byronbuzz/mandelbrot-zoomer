@@ -12,67 +12,71 @@ The previous Mandelbrot Zoomer implementation is preserved on the `legacy/mandel
 
 ## Governing model
 
-The renderer is a persistent numerical field viewed through a continuously moving camera. It is not a sequence of replacement frames.
+The renderer is a persistent numerical tile field viewed through a continuously moving camera. It is not a sequence of replacement frames.
 
 1. The exact fixed-point camera is authoritative.
 2. Presentation runs independently at display cadence.
-3. The visible field is always complete: a new anchor is seeded by GPU reprojection of the previous field before it becomes visible.
-4. New calculations overwrite only pixels for which they have a useful result.
-5. Iteration-cap results remain provisional during navigation and therefore retain reprojected history.
-6. Numerical data, colour data and quality metadata are separate resources.
+3. Numerical state belongs to exact dyadic world-space tiles, not viewport frames.
+4. Camera movement reprojects accepted tile samples for presentation without pretending that colour reprojection is numerical persistence.
+5. Iteration-cap results remain provisional during navigation unless a numerically suitable pipeline reaches the settled target.
+6. Recurrence state, numerical results, colour data and quality metadata are separate resources.
 7. GPU work is bounded, coalesced and batched; obsolete requests are abandoned at batch boundaries.
-8. Precision is selected from coordinate distinguishability and measured tile evidence, never from one global zoom threshold.
-9. Deep rendering will use local references and local repair; no single reference decides the whole viewport.
-10. The stopped image converges through the same field used during navigation.
+8. Precision is selected from coordinate distinguishability, iteration demand and measured tile health, never one global zoom threshold.
+9. Deep rendering uses local reference groups and local repair; no single reference decides the whole viewport.
+10. Moving, settling and settled states advance the same cached tile population.
 
-## 1.0.0 — persistent-field foundation
+## 1.0.0 — greenfield presentation prototype
 
-- exact fixed-point camera and zoom-about-pointer navigation;
-- WebGPU compute as the primary backend;
-- native `f32` and emulated double-float direct pipelines;
-- analytic main-cardioid and period-two-bulb rejection;
-- smooth escape colouring after escape;
-- separate `rgba32float` numerical, `rgba8unorm` colour and `rgba8unorm` quality textures;
-- GPU reprojection seeds every new field before publication;
-- provisional navigation pixels preserve history rather than becoming black or translucent;
-- explicit moving, settling and settled states;
-- adaptive navigation iteration, block-size and resolution budget;
-- progressive 8×8 → 4×4 → 2×2 → 1×1 refinement;
-- several tile jobs encoded per command buffer with one completion fence;
-- bounded texture-resource pool;
-- device-loss and runtime-error reporting;
-- diagnostics that expose the field lifecycle and adaptive budget.
+1.0.0 established the new product, exact camera, explicit interaction states, independent display-rate presentation and adaptive direct rendering. Its browser tests also exposed an important architectural error: the persistent object was reprojected colour rather than numerical state. That implementation remains valuable as a prototype but is superseded by 1.1.0 and 1.2.0.
 
-## 1.1.0 — persistent iteration and active work
+## 1.1.0 — persistent numerical tiles
 
-- resumable direct recurrence state;
+Implemented foundations:
+
+- exact dyadic world-space tile identities independent of camera anchors;
+- tile-local result, recurrence, metadata, quality and colour resources;
+- resumable native-f32 and double-float direct recurrence;
 - fixed-size iteration chunks;
-- active-tile reduction;
-- active-pixel masks, compaction and indirect dispatch where profitable;
-- periodicity checks as a specialised pipeline;
-- GPU-resident completion counters with sparse asynchronous readback;
-- benchmark-driven chunk and workgroup selection.
+- escaped and analytically interior pixels remain completed across later chunks;
+- active, capped and non-finite counters consumed by the scheduler;
+- focus-prioritised active-tile work queues;
+- bounded tile cache with coarse and fine levels coexisting;
+- accepted-sample coverage controls composition instead of colour brightness;
+- separate numerical-freshness and presentation-history telemetry;
+- no static full-viewport 8×8 → 4×4 → 2×2 → 1×1 restart ladder.
+
+Active-pixel compaction and indirect dispatch remain performance work for a later stage; the numerical state model no longer depends on them for correctness.
 
 ## 1.2.0 — local deep perturbation
 
-- persistent worker/Wasm reference service;
-- reference cache and per-tile reference atlas;
-- four-limb GPU reference orbits;
-- perturbation, scaled perturbation and rebasing pipelines;
-- tile health from glitch flags, rebase rate, numerical range and sentinel disagreement;
-- local subdivision, alternate-reference and repair jobs;
-- precision escalation with hysteresis;
-- no whole-viewport direct/perturbation crossover.
+Implemented deep path:
+
+- persistent high-precision reference worker and GPU orbit cache;
+- references shared by small local tile groups rather than the whole viewport;
+- four-limb reference-orbit representation;
+- specialised direct and perturbation compute pipelines;
+- direct work is bounded conservatively while a local reference is pending;
+- full-length reference admission before a tile enters perturbation mode;
+- per-pixel perturbation continuation across bounded chunks;
+- cancellation-glitch, orbit-exhaustion and non-finite health signals;
+- alternate local reference candidates and bounded repair passes;
+- repair resets unresolved pixels while preserving accepted escaped/interior samples;
+- weak or failed references affect only their local tiles;
+- no depth-triggered viewport-wide direct/perturbation transition.
 
 ## 1.3.0 — deep acceleration and verification
+
+Planned:
 
 - arbitrary-precision Wasm reference engine;
 - dynamic reference precision;
 - series approximation with conservative remainder bounds;
+- scaled perturbation where ordinary deltas approach exponent limits;
 - experimental BLA with exact fallback;
 - deterministic high-precision sentinel validation;
+- active-pixel compaction and indirect dispatch where profiling demonstrates a win;
 - device-profile tuning and sustained mobile thermal telemetry.
 
 ## Admission policy for earlier work
 
-Retained mathematics or techniques must be small, independently testable and compatible with the persistent-field model. The fixed-point camera, binary-scale representation, double-float primitives, analytic interior tests and exact camera transforms qualify. Whole-frame current/stable lifecycle code, alpha-as-confidence, hard depth crossovers, single-reference viewport policy and per-job host synchronisation do not.
+Retained mathematics or techniques must be small, independently testable and compatible with the persistent-field model. The fixed-point camera, binary-scale representation, double-float primitives, analytic interior tests and multi-limb reference arithmetic qualify. Whole-frame current/stable lifecycle code, colour-as-numerical-persistence, alpha-as-confidence, hard depth crossovers, single-reference viewport policy and per-job host synchronisation do not.
