@@ -44,25 +44,35 @@ try {
   if (report.validationError) failures.push(report.validationError);
   failures.push(...report.uncaptured);
   for (const comparison of report.comparisons) {
+    const scenario = report.scenarios.find(candidate => candidate.name === comparison.scenario);
     const exactSampleAvailable = comparison.expected.iteration < comparison.orbitLength;
     const exactMatch = comparison.gpu.status === comparison.expected.status
       && comparison.gpu.iteration === comparison.expected.iteration;
     const correctlyUnresolved = !exactSampleAvailable
       && comparison.gpu.status === 6
       && comparison.gpu.iteration === comparison.orbitLength;
-    if (!exactMatch && !correctlyUnresolved) {
+    const safelyDeferred = scenario?.requireSafeUnresolved
+      && (comparison.gpu.status === 5 || comparison.gpu.status === 6)
+      && comparison.gpu.iteration < comparison.expected.iteration;
+    if (!exactMatch && !correctlyUnresolved && !safelyDeferred) {
       failures.push(
         `${comparison.scenario} ${comparison.x},${comparison.y}: GPU ${comparison.gpu.status}/${comparison.gpu.iteration}`
         + ` != exact ${comparison.expected.status}/${comparison.expected.iteration}`
+      );
+    }
+    if (scenario?.requireSafeUnresolved && !safelyDeferred && !correctlyUnresolved) {
+      failures.push(
+        `${comparison.scenario} ${comparison.x},${comparison.y}: unsafe final acceptance after reference exhaustion`
       );
     }
   }
   if (failures.length) throw new Error(failures.join('\n'));
   console.log(
     `Scaled perturbation oracle passed on ${report.adapter}: `
-    + `${report.comparisons.length} exact pixels across periodic and user boundary scenarios.`
+    + `${report.comparisons.length} exact pixels across periodic, user boundary, and repeated-rebase scenarios.`
   );
 } finally {
   if (browser) await browser.close();
   server.kill();
 }
+

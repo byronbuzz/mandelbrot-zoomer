@@ -25,8 +25,10 @@ const INITIAL_REFERENCE_GROUP_TILE_SPAN = 2n;
 const MAX_REUSE_COVERAGE_DISTANCE = 1;
 const MIN_REFERENCE_WORKING_BITS = 224;
 
-const INITIAL_CANDIDATE_GRID = [-0.34, 0, 0.34] as const;
-const REPAIR_CANDIDATE_GRID = [-0.45, -0.225, 0, 0.225, 0.45] as const;
+const INITIAL_CANDIDATE_GRID = [-0.45, -0.225, 0, 0.225, 0.45] as const;
+const REPAIR_CANDIDATE_GRID = [
+  -0.48, -0.36, -0.24, -0.12, 0, 0.12, 0.24, 0.36, 0.48
+] as const;
 const REPAIR_PHASES = [
   [0, 0],
   [0.055, 0.055],
@@ -389,8 +391,18 @@ export class TileReferenceAtlas {
     const grid = request.repairPass === 0 ? INITIAL_CANDIDATE_GRID : REPAIR_CANDIDATE_GRID;
     const result: ReferenceCandidate[] = [];
     const seen = new Set<string>();
-    for (const y of grid) {
-      for (const x of grid) {
+    const offsets = grid.flatMap(y => grid.map(x => [x, y] as const));
+    offsets.sort((left, right) => {
+      const leftX = left[0] + phase[0];
+      const leftY = left[1] + phase[1];
+      const rightX = right[0] + phase[0];
+      const rightY = right[1] + phase[1];
+      return leftX * leftX + leftY * leftY - (rightX * rightX + rightY * rightY);
+    });
+    // Candidate selection keeps the first orbit that survives the requested
+    // horizon. Centre-out ordering therefore chooses the most local equally
+    // viable orbit and avoids corner-selected, high-perturbation repair storms.
+    for (const [x, y] of offsets) {
         const centerX = fixedRescale(fixedAddScaled(
           request.geometry.centerX,
           x + phase[0],
@@ -407,7 +419,6 @@ export class TileReferenceAtlas {
         if (seen.has(key)) continue;
         seen.add(key);
         result.push({ centerX: serializedX, centerY: serializedY });
-      }
     }
     return result;
   }
@@ -504,3 +515,4 @@ export class TileReferenceAtlas {
     slot.worker = this.createWorker(slot);
   }
 }
+

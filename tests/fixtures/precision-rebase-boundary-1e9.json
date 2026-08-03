@@ -1,0 +1,16 @@
+{
+  "name": "user-boundary-repeated-rebase-1e9",
+  "provisional": false,
+  "iterationTarget": 5000,
+  "deepOrder": 9.340462,
+  "coarseOrder": 8,
+  "camera": {
+    "centerXRaw": "-1081452738034521679887916459983893489865208102912",
+    "centerXBits": 160,
+    "centerYRaw": "-223372278238499148635421809484210213853258055680",
+    "centerYBits": 160,
+    "scaleMantissa": 0.7354098972722128,
+    "scaleExponent": -29
+  }
+}
+

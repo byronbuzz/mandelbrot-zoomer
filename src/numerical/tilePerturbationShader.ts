@@ -31,6 +31,7 @@ const STATUS_NON_FINITE = 3u;
 const STATUS_GLITCH = 5u;
 const STATUS_ORBIT_EXHAUSTED = 6u;
 const MAX_LOCAL_REBASES = 64u;
+const MAX_ACCEPTED_REBASES = 12u;
 
 @group(0) @binding(0) var<uniform> p: PerturbParams;
 @group(0) @binding(1) var<storage, read_write> recurrenceState: array<vec4f>;
@@ -138,7 +139,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let coordinateY = dsAdd(p.centerY, dsScale(offset[1], perturbationScale));
   if (pixelMeta.x == 0u && analyticInteriorDs(coordinateX, coordinateY)) {
     recurrenceState[index] = vec4f(0.0);
-    recurrenceMeta[index] = vec4u(0u, STATUS_INTERIOR, 0u, p.repairPass);
+    recurrenceMeta[index] = vec4u(0u, STATUS_INTERIOR, 0u, 0u);
     textureStore(resultTexture, pixel, vec4f(0.0, 2.0, 0.0, 0.0));
     textureStore(qualityTexture, pixel, vec4f(1.0, 1.0, 0.5, 0.8));
     atomicAdd(&counters.analyticInteriorPixels, 1u);
@@ -151,13 +152,14 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var dy = recurrenceState[index].zw;
   var iteration = pixelMeta.x;
   var referenceIndex = pixelMeta.z;
+  var rebaseCount = pixelMeta.w;
   let iterationEnd = min(p.iterationTarget, iteration + p.chunkIterations);
   var radiusSquared = 0.0;
   var localRebases = 0u;
 
   loop {
     if (referenceIndex >= p.orbitLength) {
-      recurrenceMeta[index] = vec4u(iteration, STATUS_ORBIT_EXHAUSTED, referenceIndex, p.repairPass);
+      recurrenceMeta[index] = vec4u(iteration, STATUS_ORBIT_EXHAUSTED, referenceIndex, rebaseCount);
       atomicAdd(&counters.orbitExhaustedPixels, 1u);
       return;
     }
@@ -185,9 +187,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       dx = dsScale(currentX, inversePerturbationScale);
       dy = dsScale(currentY, inversePerturbationScale);
       referenceIndex = 0u;
+      rebaseCount++;
       localRebases++;
-      if (!finiteDs(dx) || !finiteDs(dy) || localRebases > MAX_LOCAL_REBASES) {
-        recurrenceMeta[index] = vec4u(iteration, STATUS_GLITCH, referenceIndex, p.repairPass);
+      if (!finiteDs(dx) || !finiteDs(dy)
+          || localRebases > MAX_LOCAL_REBASES || rebaseCount > MAX_ACCEPTED_REBASES) {
+        recurrenceMeta[index] = vec4u(iteration, STATUS_GLITCH, referenceIndex, rebaseCount);
         atomicAdd(&counters.glitchPixels, 1u);
         return;
       }
@@ -198,7 +202,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       && referenceRadius > 1e-24
       && radiusSquared < p.glitchRatio * referenceRadius;
     if (cancellationGlitch) {
-      recurrenceMeta[index] = vec4u(iteration, STATUS_GLITCH, referenceIndex, p.repairPass);
+      recurrenceMeta[index] = vec4u(iteration, STATUS_GLITCH, referenceIndex, rebaseCount);
       atomicAdd(&counters.glitchPixels, 1u);
       return;
     }
@@ -226,7 +230,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     iteration++;
     referenceIndex++;
     if (!finiteDs(dx) || !finiteDs(dy)) {
-      recurrenceMeta[index] = vec4u(iteration, STATUS_NON_FINITE, referenceIndex, p.repairPass);
+      recurrenceMeta[index] = vec4u(iteration, STATUS_NON_FINITE, referenceIndex, rebaseCount);
       atomicAdd(&counters.nonFinitePixels, 1u);
       return;
     }
@@ -235,7 +239,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (radiusSquared > 256.0) {
     let smoothValue = smoothEscape(iteration, radiusSquared);
     recurrenceState[index] = vec4f(smoothValue, 0.0, 0.0, 0.0);
-    recurrenceMeta[index] = vec4u(iteration, STATUS_ESCAPED, referenceIndex, p.repairPass);
+    recurrenceMeta[index] = vec4u(iteration, STATUS_ESCAPED, referenceIndex, rebaseCount);
     textureStore(resultTexture, pixel, vec4f(smoothValue, 1.0, f32(iteration), 0.0));
     textureStore(qualityTexture, pixel, vec4f(1.0, 1.0, 0.25, 0.8));
     atomicAdd(&counters.escapedPixels, 1u);
@@ -243,7 +247,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   }
 
   recurrenceState[index] = vec4f(dx, dy);
-  recurrenceMeta[index] = vec4u(iteration, STATUS_ACTIVE, referenceIndex, p.repairPass);
+  recurrenceMeta[index] = vec4u(iteration, STATUS_ACTIVE, referenceIndex, rebaseCount);
   if (iteration >= p.iterationTarget) {
     if (p.acceptIterationCap != 0u) {
       textureStore(resultTexture, pixel, vec4f(f32(iteration), 4.0, f32(iteration), 0.0));
@@ -254,3 +258,4 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   }
   atomicAdd(&counters.activePixels, 1u);
 }`;
+
