@@ -2,7 +2,7 @@ name: Quality Gate and Pages
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, codex/phase1-presentation-kernel]
   workflow_dispatch:
 permissions:
   contents: read
