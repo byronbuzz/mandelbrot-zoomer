@@ -63,6 +63,9 @@ export type PersistentFieldStats = Readonly<{
   pendingReferences: number;
   repairTiles: number;
   referenceFailures: number;
+  referenceWorkingBits: number;
+  referenceTransportBits: number;
+  precisionLimitedTiles: number;
   completedChunks: number;
   submittedChunks: number;
   queuedChunks: number;

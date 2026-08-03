@@ -1,0 +1,109 @@
+{
+  "capturedAt": "2026-08-03T13:27:55.928Z",
+  "executablePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "fixture": {
+    "schemaVersion": 1,
+    "id": "precision-overlap-boundary-2026-08-03",
+    "description": "Complex user-selected boundary shifted into the direct/perturbation overlap band.",
+    "capturedAt": "2026-08-03T13:30:00.000Z",
+    "build": "1.4-precision-overlap",
+    "gpu": "amd",
+    "iterationTarget": 5000,
+    "palettePhase": 0.08,
+    "deepOrder": 5.117,
+    "coarseOrder": 3.01,
+    "camera": {
+      "centerX": {
+        "raw": "-1086987134517280290689879582078081936663748018176",
+        "bits": 160
+      },
+      "centerY": {
+        "raw": "-182091033578402453896837821740817316653599555584",
+        "bits": 160
+      },
+      "scale": {
+        "mantissa": 0.7505205815215608,
+        "exponent": -15
+      },
+      "log10Magnification": 5.117
+    },
+    "viewport": {
+      "cssWidth": 756,
+      "cssHeight": 927,
+      "devicePixelRatio": 1.375,
+      "canvasWidth": 1039,
+      "canvasHeight": 1274
+    },
+    "traceAnchorCss": {
+      "x": 300,
+      "y": 460
+    }
+  },
+  "target": {
+    "viewRevision": 6,
+    "requestId": 7
+  },
+  "diagnostics": {
+    "build": "1.4 · dev",
+    "batchRevision": 858,
+    "requestId": 7,
+    "adapterLabel": "amd",
+    "presentation": {
+      "frames": 393,
+      "historyFrames": 160,
+      "fallbackFrames": 233,
+      "anchorPromotions": 76,
+      "instanceCount": 333,
+      "resourceEpoch": 1,
+      "worstReprojectionErrorTexels": 0.00003623962396837044,
+      "lastFrameCpuMs": 0.3000001907348633,
+      "validationErrors": 0,
+      "rollingFrames": 160,
+      "snapshotCount": 2,
+      "reducedFrame": 393,
+      "totalPixels": 960000,
+      "invalidPixels": 0,
+      "historyPixels": 0,
+      "retainedPixels": 0,
+      "currentPixels": 960000,
+      "provisionalCapPixels": 0,
+      "finalCapPixels": 0,
+      "terminalPixels": 959462,
+      "qualityRegressionPixels": 0,
+      "escapedToProvisionalBlackPixels": 0,
+      "candidateRejectedLowerQualityPixels": 0,
+      "semanticConflictEvents": 538,
+      "conflictPixels": 538,
+      "droppedReadbacks": 0
+    },
+    "field": {
+      "requestId": 7,
+      "interaction": "settled",
+      "visibleTiles": 397,
+      "cachedTiles": 397,
+      "activeTiles": 4,
+      "convergedTiles": 393,
+      "directTiles": 393,
+      "perturbationTiles": 4,
+      "pendingReferences": 0,
+      "repairTiles": 4,
+      "referenceFailures": 0,
+      "referenceWorkingBits": 224,
+      "referenceTransportBits": 96,
+      "precisionLimitedTiles": 0,
+      "completedChunks": 248,
+      "submittedChunks": 248,
+      "queuedChunks": 0,
+      "inFlightBatches": 0,
+      "inFlightTiles": 0,
+      "atlasPublications": 248,
+      "avoidedAtlasCopies": 744,
+      "lastBatchMs": 0.1,
+      "numericalFreshnessMs": 32.40000009536743,
+      "presentationHistoryMs": 6521.900000095367,
+      "sampleExponent": -26,
+      "tileSize": 128
+    }
+  },
+  "errors": []
+}
