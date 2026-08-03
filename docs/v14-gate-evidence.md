@@ -12,7 +12,7 @@ Release 1.4 integrates the presentation kernel with the existing accepted numeri
 - 25 WGSL template strings parsed by the source validator;
 - all 1.x foundation, persistent-field, local-reference, repair and 1.3 invariants passed;
 - 12 Phase 1 invariants and 15 original reprojection samples passed;
-- 27 production 1.4 invariants passed;
+- 27 structural/oracle 1.4 invariants passed;
 - TypeScript and the production Vite build passed;
 - presentation-only deep-scale ratios passed at binary exponents -1022, -1074, -2048 and -4096;
 - worst simulated f32 shader-coordinate error: `0.0001831` source texel (limit `0.01`).
@@ -52,7 +52,7 @@ The browser harness accepts `?testIterations=1000`, which snaps and locks the na
 - atlas-history trace crossed `10^2` and `10^3.016`, then produced a stable settled capture at `10^3.074`;
 - final atlas-history capture: exactly 1,000 requested iterations, 180 visible/converged tiles, 224 cached tiles, 60 Hz, zero validation errors and `0.000035` worst admitted source-texel error;
 - independent legacy replay beyond `10^4`: 1,000 iterations, 446 visible/converged tiles, 60 Hz, zero validation errors;
-- visual result: continuous boundary detail with complete canvas coverage; no horizontal cutoff, rectangular hole, or parent/child transition seam.
+- settled screenshot appeared visually complete, with continuous boundary detail and no visible horizontal cutoff, rectangular hole, or parent/child transition seam; this did not establish continuity before settlement.
 
 The raw candidate record includes every observed zoom depth, exact fixed-point camera centre, binary scale, DPR, viewport/canvas sizes, presenter counters and the PNG filename in `outputs/v14-evidence/stress-boundary-stable-1000-depth3.json`.
 
@@ -62,15 +62,15 @@ The final presentation candidate `c410bc7` was also tested from a user-selected,
 
 - baseline: `10^5.818`, exactly 5,000 requested iterations, 512 visible/converged tiles, 60 Hz and zero validation errors;
 - fixed continuation anchor: CSS `(300, 460)` in the 756x927 viewport at DPR 1.375;
-- stable `10^7.131` capture: 334 visible/converged tiles, complete canvas coverage, 60 Hz, `0.000035` worst admitted source-texel reprojection error and zero validation errors;
-- stable `10^8.007` capture: 379 visible/converged tiles, complete canvas coverage, 60 Hz, the same `0.000035` reprojection error and zero browser warnings, browser errors or WebGPU validation errors;
+- stable `10^7.131` capture: 334 visible/converged tiles, a visually complete settled screenshot, 60 Hz, `0.000035` worst admitted source-texel reprojection error and zero validation errors;
+- stable `10^8.007` capture: 379 visible/converged tiles, a visually complete settled screenshot, 60 Hz, the same `0.000035` reprojection error and zero browser warnings, browser errors or WebGPU validation errors;
 - numerical state at `10^8.007`: 379 direct tiles, zero perturbation tiles, zero references and zero reference failures.
 
-Fine-grained speckling and structured banding emerge around `10^7` and become severe by `10^8`. Because the artifact remains in a settled, fully converged frame while presentation coverage, reprojection admission and validation remain clean—and every affected tile is still using direct mode—the evidence identifies a direct numerical precision failure rather than a presentation/history failure. This is a locked regression scene for the later precision milestone. No perturbation, series, BLA, reference-orbit or recurrence change is included in Release 1.4.
+Fine-grained speckling and structured banding emerge around `10^7` and become severe by `10^8`. The artifact remains in a settled frame with all visible tiles reported converged, low reprojection-coordinate error, zero validation errors and every affected tile still using direct mode. This strongly localizes the anomaly to numerical/render-quality content before presentation, but does not categorically exclude history or coverage effects because coverage was not independently measured. A later precision milestone must compare a frozen numerical buffer against an MPFR oracle and an independently rendered presentation baseline. No perturbation, series, BLA, reference-orbit or recurrence change is included in Release 1.4.
 
 ### Live zoom-out blocker
 
-Settled captures concealed a separate presentation failure. From the same `10^8.007`, 5,000-iteration endpoint, the browser captured the canvas immediately after each zoom-out submission and before the next numerical field settled, at every decade down to approximately `10^2`.
+Settled captures concealed a separate presentation failure. From the same `10^8.007`, 5,000-iteration endpoint, a PNG was taken immediately after each zoom-out input burst at every decade down to approximately `10^2`. The corresponding post-transition diagnostics for orders `10^6` through `10^2` were sampled approximately 350 ms later, after multiple presentation frames and, in some cases, promotions. These records prove a live continuity failure but are not synchronized first-presentation-frame measurements.
 
 - `10^8 -> 10^7`: the canvas became almost black with large rectangular retained islands before recovering at `10^7.131`;
 - `10^7 -> 10^6`: only a small square of the old view survived; the post-transition packet had 16 atlas instances, 5 converged tiles and 31 active tiles;
@@ -81,7 +81,9 @@ All captures retained 60 Hz presentation and zero WebGPU validation errors, so v
 
 This is a Release 1.4 presentation blocker. The milestone must remain draft until a bounded multi-scale/overscanned history or equivalent retained coarse-coverage layer keeps the full target viewport continuously covered during zoom-out, and an executable pre-settle coverage gate passes the recorded `10^8 -> 10^2` trace. Evidence is stored in `outputs/v14-evidence/live-zoom-out-5000-order-{7..2}.{png,json}` and `live-zoom-out-5000-summary.json`.
 
-The failing pre-fix atlas capture at approximately `10^2` is retained alongside the passing captures. It reproduced a hard rectangular cutoff. The same class of hole appeared in the legacy path, proving that the fault was in shared tile admission rather than history sampling or atlas composition.
+An earlier pre-fix atlas capture at approximately `10^2` is retained as historical evidence of a specific parent-culling hole. The same class of hole appeared in the legacy path, localizing that earlier defect to shared tile admission. Fixing it did not establish general reverse-navigation coverage: the live `10^8 -> 10^2` gate above exposes additional unresolved history and coverage failures.
+
+Release checklist status: the behavioral pre-settle full-coverage gate is **FAILED / PENDING**. Release 1.4 must not advance or deploy from this draft PR until a frame-synchronized validity gate passes both presenters across the recorded reverse-navigation trace.
 
 ## Failures found and fixed by the executable gates
 
@@ -93,7 +95,7 @@ The failing pre-fix atlas capture at approximately `10^2` is retained alongside 
 6. Empty current-tile packets skipped presentation entirely. The atlas path now presents history with a zero-instance overlay, preserving continuity while numerical work catches up.
 7. Slot and lease identifiers were packed through f32, becoming inexact above `2^24`. They are now host-packed and shader-consumed as exact `u32` values.
 8. A candidate history anchor was promoted immediately after submission. Promotion now waits for queue completion and a clean validation error scope; the candidate cannot be reused while promotion is pending.
-9. Parent tiles were culled as soon as four complete children existed in cache, even when those children were not all admitted to the current draw packet. That created the reproduced rectangular holes during cross-level transitions. The presentation loop now retains the parent; ordinary draw ordering lets admitted children overlay it without risking uncovered pixels.
+9. Parent tiles were culled as soon as four complete children existed in cache, even when those children were not all admitted to the current draw packet. That created the reproduced rectangular holes during cross-level transitions. The presentation loop now retains the parent and lets admitted children overlay it. This fixes that specific parent-culling hole; it does not prove full reverse-navigation coverage.
 10. Zero CSS extent originally suspended presentation but not numerical submissions. The resize/request path now suspends the scheduler, clears queued work and resumes only after a non-zero request.
 11. Display dimensions were independently clamped to the adapter limit, which could distort the mathematical aspect ratio. One common scale factor now constrains both axes.
 12. A resize could reconfigure and clear the canvas while authoritative-anchor promotion was pending. Drawing-buffer resize is now deferred until promotion completes, preserving the last presented frame and pending-resource lifetime.
