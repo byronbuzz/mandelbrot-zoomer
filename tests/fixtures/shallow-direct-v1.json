@@ -6,7 +6,27 @@
   "bailoutRadiusSquared": 256,
   "escapeComparison": ">",
   "iterationConvention": "completed recurrence updates; radius checked before update; escape at target wins over cap",
+  "smoothTolerance": {
+    "absoluteFloor": 0.001,
+    "ulpMultiplier": 8
+  },
   "strictCases": [
+    {
+      "id": "zero-target-analytic",
+      "cx": 0,
+      "cy": 0,
+      "targetIterations": 0,
+      "expectedStatus": 2,
+      "expectedIteration": 0
+    },
+    {
+      "id": "zero-target-nonanalytic-cap",
+      "cx": 0.5,
+      "cy": 0.5,
+      "targetIterations": 0,
+      "expectedStatus": 4,
+      "expectedIteration": 0
+    },
     {
       "id": "cardioid-origin",
       "cx": 0,
@@ -61,7 +81,10 @@
       "cy": 0,
       "targetIterations": 3,
       "expectedStatus": 1,
-      "expectedIteration": 3
+      "expectedIteration": 3,
+      "expectedSmooth": 1.6082522070100267,
+      "expectedPreviousRadiusSquared": 36,
+      "expectedEscapeRadiusSquared": 1444
     },
     {
       "id": "short-escape",
@@ -69,7 +92,10 @@
       "cy": 0,
       "targetIterations": 64,
       "expectedStatus": 1,
-      "expectedIteration": 4
+      "expectedIteration": 4,
+      "expectedSmooth": 2.7672042752292847,
+      "expectedPreviousRadiusSquared": 25,
+      "expectedEscapeRadiusSquared": 676
     },
     {
       "id": "strict-bailout-equality-cap",
@@ -85,7 +111,10 @@
       "cy": 0,
       "targetIterations": 2,
       "expectedStatus": 1,
-      "expectedIteration": 2
+      "expectedIteration": 2,
+      "expectedSmooth": -0.015687178497167942,
+      "expectedPreviousRadiusSquared": 256,
+      "expectedEscapeRadiusSquared": 73984
     },
     {
       "id": "minus-two-boundary-cap",
@@ -101,7 +130,10 @@
       "cy": 0,
       "targetIterations": 128,
       "expectedStatus": 1,
-      "expectedIteration": 5
+      "expectedIteration": 5,
+      "expectedSmooth": 3.2282187893768732,
+      "expectedPreviousRadiusSquared": 115.8579063839386,
+      "expectedEscapeRadiusSquared": 12935.173994537741
     },
     {
       "id": "conjugate-positive",
@@ -110,6 +142,9 @@
       "targetIterations": 256,
       "expectedStatus": 1,
       "expectedIteration": 35,
+      "expectedSmooth": 33.42458649243402,
+      "expectedPreviousRadiusSquared": 62.58705436786122,
+      "expectedEscapeRadiusSquared": 3877.2982105287633,
       "pair": "conjugate-negative"
     },
     {
@@ -119,7 +154,22 @@
       "targetIterations": 256,
       "expectedStatus": 1,
       "expectedIteration": 35,
+      "expectedSmooth": 33.42458649243402,
+      "expectedPreviousRadiusSquared": 62.58705436786122,
+      "expectedEscapeRadiusSquared": 3877.2982105287633,
       "pair": "conjugate-positive"
+    }
+  ],
+  "gridCases": [
+    {
+      "id": "dyadic-coordinate-grid-16",
+      "centerX": 0.25,
+      "centerY": 0.25,
+      "sampleExponent": -1,
+      "tileSize": 16,
+      "targetIterations": 32,
+      "chunks": [7, 7, 7, 7, 4],
+      "purpose": "gate half-pixel offsets, both axes, exponent mapping and row packing against the CPU oracle"
     }
   ],
   "sensitivityCases": [

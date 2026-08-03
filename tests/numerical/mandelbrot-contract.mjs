@@ -1,5 +1,7 @@
 export const DIRECT_CONTRACT_VERSION = 1;
 export const BAILOUT_RADIUS_SQUARED = 256;
+export const SMOOTH_ABSOLUTE_FLOOR = 0.001;
+export const SMOOTH_ULP_MULTIPLIER = 8;
 
 export const DirectStatus = Object.freeze({
   ACTIVE: 0,
@@ -23,11 +25,15 @@ export function smoothEscape(iteration, radiusSquared) {
   return iteration + 1 - Math.log2(Math.log2(Math.sqrt(Math.max(radiusSquared, 4.000001))));
 }
 
-export function directF64(cx, cy, targetIterations, chunks = [targetIterations]) {
+export function directF64(cx, cy, targetIterations, chunks = null) {
   if (!Number.isInteger(targetIterations) || targetIterations < 0) {
     throw new Error(`Invalid target iteration count ${targetIterations}`);
   }
-  if (!Array.isArray(chunks) || chunks.length === 0 || chunks.some(value => !Number.isInteger(value) || value <= 0)) {
+  const schedule = chunks ?? (targetIterations === 0 ? [] : [targetIterations]);
+  const zeroDispatch = Array.isArray(schedule) && targetIterations === 0
+    && schedule.length === 1 && schedule[0] === 0;
+  if (!Array.isArray(schedule) || (targetIterations > 0 && schedule.length === 0)
+    || (!zeroDispatch && schedule.some(value => !Number.isInteger(value) || value <= 0))) {
     throw new Error('Chunk schedule must contain positive integers.');
   }
   if (analyticInterior(cx, cy)) {
@@ -50,7 +56,7 @@ export function directF64(cx, cy, targetIterations, chunks = [targetIterations])
   let previousRadiusSquared = 0;
   let chunkIndex = 0;
   while (iteration < targetIterations) {
-    const chunkIterations = chunks[chunkIndex % chunks.length];
+    const chunkIterations = schedule[chunkIndex % schedule.length];
     const iterationEnd = Math.min(targetIterations, iteration + chunkIterations);
     for (;;) {
       radiusSquared = x * x + y * y;
@@ -130,20 +136,41 @@ export function coordinateAt(center, pixelIndex, tileSize, sampleExponent) {
   return center + (pixelIndex + 0.5 - tileSize * 0.5) * 2 ** sampleExponent;
 }
 
-export function normalizeGpuResult(meta, result) {
+export function ulpF32(value) {
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+  const storage = new ArrayBuffer(4);
+  const float = new Float32Array(storage);
+  const bits = new Uint32Array(storage);
+  float[0] = Math.fround(value);
+  if (float[0] === 0) return 2 ** -149;
+  const original = float[0];
+  bits[0] += original > 0 ? 1 : -1;
+  return Math.abs(float[0] - original);
+}
+
+export function smoothTolerance(expected) {
+  return Math.max(SMOOTH_ABSOLUTE_FLOOR, SMOOTH_ULP_MULTIPLIER * ulpF32(expected));
+}
+
+export function normalizeGpuResult(meta, result, quality, targetIterations) {
   const iteration = meta[0];
   const metaStatus = meta[1];
   const resultStatus = Math.round(result[1]);
+  const resultEvidence = Math.round(result[2]);
+  const accepted = (quality?.[0] ?? 0) > 0;
   if (metaStatus === DirectStatus.NON_FINITE) {
     return { status: DirectStatus.NON_FINITE, iteration, smooth: null };
   }
-  if (metaStatus === DirectStatus.ESCAPED || resultStatus === DirectStatus.ESCAPED) {
+  if (accepted && metaStatus === DirectStatus.ESCAPED
+    && resultStatus === DirectStatus.ESCAPED && resultEvidence === iteration) {
     return { status: DirectStatus.ESCAPED, iteration, smooth: result[0] };
   }
-  if (metaStatus === DirectStatus.ANALYTIC_INTERIOR || resultStatus === DirectStatus.ANALYTIC_INTERIOR) {
+  if (accepted && metaStatus === DirectStatus.ANALYTIC_INTERIOR
+    && resultStatus === DirectStatus.ANALYTIC_INTERIOR && iteration === 0) {
     return { status: DirectStatus.ANALYTIC_INTERIOR, iteration, smooth: null };
   }
-  if (iteration >= Math.round(result[2]) && resultStatus === DirectStatus.CAP) {
+  if (accepted && metaStatus === DirectStatus.ACTIVE && iteration === targetIterations
+    && resultStatus === DirectStatus.CAP && resultEvidence === iteration) {
     return { status: DirectStatus.CAP, iteration, smooth: null };
   }
   return { status: DirectStatus.ACTIVE, iteration, smooth: null };
@@ -160,6 +187,7 @@ export function chunkSchedules(targetIterations, escapeIteration = null) {
     }
     return schedule;
   };
+  if (targetIterations === 0) return [{ id: 'zero-target', chunks: [0] }];
   const schedules = [
     { id: 'monolithic', chunks: [Math.max(1, targetIterations)] },
     { id: 'ones', chunks: repeated(1) },

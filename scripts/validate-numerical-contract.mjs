@@ -6,6 +6,8 @@ import {
   BAILOUT_RADIUS_SQUARED,
   DIRECT_CONTRACT_VERSION,
   DirectStatus,
+  SMOOTH_ABSOLUTE_FLOOR,
+  SMOOTH_ULP_MULTIPLIER,
   chunkSchedules,
   coordinateAt,
   directF64
@@ -37,6 +39,10 @@ assert(fixture.schemaVersion === 1, `Unsupported fixture schema ${fixture.schema
 assert(fixture.contractVersion === DIRECT_CONTRACT_VERSION, 'Fixture/oracle contract version mismatch');
 assert(fixture.bailoutRadiusSquared === BAILOUT_RADIUS_SQUARED, 'Fixture/oracle bailout mismatch');
 assert(fixture.escapeComparison === '>', 'The direct contract requires a strict bailout comparison');
+assert(fixture.smoothTolerance.absoluteFloor === SMOOTH_ABSOLUTE_FLOOR,
+  'Fixture/oracle smooth absolute floor mismatch');
+assert(fixture.smoothTolerance.ulpMultiplier === SMOOTH_ULP_MULTIPLIER,
+  'Fixture/oracle smooth ULP multiplier mismatch');
 for (const needle of [
   'radiusSquared > 256.0',
   'iteration >= iterationEnd || radiusSquared > 256.0',
@@ -61,6 +67,13 @@ for (const testCase of fixture.strictCases) {
     `${testCase.id}: status ${monolithic.status} != ${testCase.expectedStatus}`);
   assert(monolithic.iteration === testCase.expectedIteration,
     `${testCase.id}: iteration ${monolithic.iteration} != ${testCase.expectedIteration}`);
+  if (monolithic.status === DirectStatus.ESCAPED) {
+    assert(sameNumber(monolithic.smooth, testCase.expectedSmooth), `${testCase.id}: smooth golden changed`);
+    assert(sameNumber(monolithic.previousRadiusSquared, testCase.expectedPreviousRadiusSquared),
+      `${testCase.id}: previous-radius golden changed`);
+    assert(sameNumber(monolithic.radiusSquared, testCase.expectedEscapeRadiusSquared),
+      `${testCase.id}: escape-radius golden changed`);
+  }
 
   const scheduleResults = [];
   for (const schedule of chunkSchedules(testCase.targetIterations, monolithic.status === DirectStatus.ESCAPED
@@ -102,6 +115,29 @@ const equalityCap = byId.get('strict-bailout-equality-cap');
 assert(equalityCap?.radiusSquared === BAILOUT_RADIUS_SQUARED,
   'Exact bailout equality must remain capped under the strict comparison');
 
+const gridResults = [];
+for (const grid of fixture.gridCases) {
+  const classes = { escaped: 0, analytic: 0, capped: 0, nonFinite: 0 };
+  let explicitIterations = 0;
+  for (let y = 0; y < grid.tileSize; y += 1) {
+    const cy = coordinateAt(grid.centerY, y, grid.tileSize, grid.sampleExponent);
+    for (let x = 0; x < grid.tileSize; x += 1) {
+      const cx = coordinateAt(grid.centerX, x, grid.tileSize, grid.sampleExponent);
+      const monolithic = directF64(cx, cy, grid.targetIterations);
+      const chunked = directF64(cx, cy, grid.targetIterations, grid.chunks);
+      for (const key of ['status', 'iteration', 'x', 'y', 'radiusSquared', 'smooth']) {
+        assert(sameNumber(chunked[key], monolithic[key]), `${grid.id}[${x},${y}]: ${key} changed across chunks`);
+      }
+      explicitIterations += monolithic.explicitIterations;
+      if (monolithic.status === DirectStatus.ESCAPED) classes.escaped += 1;
+      else if (monolithic.status === DirectStatus.ANALYTIC_INTERIOR) classes.analytic += 1;
+      else if (monolithic.status === DirectStatus.CAP) classes.capped += 1;
+      else classes.nonFinite += 1;
+    }
+  }
+  gridResults.push({ id: grid.id, pixels: grid.tileSize ** 2, classes, explicitIterations });
+}
+
 const benchmark = fixture.benchmark;
 const cpuRuns = [];
 let benchmarkSummary = null;
@@ -135,7 +171,8 @@ const report = {
     path: 'tests/fixtures/shallow-direct-v1.json',
     sha256: hash(fixtureSource),
     strictCases: fixture.strictCases.length,
-    sensitivityCases: fixture.sensitivityCases.length
+    sensitivityCases: fixture.sensitivityCases.length,
+    gridCases: fixture.gridCases.length
   },
   productionShader: {
     path: 'src/numerical/tileDirectShader.ts',
@@ -146,6 +183,7 @@ const report = {
     os: `${platform()} ${release()}`
   },
   strictResults: results,
+  gridResults,
   cpuBenchmark: {
     scene: benchmark.id,
     metric: 'CPU f64 oracle wall time; excludes I/O',

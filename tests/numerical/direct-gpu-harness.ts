@@ -23,6 +23,15 @@ type BenchmarkCase = {
 type HarnessInput = {
   strictCases: PointCase[];
   sensitivityCases: PointCase[];
+  gridCases: Array<{
+    id: string;
+    centerX: number;
+    centerY: number;
+    sampleExponent: number;
+    tileSize: number;
+    targetIterations: number;
+    chunks: number[];
+  }>;
   benchmark: BenchmarkCase;
 };
 
@@ -47,7 +56,13 @@ function splitF32(value: number): [number, number] {
   return [hi, Math.fround(value - hi)];
 }
 
-function createUniform(device: GPUDevice, input: GpuRunInput, chunkIterations: number): GPUBuffer {
+function createUniform(
+  device: GPUDevice,
+  input: GpuRunInput,
+  chunkIterations: number,
+  targetIterations = input.targetIterations,
+  acceptIterationCap = 1
+): GPUBuffer {
   const data = new ArrayBuffer(64);
   const view = new DataView(data);
   const [centerXHi, centerXLo] = splitF32(input.centerX);
@@ -58,10 +73,10 @@ function createUniform(device: GPUDevice, input: GpuRunInput, chunkIterations: n
   view.setFloat32(12, centerYLo, true);
   view.setInt32(16, input.sampleExponent, true);
   view.setUint32(20, input.tileSize, true);
-  view.setUint32(24, input.targetIterations, true);
+  view.setUint32(24, targetIterations, true);
   view.setUint32(28, chunkIterations, true);
   view.setUint32(32, 0, true);
-  view.setUint32(36, 1, true);
+  view.setUint32(36, acceptIterationCap, true);
   const buffer = device.createBuffer({
     label: `${input.id}-direct-uniform-${chunkIterations}`,
     size: 64,
@@ -92,6 +107,11 @@ async function runGpu(
   const rowBytes = input.tileSize * 16;
   const resultBytesPerRow = Math.ceil(rowBytes / 256) * 256;
   const resultReadbackBytes = resultBytesPerRow * input.tileSize;
+  const qualityBytesPerRow = Math.ceil(input.tileSize * 4 / 256) * 256;
+  const qualityReadbackBytes = qualityBytesPerRow * input.tileSize;
+  device.pushErrorScope('out-of-memory');
+  device.pushErrorScope('internal');
+  device.pushErrorScope('validation');
   const resources: Array<{ destroy(): void }> = [];
   const buffer = (label: string, size: number, usage: GPUBufferUsageFlags) => {
     const value = device.createBuffer({ label, size, usage });
@@ -125,6 +145,8 @@ async function runGpu(
     GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ);
   const resultReadback = input.readResult ? buffer(`${input.id}-result-readback`, resultReadbackBytes,
     GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ) : null;
+  const qualityReadback = input.readResult ? buffer(`${input.id}-quality-readback`, qualityReadbackBytes,
+    GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ) : null;
   const uniforms = input.chunks.map(chunk => createUniform(device, input, chunk));
   resources.push(...uniforms);
   const bindGroups = uniforms.map(uniform => device.createBindGroup({
@@ -140,9 +162,6 @@ async function runGpu(
     ]
   }));
 
-  device.pushErrorScope('out-of-memory');
-  device.pushErrorScope('internal');
-  device.pushErrorScope('validation');
   const computeEncoder = device.createCommandEncoder({ label: `${input.id}-compute-encoder` });
   computeEncoder.clearBuffer(stateBuffer);
   computeEncoder.clearBuffer(metaBuffer);
@@ -172,12 +191,20 @@ async function runGpu(
       [input.tileSize, input.tileSize]
     );
   }
+  if (qualityReadback) {
+    readbackEncoder.copyTextureToBuffer(
+      { texture: qualityTexture },
+      { buffer: qualityReadback, bytesPerRow: qualityBytesPerRow, rowsPerImage: input.tileSize },
+      [input.tileSize, input.tileSize]
+    );
+  }
   device.queue.submit([readbackEncoder.finish()]);
   await Promise.all([
     stateReadback.mapAsync(GPUMapMode.READ),
     metaReadback.mapAsync(GPUMapMode.READ),
     counterReadback.mapAsync(GPUMapMode.READ),
-    resultReadback?.mapAsync(GPUMapMode.READ)
+    resultReadback?.mapAsync(GPUMapMode.READ),
+    qualityReadback?.mapAsync(GPUMapMode.READ)
   ]);
   const readbackWallMs = performance.now() - readbackStarted;
   const state = mappedCopy(stateReadback, copy => new Float32Array(copy));
@@ -194,6 +221,17 @@ async function runGpu(
       return packed;
     })
     : new Float32Array();
+  const quality = qualityReadback
+    ? mappedCopy(qualityReadback, copy => {
+      const padded = new Uint8Array(copy);
+      const packed = new Uint8Array(pixelCount * 4);
+      for (let y = 0; y < input.tileSize; y += 1) {
+        packed.set(padded.subarray(y * qualityBytesPerRow, y * qualityBytesPerRow + input.tileSize * 4),
+          y * input.tileSize * 4);
+      }
+      return packed;
+    })
+    : new Uint8Array();
   let explicitIterations = 0;
   for (let index = 0; index < meta.length; index += 4) explicitIterations += meta[index];
   const stateBits = new Uint32Array(state.buffer, state.byteOffset, state.length);
@@ -201,9 +239,11 @@ async function runGpu(
   const validation = await device.popErrorScope();
   const internal = await device.popErrorScope();
   const outOfMemory = await device.popErrorScope();
-  const scopedErrors = [validation, internal, outOfMemory]
-    .filter((error): error is GPUError => Boolean(error))
-    .map(error => error.message);
+  const scopedErrors = {
+    validation: validation?.message ?? null,
+    internal: internal?.message ?? null,
+    outOfMemory: outOfMemory?.message ?? null
+  };
   for (const resource of resources.reverse()) resource.destroy();
   return {
     state: input.readResult ? Array.from(state) : [],
@@ -212,11 +252,138 @@ async function runGpu(
     counters: Array.from(counters),
     result: input.readResult ? Array.from(result) : [],
     resultBits: input.readResult ? Array.from(resultBits) : [],
+    quality: input.readResult ? Array.from(quality) : [],
     explicitIterations,
     queueCompletionWallMs,
     readbackWallMs,
     separateTiming: input.separateTiming,
     scopedErrors
+  };
+}
+
+async function runContinuationScenario(device: GPUDevice, pipeline: GPUComputePipeline) {
+  const input: GpuRunInput = {
+    id: 'cap-continuation',
+    centerX: 2,
+    centerY: 0,
+    sampleExponent: 0,
+    tileSize: 1,
+    targetIterations: 3,
+    chunks: [1],
+    readResult: true,
+    separateTiming: true
+  };
+  const stages = [
+    { id: 'cap-suppressed', targetIterations: 2, chunkIterations: 2, acceptIterationCap: 0 },
+    { id: 'cap-published', targetIterations: 2, chunkIterations: 1, acceptIterationCap: 1 },
+    { id: 'continued-escape', targetIterations: 3, chunkIterations: 1, acceptIterationCap: 1 }
+  ];
+  device.pushErrorScope('out-of-memory');
+  device.pushErrorScope('internal');
+  device.pushErrorScope('validation');
+  const state = device.createBuffer({
+    label: 'cap-continuation-state', size: 16,
+    usage: GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_SRC | GPU_BUFFER_USAGE.COPY_DST
+  });
+  const meta = device.createBuffer({
+    label: 'cap-continuation-meta', size: 16,
+    usage: GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_SRC | GPU_BUFFER_USAGE.COPY_DST
+  });
+  const counters = device.createBuffer({
+    label: 'cap-continuation-counters', size: 28,
+    usage: GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_SRC | GPU_BUFFER_USAGE.COPY_DST
+  });
+  const result = device.createTexture({
+    label: 'cap-continuation-result', size: [1, 1], format: 'rgba32float',
+    usage: GPU_TEXTURE_USAGE.STORAGE_BINDING | GPU_TEXTURE_USAGE.COPY_SRC
+  });
+  const quality = device.createTexture({
+    label: 'cap-continuation-quality', size: [1, 1], format: 'rgba8unorm',
+    usage: GPU_TEXTURE_USAGE.STORAGE_BINDING | GPU_TEXTURE_USAGE.COPY_SRC
+  });
+  const snapshots = [];
+  for (let index = 0; index < stages.length; index += 1) {
+    const stage = stages[index];
+    const uniform = createUniform(device, input, stage.chunkIterations,
+      stage.targetIterations, stage.acceptIterationCap);
+    const bindGroup = device.createBindGroup({
+      label: `cap-continuation-${stage.id}`,
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniform } },
+        { binding: 1, resource: { buffer: state } },
+        { binding: 2, resource: { buffer: meta } },
+        { binding: 3, resource: result.createView() },
+        { binding: 4, resource: quality.createView() },
+        { binding: 5, resource: { buffer: counters } }
+      ]
+    });
+    const encoder = device.createCommandEncoder({ label: `cap-continuation-${stage.id}-compute` });
+    if (index === 0) {
+      encoder.clearBuffer(state);
+      encoder.clearBuffer(meta);
+    }
+    encoder.clearBuffer(counters);
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.dispatchWorkgroups(1, 1);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    await device.queue.onSubmittedWorkDone();
+
+    const stateReadback = device.createBuffer({ label: `${stage.id}-state-readback`, size: 16,
+      usage: GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ });
+    const metaReadback = device.createBuffer({ label: `${stage.id}-meta-readback`, size: 16,
+      usage: GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ });
+    const counterReadback = device.createBuffer({ label: `${stage.id}-counter-readback`, size: 28,
+      usage: GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ });
+    const resultReadback = device.createBuffer({ label: `${stage.id}-result-readback`, size: 256,
+      usage: GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ });
+    const qualityReadback = device.createBuffer({ label: `${stage.id}-quality-readback`, size: 256,
+      usage: GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.MAP_READ });
+    const readbackEncoder = device.createCommandEncoder({ label: `cap-continuation-${stage.id}-readback` });
+    readbackEncoder.copyBufferToBuffer(state, 0, stateReadback, 0, 16);
+    readbackEncoder.copyBufferToBuffer(meta, 0, metaReadback, 0, 16);
+    readbackEncoder.copyBufferToBuffer(counters, 0, counterReadback, 0, 28);
+    readbackEncoder.copyTextureToBuffer({ texture: result }, { buffer: resultReadback, bytesPerRow: 256 }, [1, 1]);
+    readbackEncoder.copyTextureToBuffer({ texture: quality }, { buffer: qualityReadback, bytesPerRow: 256 }, [1, 1]);
+    device.queue.submit([readbackEncoder.finish()]);
+    await Promise.all([
+      stateReadback.mapAsync(GPUMapMode.READ), metaReadback.mapAsync(GPUMapMode.READ),
+      counterReadback.mapAsync(GPUMapMode.READ), resultReadback.mapAsync(GPUMapMode.READ),
+      qualityReadback.mapAsync(GPUMapMode.READ)
+    ]);
+    snapshots.push({
+      ...stage,
+      state: Array.from(mappedCopy(stateReadback, copy => new Float32Array(copy))),
+      meta: Array.from(mappedCopy(metaReadback, copy => new Uint32Array(copy))),
+      counters: Array.from(mappedCopy(counterReadback, copy => new Uint32Array(copy))),
+      result: Array.from(mappedCopy(resultReadback, copy => new Float32Array(copy)).slice(0, 4)),
+      quality: Array.from(mappedCopy(qualityReadback, copy => new Uint8Array(copy)).slice(0, 4))
+    });
+    uniform.destroy();
+    stateReadback.destroy();
+    metaReadback.destroy();
+    counterReadback.destroy();
+    resultReadback.destroy();
+    qualityReadback.destroy();
+  }
+  const validation = await device.popErrorScope();
+  const internal = await device.popErrorScope();
+  const outOfMemory = await device.popErrorScope();
+  state.destroy();
+  meta.destroy();
+  counters.destroy();
+  result.destroy();
+  quality.destroy();
+  return {
+    stages: snapshots,
+    scopedErrors: {
+      validation: validation?.message ?? null,
+      internal: internal?.message ?? null,
+      outOfMemory: outOfMemory?.message ?? null
+    }
   };
 }
 
@@ -233,6 +400,8 @@ async function runSuite(input: HarnessInput) {
     if (!completed) deviceLostBeforeCompletion = true;
     uncapturedErrors.push(`device-lost:${info.reason}:${info.message}`);
   });
+  device.pushErrorScope('out-of-memory');
+  device.pushErrorScope('internal');
   device.pushErrorScope('validation');
   const module = device.createShaderModule({ label: 'production-direct-shader', code: tileDirectIterationShader });
   const compilation = await module.getCompilationInfo();
@@ -248,6 +417,8 @@ async function runSuite(input: HarnessInput) {
     compute: { module, entryPoint: 'main' }
   });
   const pipelineValidation = await device.popErrorScope();
+  const pipelineInternal = await device.popErrorScope();
+  const pipelineOutOfMemory = await device.popErrorScope();
 
   const strictResults = [];
   for (const testCase of input.strictCases) {
@@ -274,17 +445,30 @@ async function runSuite(input: HarnessInput) {
 
   const sensitivityResults = [];
   for (const testCase of input.sensitivityCases) {
-    const schedule = testCase.schedules[0];
-    sensitivityResults.push({
-      id: testCase.id,
+    const schedules = [];
+    for (const schedule of testCase.schedules) {
+      schedules.push({ id: schedule.id, chunks: schedule.chunks, run: await runGpu(device, pipeline, {
+          id: `${testCase.id}-${schedule.id}`,
+          centerX: testCase.cx,
+          centerY: testCase.cy,
+          sampleExponent: 0,
+          tileSize: 1,
+          targetIterations: testCase.targetIterations,
+          chunks: schedule.chunks,
+          readResult: true,
+          separateTiming: true
+        }) });
+    }
+    sensitivityResults.push({ id: testCase.id, schedules });
+  }
+
+  const gridResults = [];
+  for (const grid of input.gridCases) {
+    gridResults.push({
+      id: grid.id,
       run: await runGpu(device, pipeline, {
-        id: testCase.id,
-        centerX: testCase.cx,
-        centerY: testCase.cy,
-        sampleExponent: 0,
-        tileSize: 1,
-        targetIterations: testCase.targetIterations,
-        chunks: schedule.chunks,
+        ...grid,
+        id: grid.id,
         readResult: true,
         separateTiming: true
       })
@@ -314,6 +498,7 @@ async function runSuite(input: HarnessInput) {
     });
     benchmarkRuns.push({ warmup: index < input.benchmark.warmupRuns, ...run });
   }
+  const continuation = await runContinuationScenario(device, pipeline);
   await new Promise(resolve => setTimeout(resolve, 0));
   completed = true;
   if (status) status.textContent = 'Harness complete';
@@ -335,11 +520,17 @@ async function runSuite(input: HarnessInput) {
       }
     },
     compilationMessages,
-    pipelineValidationError: pipelineValidation?.message ?? null,
+    pipelineScopedErrors: {
+      validation: pipelineValidation?.message ?? null,
+      internal: pipelineInternal?.message ?? null,
+      outOfMemory: pipelineOutOfMemory?.message ?? null
+    },
     uncapturedErrors,
     deviceLostBeforeCompletion,
     strictResults,
     sensitivityResults,
+    gridResults,
+    continuation,
     benchmark: {
       definition: input.benchmark,
       chunks: benchmarkChunks,

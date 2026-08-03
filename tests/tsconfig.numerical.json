@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["@webgpu/types"]
+  },
+  "include": [
+    "numerical/direct-gpu-harness.ts",
+    "../src/numerical/tileDirectShader.ts"
+  ]
+}
