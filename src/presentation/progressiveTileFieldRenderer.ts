@@ -131,7 +131,7 @@ type FieldTile = {
   resetGroup: GPUBindGroup;
   presentLinearGroup: GPUBindGroup;
   presentNearestGroup: GPUBindGroup;
-  atlasSlot: AtlasSlot;
+  atlasSlot: AtlasSlot | null;
   health: PersistentTileHealth;
   iterationFrontier: number;
   coveragePixels: number;
@@ -189,8 +189,8 @@ export class TileFieldRenderer {
   private readonly nearestSampler: GPUSampler;
   private readonly clearUniform: GPUBuffer;
   private readonly referenceAtlas: TileReferenceAtlas;
-  private readonly acceptedAtlas: AcceptedTileAtlas;
-  private readonly atlasPresenter: AtlasHistoryPresenter;
+  private readonly acceptedAtlas: AcceptedTileAtlas | null;
+  private readonly atlasPresenter: AtlasHistoryPresenter | null;
   private readonly useLegacyPresenter: boolean;
   private latestRequest: PersistentTileRequest | null = null;
   private currentRequest: PersistentTileRequest | null = null;
@@ -224,8 +224,9 @@ export class TileFieldRenderer {
     clearPipeline: GPUComputePipeline,
     resetPipeline: GPUComputePipeline,
     presentPipeline: GPURenderPipeline,
-    acceptedAtlas: AcceptedTileAtlas,
-    atlasPresenter: AtlasHistoryPresenter,
+    acceptedAtlas: AcceptedTileAtlas | null,
+    atlasPresenter: AtlasHistoryPresenter | null,
+    useLegacyPresenter: boolean,
     readonly adapterLabel: string
   ) {
     this.directPipeline = directPipeline;
@@ -236,7 +237,7 @@ export class TileFieldRenderer {
     this.presentPipeline = presentPipeline;
     this.acceptedAtlas = acceptedAtlas;
     this.atlasPresenter = atlasPresenter;
-    this.useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
+    this.useLegacyPresenter = useLegacyPresenter;
     this.clearUniform = device.createBuffer({
       size: CLEAR_PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -337,8 +338,11 @@ export class TileFieldRenderer {
       ]);
 
     const label = adapter.info.vendor || adapter.info.description || 'GPU';
-    const acceptedAtlas = new AcceptedTileAtlas(device);
-    const atlasPresenter = await AtlasHistoryPresenter.create(device, context, canvasFormat);
+    const useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
+    const acceptedAtlas = useLegacyPresenter ? null : new AcceptedTileAtlas(device);
+    const atlasPresenter = useLegacyPresenter
+      ? null
+      : await AtlasHistoryPresenter.create(device, context, canvasFormat);
     return new TileFieldRenderer(
       canvas,
       device,
@@ -352,6 +356,7 @@ export class TileFieldRenderer {
       presentPipeline,
       acceptedAtlas,
       atlasPresenter,
+      useLegacyPresenter,
       label
     );
   }
@@ -419,1064 +424,11 @@ export class TileFieldRenderer {
     cssHeight: number,
     devicePixelRatio: number
   ): boolean {
-    if (this.dead || this.tileMap.size === 0) return false;
-    const width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
-    const height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
+    if (this.dead || cssWidth <= 0 || cssHeight <= 0 || devicePixelRatio <= 0) return false;
+    const limit = this.device.limits.maxTextureDimension2D;
+    const width = Math.min(limit, Math.max(1, Math.floor(cssWidth * devicePixelRatio)));
+    const height = Math.min(limit, Math.max(1, Math.floor(cssHeight * devicePixelRatio)));
     this.resizeCanvas(width, height);
     const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio);
     const aspect = Math.max(1, cssWidth) / Math.max(1, cssHeight);
-    const fineExponent = sampleExponentForViewport(targetCamera, renderHeight, 0);
-    const settledPresentation = (this.currentRequest?.interaction ?? 'settled') === 'settled';
-    const drawTiles: FieldTile[] = [];
-    const seen = new Set<PersistentTileKey>();
-
-    for (const levelOffset of [4, 3, 2, 1, 0]) {
-      for (const descriptor of visibleTileDescriptors(
-        targetCamera,
-        aspect,
-        renderHeight,
-        0.5,
-        0.5,
-        levelOffset,
-        1
-      )) {
-        const tile = this.tileMap.get(descriptor.key);
-        if (!tile || seen.has(tile.descriptor.key) || tile.coveragePixels <= 0) continue;
-        seen.add(tile.descriptor.key);
-        drawTiles.push(tile);
-      }
-    }
-    if (drawTiles.length === 0) return false;
-    drawTiles.sort((left, right) => right.descriptor.sampleExponent - left.descriptor.sampleExponent);
-
-    const renderable: Array<{ tile: FieldTile; group: GPUBindGroup; transform: ReturnType<TileFieldRenderer['tileTransform']> }> = [];
-    for (const tile of drawTiles) {
-      if (this.hasCompleteChildren(tile)) continue;
-      const transform = this.tileTransform(tile, targetCamera, aspect);
-      if (!transform) continue;
-      this.device.queue.writeBuffer(tile.presentUniform, 0, new Float32Array([
-        transform.scaleX,
-        transform.scaleY,
-        transform.offsetX,
-        transform.offsetY
-      ]));
-      renderable.push({
-        tile,
-        transform,
-        group: settledPresentation && tile.descriptor.sampleExponent <= fineExponent
-          ? tile.presentNearestGroup
-          : tile.presentLinearGroup
-      });
-    }
-    if (renderable.length === 0) return false;
-
-    if (!this.useLegacyPresenter) {
-      const instances: AtlasInstance[] = renderable.flatMap(item => item.transform
-        ? [{ transform: item.transform, slot: item.tile.atlasSlot }]
-        : []);
-      const authoritative = settledPresentation
-        && this.currentVisibleKeys.size > 0
-        && [...this.currentVisibleKeys].every(key => {
-          const tile = this.tileMap.get(key);
-          return Boolean(tile && tile.coveragePixels >= TILE_PIXEL_COUNT);
-        });
-      return this.atlasPresenter.present(
-        targetCamera, aspect, width, height, this.acceptedAtlas, instances, authoritative
-      );
-    }
-
-    const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
-        clearValue: { r: 0.008, g: 0.01, b: 0.014, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store'
-      }]
-    });
-    pass.setPipeline(this.presentPipeline);
-    for (const item of renderable) {
-      pass.setBindGroup(0, item.group);
-      pass.draw(3);
-    }
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-    return true;
-  }
-
-  get presentationMode(): 'atlas-history' | 'legacy' {
-    return this.useLegacyPresenter ? 'legacy' : 'atlas-history';
-  }
-
-  get presentationDiagnostics() {
-    return { ...this.atlasPresenter.diagnostics, validationErrors: [...this.deviceErrors] };
-  }
-
-  forceDeviceLossForTest(): void {
-    if (!this.dead) this.device.destroy();
-  }
-
-  dispose(): void {
-    if (this.dead) return;
-    this.dead = true;
-    this.latestRequest = null;
-    this.currentQueue = [];
-    this.pendingLevelOffsets = [];
-    this.referenceAtlas.dispose();
-    for (const tile of this.tileMap.values()) this.destroyTile(tile);
-    this.tileMap.clear();
-    this.atlasPresenter.destroy();
-    this.acceptedAtlas.destroy();
-    this.clearUniform.destroy();
-    this.context.unconfigure();
-  }
-
-  private async pump(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      while (
-        !this.dead && (this.latestRequest
-        || this.currentQueue.length > 0
-        || this.pendingLevelOffsets.length > 0)
-      ) {
-        if (this.latestRequest) {
-          const request = this.latestRequest;
-          this.latestRequest = null;
-          await this.prepareRequest(request);
-        }
-        const request = this.currentRequest;
-        if (!request) break;
-
-        if (this.currentQueue.length === 0) {
-          const admitted = await this.admitNextSpatialLevel(request);
-          if (this.latestRequest) continue;
-          if (!admitted) break;
-        }
-        if (this.currentQueue.length === 0) continue;
-
-        const quantumStarted = performance.now();
-        const quantumBudget = this.quantumBudget(request.interaction);
-        do {
-          if (this.latestRequest || this.currentQueue.length === 0) break;
-          this.currentQueue.sort((left, right) => left.work.priority - right.work.priority);
-          const batch = this.currentQueue.splice(0, this.adaptiveBatchTiles);
-          const started = performance.now();
-          await this.executeBatch(batch, request.palettePhase);
-          this.lastBatchMs = Math.max(0.1, performance.now() - started);
-          this.completedChunks += batch.length;
-          this.adaptBatchSize(request.interaction, this.lastBatchMs);
-          this.finishBatch(batch, request);
-          this.updateStats();
-        } while (performance.now() - quantumStarted < quantumBudget);
-
-        this.evictColdTiles();
-        if (
-          !this.latestRequest
-          && (this.currentQueue.length > 0 || this.pendingLevelOffsets.length > 0)
-        ) {
-          await schedulerYield();
-        }
-      }
-    } catch (error) {
-      console.error('Progressive tile field scheduler failed', error);
-      const message = error instanceof Error ? error.message : String(error);
-      this.runtimeErrorListener?.(message);
-    } finally {
-      this.running = false;
-      if (
-        this.latestRequest
-        || this.currentQueue.length > 0
-        || this.pendingLevelOffsets.length > 0
-      ) {
-        void this.pump();
-      }
-    }
-  }
-
-  private async prepareRequest(request: PersistentTileRequest): Promise<void> {
-    this.currentRequest = request;
-    this.completedChunks = 0;
-    this.lastBatchMs = 0;
-    this.currentPlan = [];
-    this.currentQueue = [];
-    this.currentVisibleKeys = new Set<PersistentTileKey>();
-    this.currentRenderHeight = this.renderHeight(
-      request.cssWidth,
-      request.cssHeight,
-      request.devicePixelRatio
-    );
-    this.currentAspect = Math.max(1, request.cssWidth) / Math.max(1, request.cssHeight);
-    this.pendingLevelOffsets = [2, 1, 0];
-    this.maximumPlannedLevel = 2;
-    await this.activatePendingReferences();
-    await this.admitNextSpatialLevel(request);
-    this.updateStats();
-  }
-
-  private async admitNextSpatialLevel(request: PersistentTileRequest): Promise<boolean> {
-    while (this.pendingLevelOffsets.length > 0 && !this.latestRequest) {
-      const levelOffset = this.pendingLevelOffsets.shift();
-      if (levelOffset === undefined) break;
-      const levelPlan = this.planDescriptorsForLevel(request, levelOffset);
-      const ready = await this.ensureTiles(levelPlan.map(item => item.descriptor));
-      if (!ready || this.latestRequest) return false;
-
-      await this.activatePendingReferences();
-      this.currentPlan.push(...levelPlan);
-      for (const item of levelPlan) this.currentVisibleKeys.add(item.descriptor.key);
-      this.ensureReferencePolicy(request, levelPlan);
-      const levelQueue = this.initialWorkQueue(request, levelPlan);
-      this.currentQueue.push(...levelQueue);
-      this.updateStats();
-      if (levelQueue.length > 0) return true;
-    }
-    return this.currentQueue.length > 0;
-  }
-
-  private planDescriptorsForLevel(
-    request: PersistentTileRequest,
-    levelOffset: number
-  ): PlannedDescriptor[] {
-    const margin = levelOffset > 0 ? 1 : 0;
-    return visibleTileDescriptors(
-      request.camera,
-      this.currentAspect,
-      this.currentRenderHeight,
-      request.focusX,
-      request.focusY,
-      levelOffset,
-      margin
-    ).map(descriptor => ({ descriptor, levelOffset }));
-  }
-
-  private initialWorkQueue(
-    request: PersistentTileRequest,
-    plan: readonly PlannedDescriptor[]
-  ): ScheduledWork[] {
-    const queue: ScheduledWork[] = [];
-    for (const planned of plan) {
-      const tile = this.tileMap.get(planned.descriptor.key);
-      if (!tile) continue;
-      tile.lastVisibleAt = performance.now();
-      const finalTarget = this.effectiveFinalTarget(tile, request);
-      const chunkIterations = request.interaction === 'moving'
-        ? 64
-        : request.interaction === 'settling' ? 96 : 128;
-      const needsIterations = tile.iterationFrontier < finalTarget;
-      const needsRecolour = Math.abs(tile.palettePhase - request.palettePhase) > 1e-6;
-      const scheduledEnd = needsIterations
-        ? Math.min(finalTarget, tile.iterationFrontier + chunkIterations)
-        : tile.iterationFrontier;
-      const scheduled = this.makeScheduledWork(
-        request,
-        tile,
-        planned.levelOffset,
-        this.maximumPlannedLevel,
-        finalTarget,
-        scheduledEnd,
-        needsIterations ? chunkIterations : 0
-      );
-      const needsAcceptanceUpdate = tile.capPresentationMode !== scheduled.capMode;
-      if (!needsIterations && !needsRecolour && !needsAcceptanceUpdate) continue;
-      queue.push(scheduled);
-    }
-    return queue;
-  }
-
-  private makeScheduledWork(
-    request: PersistentTileRequest,
-    tile: FieldTile,
-    levelOffset: number,
-    maximumLevel: number,
-    finalTarget: number,
-    scheduledEnd: number,
-    chunkIterations: number
-  ): ScheduledWork {
-    const finalChunk = scheduledEnd >= finalTarget;
-    const numericallyFinal = finalTarget >= request.targetIterations;
-    const retainsAuthoritativeCap = tile.capPresentationMode === 2
-      && tile.iterationFrontier >= request.targetIterations;
-    const capMode: CapPresentationMode = retainsAuthoritativeCap
-      ? 2
-      : finalChunk && numericallyFinal && request.interaction === 'settled'
-        ? 2
-        : (levelOffset > 0 || request.interaction === 'moving') ? 1 : 0;
-    const spatialPriority = maximumLevel - levelOffset;
-    const coveragePenalty = tile.coveragePixels > 0 ? 2 : 0;
-    const iterationTier = Math.floor(tile.iterationFrontier / Math.max(1, chunkIterations || 128));
-    const work: PersistentTileWork = {
-      requestId: request.requestId,
-      key: tile.descriptor.key,
-      targetIterations: finalTarget,
-      chunkIterations,
-      acceptIterationCap: capMode > 0,
-      priority: spatialPriority
-        + tile.descriptor.distanceFromFocus * 0.15
-        + coveragePenalty
-        + iterationTier * 0.35
-        + (tile.numericalMode === 'perturbation' ? -0.1 : 0)
-    };
-    return { work, tile, scheduledEnd, finalTarget, levelOffset, capMode };
-  }
-
-  private finishBatch(batch: readonly ScheduledWork[], request: PersistentTileRequest): void {
-    for (const scheduled of batch) {
-      const tile = scheduled.tile;
-      tile.iterationFrontier = Math.max(tile.iterationFrontier, scheduled.scheduledEnd);
-      if (scheduled.work.chunkIterations > 0) tile.lastNumericalUpdateAt = performance.now();
-      tile.lastVisibleAt = performance.now();
-      tile.palettePhase = request.palettePhase;
-      tile.capPresentationMode = scheduled.capMode;
-      const acceptedCoverage = tile.health.escapedPixels
-        + tile.health.analyticInteriorPixels
-        + (scheduled.capMode > 0 ? tile.health.cappedPixels : 0);
-      tile.coveragePixels = Math.max(tile.coveragePixels, acceptedCoverage);
-      const finalAcceptedCap = scheduled.capMode === 2
-        && scheduled.scheduledEnd >= scheduled.finalTarget;
-      const resolvedCoverage = tile.health.escapedPixels
-        + tile.health.analyticInteriorPixels
-        + (finalAcceptedCap ? tile.health.cappedPixels : 0);
-      tile.resolvedPixels = Math.max(tile.resolvedPixels, resolvedCoverage);
-
-      this.maybeRequestRepair(tile, request);
-      const continuingPixels = tile.health.activePixels + tile.health.cappedPixels;
-      if (
-        scheduled.work.chunkIterations > 0
-        && continuingPixels > 0
-        && scheduled.scheduledEnd < scheduled.finalTarget
-        && !this.latestRequest
-      ) {
-        const nextEnd = Math.min(
-          scheduled.finalTarget,
-          scheduled.scheduledEnd + scheduled.work.chunkIterations
-        );
-        this.currentQueue.push(this.makeScheduledWork(
-          request,
-          tile,
-          scheduled.levelOffset,
-          this.maximumPlannedLevel,
-          scheduled.finalTarget,
-          nextEnd,
-          scheduled.work.chunkIterations
-        ));
-      }
-    }
-  }
-
-  private updateStats(): void {
-    const request = this.currentRequest;
-    if (!request) return;
-    const visible = this.currentPlan
-      .map(item => this.tileMap.get(item.descriptor.key))
-      .filter((tile): tile is FieldTile => Boolean(tile));
-    this.statsValue = {
-      requestId: request.requestId,
-      interaction: request.interaction,
-      visibleTiles: visible.length,
-      cachedTiles: this.tileMap.size,
-      activeTiles: visible.filter(tile => tile.resolvedPixels < TILE_PIXEL_COUNT).length,
-      convergedTiles: visible.filter(tile => tile.resolvedPixels >= TILE_PIXEL_COUNT).length,
-      directTiles: visible.filter(tile => tile.numericalMode !== 'perturbation').length,
-      perturbationTiles: visible.filter(tile => tile.numericalMode === 'perturbation').length,
-      pendingReferences: this.referenceAtlas.pendingCount,
-      repairTiles: visible.filter(tile => tile.repairPass > 0).length,
-      referenceFailures: this.referenceAtlas.failureCount,
-      completedChunks: this.completedChunks,
-      queuedChunks: this.currentQueue.length,
-      lastBatchMs: this.lastBatchMs,
-      numericalFreshnessMs: 0,
-      presentationHistoryMs: 0,
-      sampleExponent: sampleExponentForViewport(
-        request.camera,
-        this.currentRenderHeight,
-        0
-      ),
-      tileSize: PERSISTENT_TILE_SIZE
-    };
-  }
-
-  private ensureReferencePolicy(
-    request: PersistentTileRequest,
-    plan: readonly PlannedDescriptor[]
-  ): void {
-    const referenceTarget = request.targetIterations;
-    for (const planned of plan) {
-      const tile = this.tileMap.get(planned.descriptor.key);
-      if (!tile || !this.tileNeedsPerturbation(tile)) continue;
-      if (tile.referenceState === 'queued') continue;
-
-      const failurePixels = tile.health.glitchPixels
-        + tile.health.orbitExhaustedPixels
-        + tile.health.nonFinitePixels;
-      const unresolvedPixels = TILE_PIXEL_COUNT - tile.resolvedPixels;
-      if (tile.numericalMode === 'perturbation' && tile.reference) {
-        if (failurePixels > 0) continue;
-        const needsLongerReference = tile.reference.requestedIterations < referenceTarget
-          && unresolvedPixels > 0;
-        if (!needsLongerReference) continue;
-      }
-      if (tile.referenceState === 'failed' && tile.referenceTarget >= referenceTarget) continue;
-
-      const reusable = this.referenceAtlas.findReusable(tile.descriptor.key, referenceTarget);
-      if (reusable && reusable !== tile.reference) {
-        tile.pendingReference = reusable;
-        tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
-        tile.referenceState = 'ready';
-        tile.referenceTarget = referenceTarget;
-        this.requestCurrentAgain();
-        continue;
-      }
-      this.queueReference(tile, tile.repairPass, referenceTarget);
-    }
-  }
-
-  private tileNeedsPerturbation(tile: FieldTile): boolean {
-    if (tile.numericalMode === 'perturbation') return true;
-    if (tile.health.nonFinitePixels > 0) return true;
-    return tile.requiresPerturbation;
-  }
-
-  private queueReference(
-    tile: FieldTile,
-    repairPass: number,
-    referenceTarget: number
-  ): void {
-    if (repairPass > MAX_REFERENCE_REPAIR_PASSES) {
-      tile.referenceState = 'failed';
-      tile.referenceTarget = referenceTarget;
-      return;
-    }
-    tile.referenceState = 'queued';
-    tile.referenceTarget = referenceTarget;
-    tile.referenceError = null;
-    void this.referenceAtlas.request(
-      tile.descriptor,
-      referenceTarget,
-      tile.descriptor.distanceFromFocus + repairPass * 0.05,
-      repairPass
-    ).then(reference => {
-      if (this.tileMap.get(tile.descriptor.key) !== tile) return;
-      tile.pendingReference = reference;
-      tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
-      tile.referenceState = 'ready';
-      tile.referenceError = null;
-      tile.repairPass = repairPass;
-      tile.referenceTarget = referenceTarget;
-      this.requestCurrentAgain();
-    }).catch(error => {
-      if (this.tileMap.get(tile.descriptor.key) !== tile) return;
-      tile.referenceError = error instanceof Error ? error.message : String(error);
-      tile.referenceState = 'failed';
-      tile.referenceTarget = referenceTarget;
-    });
-  }
-
-  private maybeRequestRepair(tile: FieldTile, request: PersistentTileRequest): void {
-    if (tile.numericalMode !== 'perturbation') return;
-    const unresolvedFailures = tile.health.glitchPixels
-      + tile.health.orbitExhaustedPixels
-      + tile.health.nonFinitePixels;
-    if (unresolvedFailures <= 0 || tile.referenceState === 'queued') return;
-    if (tile.repairPass >= MAX_REFERENCE_REPAIR_PASSES) {
-      tile.referenceState = 'failed';
-      return;
-    }
-    this.queueReference(tile, tile.repairPass + 1, request.targetIterations);
-  }
-
-  private requestCurrentAgain(): void {
-    if (!this.currentRequest || this.latestRequest) return;
-    this.latestRequest = this.currentRequest;
-    if (!this.running) void this.pump();
-  }
-
-  private async activatePendingReferences(): Promise<void> {
-    const activations = [...this.tileMap.values()]
-      .filter(tile => tile.pendingReference && tile.pendingReset);
-    if (activations.length === 0) return;
-
-    for (const tile of activations) {
-      const reference = tile.pendingReference;
-      if (!reference) continue;
-      tile.reference = reference;
-      tile.pendingReference = null;
-      tile.numericalMode = 'perturbation';
-      tile.referenceState = 'ready';
-      tile.perturbGroup = this.createPerturbGroup(tile, reference);
-    }
-
-    const encoder = this.device.createCommandEncoder();
-    for (const tile of activations) {
-      const preserveAccepted = tile.pendingReset === 'unresolved';
-      this.device.queue.writeBuffer(
-        tile.resetUniform,
-        0,
-        new Uint32Array([PERSISTENT_TILE_SIZE, preserveAccepted ? 1 : 0, 0, 0])
-      );
-      encoder.clearBuffer(tile.counterBuffer);
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(this.resetPipeline);
-      pass.setBindGroup(0, tile.resetGroup);
-      pass.dispatchWorkgroups(
-        Math.ceil(PERSISTENT_TILE_SIZE / 8),
-        Math.ceil(PERSISTENT_TILE_SIZE / 8)
-      );
-      pass.end();
-    }
-    this.device.queue.submit([encoder.finish()]);
-    await this.device.queue.onSubmittedWorkDone();
-
-    for (const tile of activations) {
-      const preserveAccepted = tile.pendingReset === 'unresolved';
-      tile.pendingReset = null;
-      tile.iterationFrontier = 0;
-      tile.health = {
-        ...EMPTY_HEALTH,
-        activePixels: Math.max(0, TILE_PIXEL_COUNT
-          - (preserveAccepted ? tile.resolvedPixels : 0))
-      };
-      if (!preserveAccepted) tile.resolvedPixels = 0;
-      tile.capPresentationMode = tile.coveragePixels > 0 ? 1 : 0;
-      tile.lastNumericalUpdateAt = performance.now();
-    }
-  }
-
-  private effectiveFinalTarget(tile: FieldTile, request: PersistentTileRequest): number {
-    if (tile.numericalMode === 'perturbation') return request.targetIterations;
-    if (this.tileNeedsPerturbation(tile)) {
-      return Math.min(request.targetIterations, DIRECT_SAFETY_ITERATIONS);
-    }
-    return request.targetIterations;
-  }
-
-  private async ensureTiles(
-    descriptors: readonly PersistentTileDescriptor[]
-  ): Promise<boolean> {
-    const missing = descriptors.filter(descriptor => !this.tileMap.has(descriptor.key));
-    for (let start = 0; start < missing.length; start += RESOURCE_CREATION_BATCH_TILES) {
-      if (this.latestRequest) return false;
-      const batchDescriptors = missing.slice(start, start + RESOURCE_CREATION_BATCH_TILES);
-      const created: FieldTile[] = [];
-      this.device.pushErrorScope('validation');
-      for (const descriptor of batchDescriptors) {
-        if (this.tileMap.has(descriptor.key)) continue;
-        const tile = this.createTile(descriptor);
-        this.tileMap.set(descriptor.key, tile);
-        created.push(tile);
-      }
-      const validationError = await this.device.popErrorScope();
-      if (validationError) {
-        for (const tile of created) {
-          this.tileMap.delete(tile.descriptor.key);
-          this.destroyTile(tile);
-        }
-        throw new Error(`Tile resource layout validation failed: ${validationError.message}`);
-      }
-      if (created.length > 0) {
-        const encoder = this.device.createCommandEncoder();
-        for (const tile of created) {
-          encoder.clearBuffer(tile.stateBuffer);
-          encoder.clearBuffer(tile.metaBuffer);
-          encoder.clearBuffer(tile.counterBuffer);
-          const pass = encoder.beginComputePass();
-          pass.setPipeline(this.clearPipeline);
-          pass.setBindGroup(0, tile.clearGroup);
-          pass.dispatchWorkgroups(
-            Math.ceil(PERSISTENT_TILE_SIZE / 8),
-            Math.ceil(PERSISTENT_TILE_SIZE / 8)
-          );
-          pass.end();
-        }
-        this.device.queue.submit([encoder.finish()]);
-        await this.device.queue.onSubmittedWorkDone();
-      }
-      if (start + RESOURCE_CREATION_BATCH_TILES < missing.length) await schedulerYield();
-    }
-    return !this.latestRequest;
-  }
-
-  private createTile(descriptor: PersistentTileDescriptor): FieldTile {
-    if (this.acceptedAtlas.availableSlots === 0 && !this.evictOneColdTile()) {
-      throw new Error('Accepted tile atlas exhausted with no retireable tile');
-    }
-    const atlasSlot = this.acceptedAtlas.allocate();
-    const stateBuffer = this.device.createBuffer({
-      size: TILE_PIXEL_COUNT * STATE_BYTES_PER_PIXEL,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-    });
-    const metaBuffer = this.device.createBuffer({
-      size: TILE_PIXEL_COUNT * META_BYTES_PER_PIXEL,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-    });
-    const counterBuffer = this.device.createBuffer({
-      size: COUNTER_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-    });
-    const counterReadback = this.device.createBuffer({
-      size: COUNTER_BYTES,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    });
-    const resultTexture = this.device.createTexture({
-      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
-      format: 'rgba32float',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
-    });
-    const qualityTexture = this.device.createTexture({
-      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
-    });
-    const colourTexture = this.device.createTexture({
-      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
-    });
-    const directUniform = this.device.createBuffer({
-      size: DIRECT_PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const perturbUniform = this.device.createBuffer({
-      size: PERTURB_PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const colourUniform = this.device.createBuffer({
-      size: COLOUR_PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const presentUniform = this.device.createBuffer({
-      size: PRESENT_PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-    const resetUniform = this.device.createBuffer({
-      size: RESET_PARAMETER_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-    });
-
-    const directGroup = this.device.createBindGroup({
-      layout: this.directPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: directUniform } },
-        { binding: 1, resource: { buffer: stateBuffer } },
-        { binding: 2, resource: { buffer: metaBuffer } },
-        { binding: 3, resource: resultTexture.createView() },
-        { binding: 4, resource: qualityTexture.createView() },
-        { binding: 5, resource: { buffer: counterBuffer } }
-      ]
-    });
-    const colourGroup = this.device.createBindGroup({
-      layout: this.colourPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: colourUniform } },
-        { binding: 1, resource: resultTexture.createView() },
-        { binding: 2, resource: qualityTexture.createView() },
-        { binding: 3, resource: colourTexture.createView() }
-      ]
-    });
-    const clearGroup = this.device.createBindGroup({
-      layout: this.clearPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.clearUniform } },
-        { binding: 1, resource: resultTexture.createView() },
-        { binding: 2, resource: qualityTexture.createView() },
-        { binding: 3, resource: colourTexture.createView() }
-      ]
-    });
-    const resetGroup = this.device.createBindGroup({
-      layout: this.resetPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: resetUniform } },
-        { binding: 1, resource: { buffer: stateBuffer } },
-        { binding: 2, resource: { buffer: metaBuffer } }
-      ]
-    });
-    const presentLinearGroup = this.createPresentGroup(
-      presentUniform,
-      colourTexture,
-      qualityTexture,
-      this.linearSampler
-    );
-    const presentNearestGroup = this.createPresentGroup(
-      presentUniform,
-      colourTexture,
-      qualityTexture,
-      this.nearestSampler
-    );
-
-    const centerMagnitude = Math.max(
-      1,
-      Math.abs(fixedToNumber(descriptor.centerX)),
-      Math.abs(fixedToNumber(descriptor.centerY))
-    );
-    const sampleStep = Math.pow(2, descriptor.sampleExponent);
-    const directMode: 0 | 1 = sampleStep > centerMagnitude * Math.pow(2, -21) ? 0 : 1;
-    const centerXSplit = fixedSplitF32(descriptor.centerX);
-    const centerYSplit = fixedSplitF32(descriptor.centerY);
-    const nextXSplit = fixedSplitF32(fixedAddScaled(
-      descriptor.centerX,
-      1,
-      descriptor.sampleExponent
-    ));
-    const nextYSplit = fixedSplitF32(fixedAddScaled(
-      descriptor.centerY,
-      1,
-      descriptor.sampleExponent
-    ));
-    const requiresPerturbation = !splitChanged(centerXSplit, nextXSplit)
-      || !splitChanged(centerYSplit, nextYSplit);
-    const now = performance.now();
-    return {
-      descriptor,
-      stateBuffer,
-      metaBuffer,
-      counterBuffer,
-      counterReadback,
-      resultTexture,
-      qualityTexture,
-      colourTexture,
-      directUniform,
-      perturbUniform,
-      colourUniform,
-      presentUniform,
-      resetUniform,
-      directGroup,
-      perturbGroup: null,
-      colourGroup,
-      clearGroup,
-      resetGroup,
-      presentLinearGroup,
-      presentNearestGroup,
-      atlasSlot,
-      health: { ...EMPTY_HEALTH },
-      iterationFrontier: 0,
-      coveragePixels: 0,
-      resolvedPixels: 0,
-      capPresentationMode: 0,
-      lastVisibleAt: now,
-      lastNumericalUpdateAt: 0,
-      createdAt: now,
-      palettePhase: Number.NaN,
-      directMode,
-      requiresPerturbation,
-      numericalMode: directMode === 0 ? 'f32-direct' : 'double-float-direct',
-      referenceState: 'none',
-      reference: null,
-      pendingReference: null,
-      pendingReset: null,
-      referenceError: null,
-      repairPass: 0,
-      referenceTarget: 0
-    };
-  }
-
-  private createPresentGroup(
-    uniform: GPUBuffer,
-    colourTexture: GPUTexture,
-    qualityTexture: GPUTexture,
-    sampler: GPUSampler
-  ): GPUBindGroup {
-    return this.device.createBindGroup({
-      layout: this.presentPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniform } },
-        { binding: 1, resource: sampler },
-        { binding: 2, resource: colourTexture.createView() },
-        { binding: 3, resource: qualityTexture.createView() }
-      ]
-    });
-  }
-
-  private createPerturbGroup(tile: FieldTile, reference: TileGpuReference): GPUBindGroup {
-    return this.device.createBindGroup({
-      layout: this.perturbPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: tile.perturbUniform } },
-        { binding: 1, resource: { buffer: tile.stateBuffer } },
-        { binding: 2, resource: { buffer: tile.metaBuffer } },
-        { binding: 3, resource: tile.resultTexture.createView() },
-        { binding: 4, resource: tile.qualityTexture.createView() },
-        { binding: 5, resource: { buffer: tile.counterBuffer } },
-        { binding: 6, resource: { buffer: reference.buffer } }
-      ]
-    });
-  }
-
-  private async executeBatch(
-    batch: readonly ScheduledWork[],
-    palettePhase: number
-  ): Promise<void> {
-    for (const scheduled of batch) {
-      const tile = scheduled.tile;
-      if (tile.numericalMode === 'perturbation') {
-        this.device.queue.writeBuffer(
-          tile.perturbUniform,
-          0,
-          this.createPerturbParameterData(scheduled)
-        );
-      } else {
-        this.device.queue.writeBuffer(
-          tile.directUniform,
-          0,
-          this.createDirectParameterData(scheduled)
-        );
-      }
-      this.device.queue.writeBuffer(
-        tile.colourUniform,
-        0,
-        this.createColourParameterData(palettePhase)
-      );
-    }
-
-    const encoder = this.device.createCommandEncoder();
-    for (const scheduled of batch) {
-      const tile = scheduled.tile;
-      if (scheduled.work.chunkIterations > 0) {
-        encoder.clearBuffer(tile.counterBuffer);
-        const iterationPass = encoder.beginComputePass();
-        if (tile.numericalMode === 'perturbation') {
-          if (!tile.perturbGroup) throw new Error(`Missing perturbation bind group for ${tile.descriptor.key}`);
-          iterationPass.setPipeline(this.perturbPipeline);
-          iterationPass.setBindGroup(0, tile.perturbGroup);
-        } else {
-          iterationPass.setPipeline(this.directPipeline);
-          iterationPass.setBindGroup(0, tile.directGroup);
-        }
-        iterationPass.dispatchWorkgroups(
-          Math.ceil(PERSISTENT_TILE_SIZE / 8),
-          Math.ceil(PERSISTENT_TILE_SIZE / 8)
-        );
-        iterationPass.end();
-      }
-
-      const colourPass = encoder.beginComputePass();
-      colourPass.setPipeline(this.colourPipeline);
-      colourPass.setBindGroup(0, tile.colourGroup);
-      colourPass.dispatchWorkgroups(
-        Math.ceil(PERSISTENT_TILE_SIZE / 8),
-        Math.ceil(PERSISTENT_TILE_SIZE / 8)
-      );
-      colourPass.end();
-      this.acceptedAtlas.encodeCopy(
-        encoder, tile.atlasSlot, tile.colourTexture, tile.qualityTexture
-      );
-      if (scheduled.work.chunkIterations > 0) {
-        encoder.copyBufferToBuffer(
-          tile.counterBuffer,
-          0,
-          tile.counterReadback,
-          0,
-          COUNTER_BYTES
-        );
-      }
-    }
-    this.device.queue.submit([encoder.finish()]);
-    await this.device.queue.onSubmittedWorkDone();
-
-    await Promise.all(batch.map(async scheduled => {
-      if (scheduled.work.chunkIterations <= 0) return;
-      const readback = scheduled.tile.counterReadback;
-      await readback.mapAsync(GPUMapMode.READ);
-      const values = new Uint32Array(readback.getMappedRange()).slice();
-      readback.unmap();
-      scheduled.tile.health = {
-        activePixels: values[0] ?? 0,
-        escapedPixels: values[1] ?? 0,
-        analyticInteriorPixels: values[2] ?? 0,
-        cappedPixels: values[3] ?? 0,
-        nonFinitePixels: values[4] ?? 0,
-        glitchPixels: values[5] ?? 0,
-        orbitExhaustedPixels: values[6] ?? 0
-      };
-    }));
-  }
-
-  private createDirectParameterData(scheduled: ScheduledWork): ArrayBuffer {
-    const data = new ArrayBuffer(DIRECT_PARAMETER_BYTES);
-    const floats = new Float32Array(data);
-    const unsigned = new Uint32Array(data);
-    const signed = new Int32Array(data);
-    const tile = scheduled.tile;
-    const [centerXHi, centerXLo] = fixedSplitF32(tile.descriptor.centerX);
-    const [centerYHi, centerYLo] = fixedSplitF32(tile.descriptor.centerY);
-    floats[0] = centerXHi;
-    floats[1] = centerXLo;
-    floats[2] = centerYHi;
-    floats[3] = centerYLo;
-    signed[4] = tile.descriptor.sampleExponent;
-    unsigned[5] = PERSISTENT_TILE_SIZE;
-    unsigned[6] = scheduled.scheduledEnd;
-    unsigned[7] = scheduled.work.chunkIterations;
-    unsigned[8] = tile.directMode;
-    unsigned[9] = scheduled.capMode;
-    return data;
-  }
-
-  private createPerturbParameterData(scheduled: ScheduledWork): ArrayBuffer {
-    const tile = scheduled.tile;
-    const reference = tile.reference;
-    if (!reference) throw new Error(`Missing tile reference for ${tile.descriptor.key}`);
-    const data = new ArrayBuffer(PERTURB_PARAMETER_BYTES);
-    const floats = new Float32Array(data);
-    const unsigned = new Uint32Array(data);
-    const signed = new Int32Array(data);
-    const [centerXHi, centerXLo] = fixedSplitF32(tile.descriptor.centerX);
-    const [centerYHi, centerYLo] = fixedSplitF32(tile.descriptor.centerY);
-    const [deltaXHi, deltaXLo] = fixedSplitF32(fixedSub(tile.descriptor.centerX, reference.centerX));
-    const [deltaYHi, deltaYLo] = fixedSplitF32(fixedSub(tile.descriptor.centerY, reference.centerY));
-    floats[0] = centerXHi;
-    floats[1] = centerXLo;
-    floats[2] = centerYHi;
-    floats[3] = centerYLo;
-    floats[4] = deltaXHi;
-    floats[5] = deltaXLo;
-    floats[6] = deltaYHi;
-    floats[7] = deltaYLo;
-    signed[8] = tile.descriptor.sampleExponent;
-    unsigned[9] = PERSISTENT_TILE_SIZE;
-    unsigned[10] = scheduled.scheduledEnd;
-    unsigned[11] = scheduled.work.chunkIterations;
-    unsigned[12] = reference.length;
-    unsigned[13] = scheduled.capMode;
-    unsigned[14] = reference.bits;
-    unsigned[15] = tile.repairPass;
-    floats[16] = GLITCH_RATIO;
-    return data;
-  }
-
-  private createColourParameterData(palettePhase: number): ArrayBuffer {
-    const data = new ArrayBuffer(COLOUR_PARAMETER_BYTES);
-    const unsigned = new Uint32Array(data);
-    const floats = new Float32Array(data);
-    unsigned[0] = PERSISTENT_TILE_SIZE;
-    floats[2] = palettePhase;
-    floats[3] = PALETTE_LENGTH;
-    return data;
-  }
-
-  private renderHeight(
-    cssWidth: number,
-    cssHeight: number,
-    devicePixelRatio: number
-  ): number {
-    const dpr = clamp(devicePixelRatio, 1, 2);
-    const requestedWidth = Math.max(1, cssWidth * dpr);
-    const requestedHeight = Math.max(1, cssHeight * dpr);
-    const scale = Math.min(1, Math.sqrt(MAX_NUMERICAL_PIXELS / (requestedWidth * requestedHeight)));
-    return Math.max(1, Math.floor(requestedHeight * scale));
-  }
-
-  private quantumBudget(interaction: PersistentTileRequest['interaction']): number {
-    return interaction === 'moving'
-      ? MOVING_QUANTUM_MS
-      : interaction === 'settling' ? SETTLING_QUANTUM_MS : SETTLED_QUANTUM_MS;
-  }
-
-  private batchTarget(interaction: PersistentTileRequest['interaction']): number {
-    return interaction === 'moving'
-      ? MOVING_BATCH_TARGET_MS
-      : interaction === 'settling' ? SETTLING_BATCH_TARGET_MS : SETTLED_BATCH_TARGET_MS;
-  }
-
-  private adaptBatchSize(
-    interaction: PersistentTileRequest['interaction'],
-    elapsedMs: number
-  ): void {
-    const target = this.batchTarget(interaction);
-    const ratio = clamp(target / Math.max(0.25, elapsedMs), 0.6, 1.5);
-    this.adaptiveBatchTiles = Math.round(clamp(
-      this.adaptiveBatchTiles * ratio,
-      MIN_BATCH_TILES,
-      MAX_BATCH_TILES
-    ));
-  }
-
-  private hasCompleteChildren(tile: FieldTile): boolean {
-    const childExponent = tile.descriptor.sampleExponent - 1;
-    const baseX = tile.descriptor.tileX * 2n;
-    const baseY = tile.descriptor.tileY * 2n;
-    for (let y = 0n; y < 2n; y++) {
-      for (let x = 0n; x < 2n; x++) {
-        const key: PersistentTileKey = `${childExponent}:${(baseX + x).toString()}:${(baseY + y).toString()}`;
-        const child = this.tileMap.get(key);
-        if (!child || child.coveragePixels < TILE_PIXEL_COUNT) return false;
-      }
-    }
-    return true;
-  }
-
-  private tileTransform(
-    tile: FieldTile,
-    targetCamera: CameraSnapshot,
-    aspect: number
-  ): { scaleX: number; scaleY: number; offsetX: number; offsetY: number } | null {
-    const spanExponent = tileSpanExponent(tile.descriptor.sampleExponent);
-    const scaleY = scaleOverDyadic(targetCamera.scale, spanExponent);
-    const transform = packTransform({
-      scaleX: scaleY * aspect,
-      scaleY,
-      offsetX: fixedDifferenceOverDyadic(targetCamera.centerX, tile.descriptor.centerX, spanExponent),
-      offsetY: fixedDifferenceOverDyadic(targetCamera.centerY, tile.descriptor.centerY, spanExponent)
-    });
-    return transformIsFinite(transform) ? transform : null;
-  }
-
-  private evictColdTiles(): void {
-    const cacheTarget = Math.max(
-      MAX_CACHED_TILES,
-      this.currentVisibleKeys.size + CACHE_HISTORY_TILE_RESERVE
-    );
-    if (this.tileMap.size <= cacheTarget) return;
-    const candidates = [...this.tileMap.values()]
-      .filter(tile => !this.currentVisibleKeys.has(tile.descriptor.key))
-      .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt);
-    while (this.tileMap.size > cacheTarget && candidates.length > 0) {
-      const tile = candidates.shift();
-      if (!tile) break;
-      this.tileMap.delete(tile.descriptor.key);
-      this.destroyTile(tile);
-    }
-  }
-
-  private evictOneColdTile(): boolean {
-    const tile = [...this.tileMap.values()]
-      .filter(candidate => !this.currentVisibleKeys.has(candidate.descriptor.key))
-      .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt)[0];
-    if (!tile) return false;
-    this.tileMap.delete(tile.descriptor.key);
-    this.destroyTile(tile);
-    return true;
-  }
-
-  private destroyTile(tile: FieldTile): void {
-    this.acceptedAtlas.release(tile.atlasSlot);
-    tile.stateBuffer.destroy();
-    tile.metaBuffer.destroy();
-    tile.counterBuffer.destroy();
-    tile.counterReadback.destroy();
-    tile.resultTexture.destroy();
-    tile.qualityTexture.destroy();
-    tile.colourTexture.destroy();
-    tile.directUniform.destroy();
-    tile.perturbUniform.destroy();
-    tile.colourUniform.destroy();
-    tile.presentUniform.destroy();
-    tile.resetUniform.destroy();
-  }
-
-  private resizeCanvas(width: number, height: number): void {
-    if (this.displayWidth === width && this.displayHeight === height) return;
-    this.displayWidth = width;
-    this.displayHeight = height;
-    this.canvas.width = width;
-    this.canvas.height = height;
-    this.context.configure({ device: this.device, format: this.canvasFormat, alphaMode: 'opaque' });
-  }
-
-  private static async assertShaderValid(module: GPUShaderModule, label: string): Promise<void> {
-    const compilation = await module.getCompilationInfo();
-    const errors = compilation.messages.filter((message: { type: string }) => message.type === 'error');
-    if (errors.length === 0) return;
-    const first = errors[0];
-    throw new Error(`${label} WGSL line ${first.lineNum}: ${first.message}`);
-  }
-}
+    const fineExponent = sampleExponentForViewport(targetCamera, renderHeigó¶¶‰ËkºwµçUÈè½Õ¹Ñ•É	Õ™™•Èôô(€€€€€t(€€€ô¤ì(€€€½¹ÍĞ½±½ÕÉÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕĞèÑ¡¥Ì¹½±½ÕÉA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕĞ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•Èè½±½ÕÉU¹¥™½É´ôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èÉ•ÍÕ±ÑQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”èÅÕ…±¥ÑåQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”è½±½ÕÉQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô(€€€€€t(€€€ô¤ì(€€€½¹ÍĞ±•…ÉÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕĞèÑ¡¥Ì¹±•…ÉA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕĞ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¡¥Ì¹±•…ÉU¹¥™½É´ôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èÉ•ÍÕ±ÑQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”èÅÕ…±¥ÑåQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”è½±½ÕÉQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô(€€€€€t(€€€ô¤ì(€€€½¹ÍĞÉ•Í•ÑÉ½ÕÀ€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕĞèÑ¡¥Ì¹É•Í•ÑA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕĞ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•ÈèÉ•Í•ÑU¹¥™½É´ôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èì‰Õ™™•ÈèÍÑ…Ñ•	Õ™™•Èôô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”èì‰Õ™™•Èèµ•Ñ…	Õ™™•Èôô(€€€€€t(€€€ô¤ì(€€€½¹ÍĞÁÉ•Í•¹Ñ1¥¹•…ÉÉ½ÕÀ€ôÑ¡¥Ì¹É•…Ñ•AÉ•Í•¹ÑÉ½ÕÀ (€€€€€ÁÉ•Í•¹ÑU¹¥™½É´°(€€€€€½±½ÕÉQ•áÑÕÉ”°(€€€€€ÅÕ…±¥ÑåQ•áÑÕÉ”°(€€€€€Ñ¡¥Ì¹±¥¹•…ÉM…µÁ±•È(€€€€¤ì(€€€½¹ÍĞÁÉ•Í•¹Ñ9•…É•ÍÑÉ½ÕÀ€ôÑ¡¥Ì¹É•…Ñ•AÉ•Í•¹ÑÉ½ÕÀ (€€€€€ÁÉ•Í•¹ÑU¹¥™½É´°(€€€€€½±½ÕÉQ•áÑÕÉ”°(€€€€€ÅÕ…±¥ÑåQ•áÑÕÉ”°(€€€€€Ñ¡¥Ì¹¹•…É•ÍÑM…µÁ±•È(€€€€¤ì((€€€½¹ÍĞ•¹Ñ•É5…¹¥ÑÕ‘”€ô5…Ñ ¹µ…à (€€€€€€Ä°(€€€€€5…Ñ ¹…‰Ì¡™¥á•‘Q½9Õµ‰•È¡‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`¤¤°(€€€€€5…Ñ ¹…‰Ì¡™¥á•‘Q½9Õµ‰•È¡‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd¤¤(€€€€¤ì(€€€½¹ÍĞÍ…µÁ±•MÑ•À€ô5…Ñ ¹Á½Ü È°‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğ¤ì(€€€½¹ÍĞ‘¥É•Ñ5½‘”è€Àğ€Ä€ôÍ…µÁ±•MÑ•À€ø•¹Ñ•É5…¹¥ÑÕ‘”€¨5…Ñ ¹Á½Ü È°€´ÈÄ¤€ü€À€è€Äì(€€€½¹ÍĞ•¹Ñ•ÉaMÁ±¥Ğ€ô™¥á•‘MÁ±¥ÑÌÈ¡‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`¤ì(€€€½¹ÍĞ•¹Ñ•ÉeMÁ±¥Ğ€ô™¥á•‘MÁ±¥ÑÌÈ¡‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd¤ì(€€€½¹ÍĞ¹•áÑaMÁ±¥Ğ€ô™¥á•‘MÁ±¥ÑÌÈ¡™¥á•‘‘‘M…±• (€€€€€‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`°(€€€€€€Ä°(€€€€€‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğ(€€€€¤¤ì(€€€½¹ÍĞ¹•áÑeMÁ±¥Ğ€ô™¥á•‘MÁ±¥ÑÌÈ¡™¥á•‘‘‘M…±• (€€€€€‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd°(€€€€€€Ä°(€€€€€‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğ(€€€€¤¤ì(€€€½¹ÍĞÉ•ÅÕ¥É•ÍA•ÉÑÕÉ‰…Ñ¥½¸€ô€…ÍÁ±¥Ñ¡…¹•¡•¹Ñ•ÉaMÁ±¥Ğ°¹•áÑaMÁ±¥Ğ¤(€€€€€ñğ€…ÍÁ±¥Ñ¡…¹•¡•¹Ñ•ÉeMÁ±¥Ğ°¹•áÑeMÁ±¥Ğ¤ì(€€€½¹ÍĞ¹½Ü€ôÁ•É™½Éµ…¹”¹¹½Ü ¤ì(€€€É•ÑÕÉ¸ì(€€€€€‘•ÍÉ¥ÁÑ½È°(€€€€€ÍÑ…Ñ•	Õ™™•È°(€€€€€µ•Ñ…	Õ™™•È°(€€€€€½Õ¹Ñ•É	Õ™™•È°(€€€€€½Õ¹Ñ•ÉI•…‘‰…¬°(€€€€€É•ÍÕ±ÑQ•áÑÕÉ”°(€€€€€ÅÕ…±¥ÑåQ•áÑÕÉ”°(€€€€€½±½ÕÉQ•áÑÕÉ”°(€€€€€‘¥É•ÑU¹¥™½É´°(€€€€€Á•ÉÑÕÉ‰U¹¥™½É´°(€€€€€½±½ÕÉU¹¥™½É´°(€€€€€ÁÉ•Í•¹ÑU¹¥™½É´°(€€€€€É•Í•ÑU¹¥™½É´°(€€€€€‘¥É•ÑÉ½ÕÀ°(€€€€€Á•ÉÑÕÉ‰É½ÕÀè¹Õ±°°(€€€€€½±½ÕÉÉ½ÕÀ°(€€€€€±•…ÉÉ½ÕÀ°(€€€€€É•Í•ÑÉ½ÕÀ°(€€€€€ÁÉ•Í•¹Ñ1¥¹•…ÉÉ½ÕÀ°(€€€€€ÁÉ•Í•¹Ñ9•…É•ÍÑÉ½ÕÀ°(€€€€€…Ñ±…ÍM±½Ğ°(€€€€€¡•…±Ñ èì€¸¸¹5AQe}!1Q ô°(€€€€€¥Ñ•É…Ñ¥½¹É½¹Ñ¥•Èè€À°(€€€€€½Ù•É…•A¥á•±Ìè€À°(€€€€€É•Í½±Ù•‘A¥á•±Ìè€À°(€€€€€…ÁAÉ•Í•¹Ñ…Ñ¥½¹5½‘”è€À°(€€€€€±…ÍÑY¥Í¥‰±•Ğè¹½Ü°(€€€€€±…ÍÑ9Õµ•É¥…±UÁ‘…Ñ•Ğè€À°(€€€€€É•…Ñ•‘Ğè¹½Ü°(€€€€€Á…±•ÑÑ•A¡…Í”è9Õµ‰•È¹9…8°(€€€€€‘¥É•Ñ5½‘”°(€€€€€É•ÅÕ¥É•ÍA•ÉÑÕÉ‰…Ñ¥½¸°(€€€€€¹Õµ•É¥…±5½‘”è‘¥É•Ñ5½‘”€ôôô€À€ü€˜ÌÈµ‘¥É•Ğœ€è€‘½Õ‰±”µ™±½…Ğµ‘¥É•Ğœ°(€€€€€É•™•É•¹•MÑ…Ñ”è€¹½¹”œ°(€€€€€É•™•É•¹”è¹Õ±°°(€€€€€Á•¹‘¥¹I•™•É•¹”è¹Õ±°°(€€€€€Á•¹‘¥¹I•Í•Ğè¹Õ±°°(€€€€€É•™•É•¹•ÉÉ½Èè¹Õ±°°(€€€€€É•Á…¥ÉA…ÍÌè€À°(€€€€€É•™•É•¹•Q…É•Ğè€À(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•AÉ•Í•¹ÑÉ½ÕÀ (€€€Õ¹¥™½É´èAU	Õ™™•È°(€€€½±½ÕÉQ•áÑÕÉ”èAUQ•áÑÕÉ”°(€€€ÅÕ…±¥ÑåQ•áÑÕÉ”èAUQ•áÑÕÉ”°(€€€Í…µÁ±•ÈèAUM…µÁ±•È(€€¤èAU	¥¹‘É½ÕÀì(€€€É•ÑÕÉ¸Ñ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕĞèÑ¡¥Ì¹ÁÉ•Í•¹ÑA¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕĞ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•ÈèÕ¹¥™½É´ôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èÍ…µÁ±•Èô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”è½±½ÕÉQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”èÅÕ…±¥ÑåQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô(€€€€€t(€€€ô¤ì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•A•ÉÑÕÉ‰É½ÕÀ¡Ñ¥±”è¥•±‘Q¥±”°É•™•É•¹”èQ¥±•ÁÕI•™•É•¹”¤èAU	¥¹‘É½ÕÀì(€€€É•ÑÕÉ¸Ñ¡¥Ì¹‘•Ù¥”¹É•…Ñ•	¥¹‘É½ÕÀ¡ì(€€€€€±…å½ÕĞèÑ¡¥Ì¹Á•ÉÑÕÉ‰A¥Á•±¥¹”¹•Ñ	¥¹‘É½ÕÁ1…å½ÕĞ À¤°(€€€€€•¹ÑÉ¥•Ìèl(€€€€€€€ì‰¥¹‘¥¹œè€À°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¥±”¹Á•ÉÑÕÉ‰U¹¥™½É´ôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ä°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¥±”¹ÍÑ…Ñ•	Õ™™•Èôô°(€€€€€€€ì‰¥¹‘¥¹œè€È°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¥±”¹µ•Ñ…	Õ™™•Èôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ì°É•Í½ÕÉ”èÑ¥±”¹É•ÍÕ±ÑQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ğ°É•Í½ÕÉ”èÑ¥±”¹ÅÕ…±¥ÑåQ•áÑÕÉ”¹É•…Ñ•Y¥•Ü ¤ô°(€€€€€€€ì‰¥¹‘¥¹œè€Ô°É•Í½ÕÉ”èì‰Õ™™•ÈèÑ¥±”¹½Õ¹Ñ•É	Õ™™•Èôô°(€€€€€€€ì‰¥¹‘¥¹œè€Ø°É•Í½ÕÉ”èì‰Õ™™•ÈèÉ•™•É•¹”¹‰Õ™™•Èôô(€€€€€t(€€€ô¤ì(€ô((€ÁÉ¥Ù…Ñ”…Íå¹Œ•á•ÕÑ•	…Ñ  (€€€‰…Ñ èÉ•…‘½¹±äM¡•‘Õ±•‘]½É­mt°(€€€Á…±•ÑÑ•A¡…Í”è¹Õµ‰•È(€€¤èAÉ½µ¥Í”ñÙ½¥øì(€€€™½È€¡½¹ÍĞÍ¡•‘Õ±•½˜‰…Ñ ¤ì(€€€€€½¹ÍĞÑ¥±”€ôÍ¡•‘Õ±•¹Ñ¥±”ì(€€€€€¥˜€¡Ñ¥±”¹¹Õµ•É¥…±5½‘”€ôôô€Á•ÉÑÕÉ‰…Ñ¥½¸œ¤ì(€€€€€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹İÉ¥Ñ•	Õ™™•È (€€€€€€€€€Ñ¥±”¹Á•ÉÑÕÉ‰U¹¥™½É´°(€€€€€€€€€€À°(€€€€€€€€€Ñ¡¥Ì¹É•…Ñ•A•ÉÑÕÉ‰A…É…µ•Ñ•É…Ñ„¡Í¡•‘Õ±•¤(€€€€€€€€¤ì(€€€€€ô•±Í”ì(€€€€€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹İÉ¥Ñ•	Õ™™•È (€€€€€€€€€Ñ¥±”¹‘¥É•ÑU¹¥™½É´°(€€€€€€€€€€À°(€€€€€€€€€Ñ¡¥Ì¹É•…Ñ•¥É•ÑA…É…µ•Ñ•É…Ñ„¡Í¡•‘Õ±•¤(€€€€€€€€¤ì(€€€€€ô(€€€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹İÉ¥Ñ•	Õ™™•È (€€€€€€€Ñ¥±”¹½±½ÕÉU¹¥™½É´°(€€€€€€€€À°(€€€€€€€Ñ¡¥Ì¹É•…Ñ•½±½ÕÉA…É…µ•Ñ•É…Ñ„¡Á…±•ÑÑ•A¡…Í”¤(€€€€€€¤ì(€€€ô((€€€½¹ÍĞ•¹½‘•È€ôÑ¡¥Ì¹‘•Ù¥”¹É•…Ñ•½µµ…¹‘¹½‘•È ¤ì(€€€™½È€¡½¹ÍĞÍ¡•‘Õ±•½˜‰…Ñ ¤ì(€€€€€½¹ÍĞÑ¥±”€ôÍ¡•‘Õ±•¹Ñ¥±”ì(€€€€€¥˜€¡Í¡•‘Õ±•¹İ½É¬¹¡Õ¹­%Ñ•É…Ñ¥½¹Ì€ø€À¤ì(€€€€€€€•¹½‘•È¹±•…É	Õ™™•È¡Ñ¥±”¹½Õ¹Ñ•É	Õ™™•È¤ì(€€€€€€€½¹ÍĞ¥Ñ•É…Ñ¥½¹A…ÍÌ€ô•¹½‘•È¹‰•¥¹½µÁÕÑ•A…ÍÌ ¤ì(€€€€€€€¥˜€¡Ñ¥±”¹¹Õµ•É¥…±5½‘”€ôôô€Á•ÉÑÕÉ‰…Ñ¥½¸œ¤ì(€€€€€€€€€¥˜€ …Ñ¥±”¹Á•ÉÑÕÉ‰É½ÕÀ¤Ñ¡É½Ü¹•ÜÉÉ½È¡5¥ÍÍ¥¹œÁ•ÉÑÕÉ‰…Ñ¥½¸‰¥¹É½ÕÀ™½È€‘íÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹­•åõ€¤ì(€€€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹Á•ÉÑÕÉ‰A¥Á•±¥¹”¤ì(€€€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°Ñ¥±”¹Á•ÉÑÕÉ‰É½ÕÀ¤ì(€€€€€€€ô•±Í”ì(€€€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹‘¥É•ÑA¥Á•±¥¹”¤ì(€€€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°Ñ¥±”¹‘¥É•ÑÉ½ÕÀ¤ì(€€€€€€€ô(€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹‘¥ÍÁ…Ñ¡]½É­É½ÕÁÌ (€€€€€€€€€5…Ñ ¹•¥°¡AIM%MQ9Q}Q%1}M%i€¼€à¤°(€€€€€€€€€5…Ñ ¹•¥°¡AIM%MQ9Q}Q%1}M%i€¼€à¤(€€€€€€€€¤ì(€€€€€€€¥Ñ•É…Ñ¥½¹A…ÍÌ¹•¹ ¤ì(€€€€€ô((€€€€€½¹ÍĞ½±½ÕÉA…ÍÌ€ô•¹½‘•È¹‰•¥¹½µÁÕÑ•A…ÍÌ ¤ì(€€€€€½±½ÕÉA…ÍÌ¹Í•ÑA¥Á•±¥¹”¡Ñ¡¥Ì¹½±½ÕÉA¥Á•±¥¹”¤ì(€€€€€½±½ÕÉA…ÍÌ¹Í•Ñ	¥¹‘É½ÕÀ À°Ñ¥±”¹½±½ÕÉÉ½ÕÀ¤ì(€€€€€½±½ÕÉA…ÍÌ¹‘¥ÍÁ…Ñ¡]½É­É½ÕÁÌ (€€€€€€€5…Ñ ¹•¥°¡AIM%MQ9Q}Q%1}M%i€¼€à¤°(€€€€€€€5…Ñ ¹•¥°¡AIM%MQ9Q}Q%1}M%i€¼€à¤(€€€€€€¤ì(€€€€€½±½ÕÉA…ÍÌ¹•¹ ¤ì(€€€€€¥˜€¡Ñ¡¥Ì¹…•ÁÑ•‘Ñ±…Ì€˜˜Ñ¥±”¹…Ñ±…ÍM±½Ğ¤ì(€€€€€€€Ñ¡¥Ì¹…•ÁÑ•‘Ñ±…Ì¹•¹½‘•½Áä (€€€€€€€€€•¹½‘•È°Ñ¥±”¹…Ñ±…ÍM±½Ğ°Ñ¥±”¹½±½ÕÉQ•áÑÕÉ”°Ñ¥±”¹ÅÕ…±¥ÑåQ•áÑÕÉ”(€€€€€€€€¤ì(€€€€€ô(€€€€€¥˜€¡Í¡•‘Õ±•¹İ½É¬¹¡Õ¹­%Ñ•É…Ñ¥½¹Ì€ø€À¤ì(€€€€€€€•¹½‘•È¹½Áå	Õ™™•ÉQ½	Õ™™•È (€€€€€€€€€Ñ¥±”¹½Õ¹Ñ•É	Õ™™•È°(€€€€€€€€€€À°(€€€€€€€€€Ñ¥±”¹½Õ¹Ñ•ÉI•…‘‰…¬°(€€€€€€€€€€À°(€€€€€€€€€=U9QI}	eQL(€€€€€€€€¤ì(€€€€€ô(€€€ô(€€€Ñ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹ÍÕ‰µ¥Ğ¡m•¹½‘•È¹™¥¹¥Í  ¥t¤ì(€€€…İ…¥ĞÑ¡¥Ì¹‘•Ù¥”¹ÅÕ•Õ”¹½¹MÕ‰µ¥ÑÑ•‘]½É­½¹” ¤ì((€€€…İ…¥ĞAÉ½µ¥Í”¹…±°¡‰…Ñ ¹µ…À¡…Íå¹ŒÍ¡•‘Õ±•€ôøì(€€€€€¥˜€¡Í¡•‘Õ±•¹İ½É¬¹¡Õ¹­%Ñ•É…Ñ¥½¹Ì€ğô€À¤É•ÑÕÉ¸ì(€€€€€½¹ÍĞÉ•…‘‰…¬€ôÍ¡•‘Õ±•¹Ñ¥±”¹½Õ¹Ñ•ÉI•…‘‰…¬ì(€€€€€…İ…¥ĞÉ•…‘‰…¬¹µ…ÁÍå¹Œ¡AU5…Á5½‘”¹I¤ì(€€€€€½¹ÍĞÙ…±Õ•Ì€ô¹•ÜU¥¹ĞÌÉÉÉ…ä¡É•…‘‰…¬¹•Ñ5…ÁÁ•‘I…¹” ¤¤¹Í±¥” ¤ì(€€€€€É•…‘‰…¬¹Õ¹µ…À ¤ì(€€€€€Í¡•‘Õ±•¹Ñ¥±”¹¡•…±Ñ €ôì(€€€€€€€…Ñ¥Ù•A¥á•±ÌèÙ…±Õ•ÍlÁt€üü€À°(€€€€€€€•Í…Á•‘A¥á•±ÌèÙ…±Õ•ÍlÅt€üü€À°(€€€€€€€…¹…±åÑ¥%¹Ñ•É¥½ÉA¥á•±ÌèÙ…±Õ•ÍlÉt€üü€À°(€€€€€€€…ÁÁ•‘A¥á•±ÌèÙ…±Õ•ÍlÍt€üü€À°(€€€€€€€¹½¹¥¹¥Ñ•A¥á•±ÌèÙ…±Õ•ÍlÑt€üü€À°(€€€€€€€±¥Ñ¡A¥á•±ÌèÙ…±Õ•ÍlÕt€üü€À°(€€€€€€€½É‰¥Ñá¡…ÕÍÑ•‘A¥á•±ÌèÙ…±Õ•ÍlÙt€üü€À(€€€€€ôì(€€€ô¤¤ì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•¥É•ÑA…É…µ•Ñ•É…Ñ„¡Í¡•‘Õ±•èM¡•‘Õ±•‘]½É¬¤èÉÉ…å	Õ™™•Èì(€€€½¹ÍĞ‘…Ñ„€ô¹•ÜÉÉ…å	Õ™™•È¡%IQ}AI5QI}	eQL¤ì(€€€½¹ÍĞ™±½…ÑÌ€ô¹•Ü±½…ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞÕ¹Í¥¹•€ô¹•ÜU¥¹ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞÍ¥¹•€ô¹•Ü%¹ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞÑ¥±”€ôÍ¡•‘Õ±•¹Ñ¥±”ì(€€€½¹ÍĞm•¹Ñ•Éa!¤°•¹Ñ•Éa1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`¤ì(€€€½¹ÍĞm•¹Ñ•Ée!¤°•¹Ñ•Ée1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd¤ì(€€€™±½…ÑÍlÁt€ô•¹Ñ•Éa!¤ì(€€€™±½…ÑÍlÅt€ô•¹Ñ•Éa1¼ì(€€€™±½…ÑÍlÉt€ô•¹Ñ•Ée!¤ì(€€€™±½…ÑÍlÍt€ô•¹Ñ•Ée1¼ì(€€€Í¥¹•‘lÑt€ôÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğì(€€€Õ¹Í¥¹•‘lÕt€ôAIM%MQ9Q}Q%1}M%iì(€€€Õ¹Í¥¹•‘lÙt€ôÍ¡•‘Õ±•¹Í¡•‘Õ±•‘¹ì(€€€Õ¹Í¥¹•‘lİt€ôÍ¡•‘Õ±•¹İ½É¬¹¡Õ¹­%Ñ•É…Ñ¥½¹Ìì(€€€Õ¹Í¥¹•‘lát€ôÑ¥±”¹‘¥É•Ñ5½‘”ì(€€€Õ¹Í¥¹•‘låt€ôÍ¡•‘Õ±•¹…Á5½‘”ì(€€€É•ÑÕÉ¸‘…Ñ„ì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•A•ÉÑÕÉ‰A…É…µ•Ñ•É…Ñ„¡Í¡•‘Õ±•èM¡•‘Õ±•‘]½É¬¤èÉÉ…å	Õ™™•Èì(€€€½¹ÍĞÑ¥±”€ôÍ¡•‘Õ±•¹Ñ¥±”ì(€€€½¹ÍĞÉ•™•É•¹”€ôÑ¥±”¹É•™•É•¹”ì(€€€¥˜€ …É•™•É•¹”¤Ñ¡É½Ü¹•ÜÉÉ½È¡5¥ÍÍ¥¹œÑ¥±”É•™•É•¹”™½È€‘íÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹­•åõ€¤ì(€€€½¹ÍĞ‘…Ñ„€ô¹•ÜÉÉ…å	Õ™™•È¡AIQUI	}AI5QI}	eQL¤ì(€€€½¹ÍĞ™±½…ÑÌ€ô¹•Ü±½…ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞÕ¹Í¥¹•€ô¹•ÜU¥¹ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞÍ¥¹•€ô¹•Ü%¹ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞm•¹Ñ•Éa!¤°•¹Ñ•Éa1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`¤ì(€€€½¹ÍĞm•¹Ñ•Ée!¤°•¹Ñ•Ée1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd¤ì(€€€½¹ÍĞm‘•±Ñ…a!¤°‘•±Ñ…a1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡™¥á•‘MÕˆ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`°É•™•É•¹”¹•¹Ñ•É`¤¤ì(€€€½¹ÍĞm‘•±Ñ…e!¤°‘•±Ñ…e1½t€ô™¥á•‘MÁ±¥ÑÌÈ¡™¥á•‘MÕˆ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd°É•™•É•¹”¹•¹Ñ•Éd¤¤ì(€€€™±½…ÑÍlÁt€ô•¹Ñ•Éa!¤ì(€€€™±½…ÑÍlÅt€ô•¹Ñ•Éa1¼ì(€€€™±½…ÑÍlÉt€ô•¹Ñ•Ée!¤ì(€€€™±½…ÑÍlÍt€ô•¹Ñ•Ée1¼ì(€€€™±½…ÑÍlÑt€ô‘•±Ñ…a!¤ì(€€€™±½…ÑÍlÕt€ô‘•±Ñ…a1¼ì(€€€™±½…ÑÍlÙt€ô‘•±Ñ…e!¤ì(€€€™±½…ÑÍlİt€ô‘•±Ñ…e1¼ì(€€€Í¥¹•‘lát€ôÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğì(€€€Õ¹Í¥¹•‘låt€ôAIM%MQ9Q}Q%1}M%iì(€€€Õ¹Í¥¹•‘lÄÁt€ôÍ¡•‘Õ±•¹Í¡•‘Õ±•‘¹ì(€€€Õ¹Í¥¹•‘lÄÅt€ôÍ¡•‘Õ±•¹İ½É¬¹¡Õ¹­%Ñ•É…Ñ¥½¹Ìì(€€€Õ¹Í¥¹•‘lÄÉt€ôÉ•™•É•¹”¹±•¹Ñ ì(€€€Õ¹Í¥¹•‘lÄÍt€ôÍ¡•‘Õ±•¹…Á5½‘”ì(€€€Õ¹Í¥¹•‘lÄÑt€ôÉ•™•É•¹”¹‰¥ÑÌì(€€€Õ¹Í¥¹•‘lÄÕt€ôÑ¥±”¹É•Á…¥ÉA…ÍÌì(€€€™±½…ÑÍlÄÙt€ô1%Q!}IQ%<ì(€€€É•ÑÕÉ¸‘…Ñ„ì(€ô((€ÁÉ¥Ù…Ñ”É•…Ñ•½±½ÕÉA…É…µ•Ñ•É…Ñ„¡Á…±•ÑÑ•A¡…Í”è¹Õµ‰•È¤èÉÉ…å	Õ™™•Èì(€€€½¹ÍĞ‘…Ñ„€ô¹•ÜÉÉ…å	Õ™™•È¡=1=UI}AI5QI}	eQL¤ì(€€€½¹ÍĞÕ¹Í¥¹•€ô¹•ÜU¥¹ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€½¹ÍĞ™±½…ÑÌ€ô¹•Ü±½…ĞÌÉÉÉ…ä¡‘…Ñ„¤ì(€€€Õ¹Í¥¹•‘lÁt€ôAIM%MQ9Q}Q%1}M%iì(€€€™±½…ÑÍlÉt€ôÁ…±•ÑÑ•A¡…Í”ì(€€€™±½…ÑÍlÍt€ôA1QQ}19Q ì(€€€É•ÑÕÉ¸‘…Ñ„ì(€ô((€ÁÉ¥Ù…Ñ”É•¹‘•É!•¥¡Ğ (€€€ÍÍ]¥‘Ñ è¹Õµ‰•È°(€€€ÍÍ!•¥¡Ğè¹Õµ‰•È°(€€€‘•Ù¥•A¥á•±I…Ñ¥¼è¹Õµ‰•È(€€¤è¹Õµ‰•Èì(€€€½¹ÍĞ‘ÁÈ€ô±…µÀ¡‘•Ù¥•A¥á•±I…Ñ¥¼°€Ä°€È¤ì(€€€½¹ÍĞÉ•ÅÕ•ÍÑ•‘]¥‘Ñ €ô5…Ñ ¹µ…à Ä°ÍÍ]¥‘Ñ €¨‘ÁÈ¤ì(€€€½¹ÍĞÉ•ÅÕ•ÍÑ•‘!•¥¡Ğ€ô5…Ñ ¹µ…à Ä°ÍÍ!•¥¡Ğ€¨‘ÁÈ¤ì(€€€½¹ÍĞÍ…±”€ô5…Ñ ¹µ¥¸ Ä°5…Ñ ¹ÍÅÉĞ¡5a}9U5I%1}A%a1L€¼€¡É•ÅÕ•ÍÑ•‘]¥‘Ñ €¨É•ÅÕ•ÍÑ•‘!•¥¡Ğ¤¤¤ì(€€€É•ÑÕÉ¸5…Ñ ¹µ…à Ä°5…Ñ ¹™±½½È¡É•ÅÕ•ÍÑ•‘!•¥¡Ğ€¨Í…±”¤¤ì(€ô((€ÁÉ¥Ù…Ñ”ÅÕ…¹ÑÕµ	Õ‘•Ğ¡¥¹Ñ•É…Ñ¥½¸èA•ÉÍ¥ÍÑ•¹ÑQ¥±•I•ÅÕ•ÍÑl¥¹Ñ•É…Ñ¥½¸t¤è¹Õµ‰•Èì(€€€É•ÑÕÉ¸¥¹Ñ•É…Ñ¥½¸€ôôô€µ½Ù¥¹œœ(€€€€€€ü5=Y%9}EU9QU5}5L(€€€€€€è¥¹Ñ•É…Ñ¥½¸€ôôô€Í•ÑÑ±¥¹œœ€üMQQ1%9}EU9QU5}5L€èMQQ1}EU9QU5}5Lì(€ô((€ÁÉ¥Ù…Ñ”‰…Ñ¡Q…É•Ğ¡¥¹Ñ•É…Ñ¥½¸èA•ÉÍ¥ÍÑ•¹ÑQ¥±•I•ÅÕ•ÍÑl¥¹Ñ•É…Ñ¥½¸t¤è¹Õµ‰•Èì(€€€É•ÑÕÉ¸¥¹Ñ•É…Ñ¥½¸€ôôô€µ½Ù¥¹œœ(€€€€€€ü5=Y%9}	Q!}QIQ}5L(€€€€€€è¥¹Ñ•É…Ñ¥½¸€ôôô€Í•ÑÑ±¥¹œœ€üMQQ1%9}	Q!}QIQ}5L€èMQQ1}	Q!}QIQ}5Lì(€ô((€ÁÉ¥Ù…Ñ”…‘…ÁÑ	…Ñ¡M¥é” (€€€¥¹Ñ•É…Ñ¥½¸èA•ÉÍ¥ÍÑ•¹ÑQ¥±•I•ÅÕ•ÍÑl¥¹Ñ•É…Ñ¥½¸t°(€€€•±…ÁÍ•‘5Ìè¹Õµ‰•È(€€¤èÙ½¥ì(€€€½¹ÍĞÑ…É•Ğ€ôÑ¡¥Ì¹‰…Ñ¡Q…É•Ğ¡¥¹Ñ•É…Ñ¥½¸¤ì(€€€½¹ÍĞÉ…Ñ¥¼€ô±…µÀ¡Ñ…É•Ğ€¼5…Ñ ¹µ…à À¸ÈÔ°•±…ÁÍ•‘5Ì¤°€À¸Ø°€Ä¸Ô¤ì(€€€Ñ¡¥Ì¹…‘…ÁÑ¥Ù•	…Ñ¡Q¥±•Ì€ô5…Ñ ¹É½Õ¹¡±…µÀ (€€€€€Ñ¡¥Ì¹…‘…ÁÑ¥Ù•	…Ñ¡Q¥±•Ì€¨É…Ñ¥¼°(€€€€€5%9}	Q!}Q%1L°(€€€€€5a}	Q!}Q%1L(€€€€¤¤ì(€ô((€ÁÉ¥Ù…Ñ”¡…Í½µÁ±•Ñ•¡¥±‘É•¸¡Ñ¥±”è¥•±‘Q¥±”¤è‰½½±•…¸ì(€€€½¹ÍĞ¡¥±‘áÁ½¹•¹Ğ€ôÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğ€´€Äì(€€€½¹ÍĞ‰…Í•`€ôÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹Ñ¥±•`€¨€É¸ì(€€€½¹ÍĞ‰…Í•d€ôÑ¥±”¹‘•ÍÉ¥ÁÑ½È¹Ñ¥±•d€¨€É¸ì(€€€™½È€¡±•Ğä€ô€Á¸ìä€ğ€É¸ìä¬¬¤ì(€€€€€™½È€¡±•Ğà€ô€Á¸ìà€ğ€É¸ìà¬¬¤ì(€€€€€€€½¹ÍĞ­•äèA•ÉÍ¥ÍÑ•¹ÑQ¥±•-•ä€ô€‘í¡¥±‘áÁ½¹•¹Ñôè‘ì¡‰…Í•`€¬à¤¹Ñ½MÑÉ¥¹œ ¥ôè‘ì¡‰…Í•d€¬ä¤¹Ñ½MÑÉ¥¹œ ¥õ€ì(€€€€€€€½¹ÍĞ¡¥±€ôÑ¡¥Ì¹Ñ¥±•5…À¹•Ğ¡­•ä¤ì(€€€€€€€¥˜€ …¡¥±ñğ¡¥±¹½Ù•É…•A¥á•±Ì€ğQ%1}A%a1}=U9P¤É•ÑÕÉ¸™…±Í”ì(€€€€€ô(€€€ô(€€€É•ÑÕÉ¸ÑÉÕ”ì(€ô((€ÁÉ¥Ù…Ñ”Ñ¥±•QÉ…¹Í™½É´ (€€€Ñ¥±”è¥•±‘Q¥±”°(€€€Ñ…É•Ñ…µ•É„è…µ•É…M¹…ÁÍ¡½Ğ°(€€€…ÍÁ•Ğè¹Õµ‰•È(€€¤èìÍ…±•`è¹Õµ‰•ÈìÍ…±•dè¹Õµ‰•Èì½™™Í•Ñ`è¹Õµ‰•Èì½™™Í•Ñdè¹Õµ‰•Èôğ¹Õ±°ì(€€€½¹ÍĞÍÁ…¹áÁ½¹•¹Ğ€ôÑ¥±•MÁ…¹áÁ½¹•¹Ğ¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹Í…µÁ±•áÁ½¹•¹Ğ¤ì(€€€½¹ÍĞÍ…±•d€ôÍ…±•=Ù•Éå…‘¥Œ¡Ñ…É•Ñ…µ•É„¹Í…±”°ÍÁ…¹áÁ½¹•¹Ğ¤ì(€€€½¹ÍĞÑÉ…¹Í™½É´€ôÁ…­QÉ…¹Í™½É´¡ì(€€€€€Í…±•`èÍ…±•d€¨…ÍÁ•Ğ°(€€€€€Í…±•d°(€€€€€½™™Í•Ñ`è™¥á•‘¥™™•É•¹•=Ù•Éå…‘¥Œ¡Ñ…É•Ñ…µ•É„¹•¹Ñ•É`°Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•É`°ÍÁ…¹áÁ½¹•¹Ğ¤°(€€€€€½™™Í•Ñdè™¥á•‘¥™™•É•¹•=Ù•Éå…‘¥Œ¡Ñ…É•Ñ…µ•É„¹•¹Ñ•Éd°Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹•¹Ñ•Éd°ÍÁ…¹áÁ½¹•¹Ğ¤(€€€ô¤ì(€€€É•ÑÕÉ¸ÑÉ…¹Í™½Éµ%Í¥¹¥Ñ”¡ÑÉ…¹Í™½É´¤€üÑÉ…¹Í™½É´€è¹Õ±°ì(€ô((€ÁÉ¥Ù…Ñ”•Ù¥Ñ½±‘Q¥±•Ì ¤èÙ½¥ì(€€€½¹ÍĞ…¡•Q…É•Ğ€ô5…Ñ ¹µ…à (€€€€€5a}!}Q%1L°(€€€€€Ñ¡¥Ì¹ÕÉÉ•¹ÑY¥Í¥‰±•-•åÌ¹Í¥é”€¬!}!%MQ=Ie}Q%1}IMIY(€€€€¤ì(€€€¥˜€¡Ñ¡¥Ì¹Ñ¥±•5…À¹Í¥é”€ğô…¡•Q…É•Ğ¤É•ÑÕÉ¸ì(€€€½¹ÍĞ…¹‘¥‘…Ñ•Ì€ôl¸¸¹Ñ¡¥Ì¹Ñ¥±•5…À¹Ù…±Õ•Ì ¥t(€€€€€€¹™¥±Ñ•È¡Ñ¥±”€ôø€…Ñ¡¥Ì¹ÕÉÉ•¹ÑY¥Í¥‰±•-•åÌ¹¡…Ì¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹­•ä¤¤(€€€€€€¹Í½ÉĞ ¡±•™Ğ°É¥¡Ğ¤€ôø±•™Ğ¹±…ÍÑY¥Í¥‰±•Ğ€´É¥¡Ğ¹±…ÍÑY¥Í¥‰±•Ğ¤ì(€€€İ¡¥±”€¡Ñ¡¥Ì¹Ñ¥±•5…À¹Í¥é”€ø…¡•Q…É•Ğ€˜˜…¹‘¥‘…Ñ•Ì¹±•¹Ñ €ø€À¤ì(€€€€€½¹ÍĞÑ¥±”€ô…¹‘¥‘…Ñ•Ì¹Í¡¥™Ğ ¤ì(€€€€€¥˜€ …Ñ¥±”¤‰É•…¬ì(€€€€€Ñ¡¥Ì¹Ñ¥±•5…À¹‘•±•Ñ”¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹­•ä¤ì(€€€€€Ñ¡¥Ì¹‘•ÍÑÉ½åQ¥±”¡Ñ¥±”¤ì(€€€ô(€ô((€ÁÉ¥Ù…Ñ”•Ù¥Ñ=¹•½±‘Q¥±” ¤è‰½½±•…¸ì(€€€½¹ÍĞÑ¥±”€ôl¸¸¹Ñ¡¥Ì¹Ñ¥±•5…À¹Ù…±Õ•Ì ¥t(€€€€€€¹™¥±Ñ•È¡…¹‘¥‘…Ñ”€ôø€…Ñ¡¥Ì¹ÕÉÉ•¹ÑY¥Í¥‰±•-•åÌ¹¡…Ì¡…¹‘¥‘…Ñ”¹‘•ÍÉ¥ÁÑ½È¹­•ä¤¤(€€€€€€¹Í½ÉĞ ¡±•™Ğ°É¥¡Ğ¤€ôø±•™Ğ¹±…ÍÑY¥Í¥‰±•Ğ€´É¥¡Ğ¹±…ÍÑY¥Í¥‰±•Ğ¥lÁtì(€€€¥˜€ …Ñ¥±”¤É•ÑÕÉ¸™…±Í”ì(€€€Ñ¡¥Ì¹Ñ¥±•5…À¹‘•±•Ñ”¡Ñ¥±”¹‘•ÍÉ¥ÁÑ½È¹­•ä¤ì(€€€Ñ¡¥Ì¹‘•ÍÑÉ½åQ¥±”¡Ñ¥±”¤ì(€€€É•ÑÕÉ¸ÑÉÕ”ì(€ô((€ÁÉ¥Ù…Ñ”‘•ÍÑÉ½åQ¥±”¡Ñ¥±”è¥•±‘Q¥±”¤èÙ½¥ì(€€€¥˜€¡Ñ¡¥Ì¹…•ÁÑ•‘Ñ±…Ì€˜˜Ñ¥±”¹…Ñ±…ÍM±½Ğ¤Ñ¡¥Ì¹…•ÁÑ•‘Ñ±…Ì¹É•±•…Í”¡Ñ¥±”¹…Ñ±…ÍM±½Ğ¤ì(€€€Ñ¥±”¹ÍÑ…Ñ•	Õ™™•È¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹µ•Ñ…	Õ™™•È¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹½Õ¹Ñ•É	Õ™™•È¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹½Õ¹Ñ•ÉI•…‘‰…¬¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹É•ÍÕ±ÑQ•áÑÕÉ”¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹ÅÕ…±¥ÑåQ•áÑÕÉ”¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹½±½ÕÉQ•áÑÕÉ”¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹‘¥É•ÑU¹¥™½É´¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹Á•ÉÑÕÉ‰U¹¥™½É´¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹½±½ÕÉU¹¥™½É´¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹ÁÉ•Í•¹ÑU¹¥™½É´¹‘•ÍÑÉ½ä ¤ì(€€€Ñ¥±”¹É•Í•ÑU¹¥™½É´¹‘•ÍÑÉ½ä ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•Í¥é•…¹Ù…Ì¡İ¥‘Ñ è¹Õµ‰•È°¡•¥¡Ğè¹Õµ‰•È¤èÙ½¥ì(€€€¥˜€¡Ñ¡¥Ì¹‘¥ÍÁ±…å]¥‘Ñ €ôôôİ¥‘Ñ €˜˜Ñ¡¥Ì¹‘¥ÍÁ±…å!•¥¡Ğ€ôôô¡•¥¡Ğ¤É•ÑÕÉ¸ì(€€€Ñ¡¥Ì¹‘¥ÍÁ±…å]¥‘Ñ €ôİ¥‘Ñ ì(€€€Ñ¡¥Ì¹‘¥ÍÁ±…å!•¥¡Ğ€ô¡•¥¡Ğì(€€€Ñ¡¥Ì¹…¹Ù…Ì¹İ¥‘Ñ €ôİ¥‘Ñ ì(€€€Ñ¡¥Ì¹…¹Ù…Ì¹¡•¥¡Ğ€ô¡•¥¡Ğì(€€€Ñ¡¥Ì¹½¹Ñ•áĞ¹½¹™¥ÕÉ”¡ì‘•Ù¥”èÑ¡¥Ì¹‘•Ù¥”°™½Éµ…ĞèÑ¡¥Ì¹…¹Ù…Í½Éµ…Ğ°…±Á¡…5½‘”è€½Á…ÅÕ”œô¤ì(€ô((€ÁÉ¥Ù…Ñ”ÍÑ…Ñ¥Œ…Íå¹Œ…ÍÍ•ÉÑM¡…‘•ÉY…±¥¡µ½‘Õ±”èAUM¡…‘•É5½‘Õ±”°±…‰•°èÍÑÉ¥¹œ¤èAÉ½µ¥Í”ñÙ½¥øì(€€€½¹ÍĞ½µÁ¥±…Ñ¥½¸€ô…İ…¥Ğµ½‘Õ±”¹•Ñ½µÁ¥±…Ñ¥½¹%¹™¼ ¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ô½µÁ¥±…Ñ¥½¸¹µ•ÍÍ…•Ì¹™¥±Ñ•È ¡µ•ÍÍ…”èìÑåÁ”èÍÑÉ¥¹œô¤€ôøµ•ÍÍ…”¹ÑåÁ”€ôôô€•ÉÉ½Èœ¤ì(€€€¥˜€¡•ÉÉ½ÉÌ¹±•¹Ñ €ôôô€À¤É•ÑÕÉ¸ì(€€€½¹ÍĞ™¥ÉÍĞ€ô•ÉÉ½ÉÍlÁtì(€€€Ñ¡É½Ü¹•ÜÉÉ½È¡€‘í±…‰•±ô]M0±¥¹”€‘í™¥ÉÍĞ¹±¥¹•9Õµôè€‘í™¥ÉÍĞ¹µ•ÍÍ…•õ€¤ì(€ô)ô

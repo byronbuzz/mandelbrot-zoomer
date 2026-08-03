@@ -9,6 +9,17 @@ const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('Missing app root');
 
 const ui = createUi(root);
+const testIterations = new URLSearchParams(location.search).get('testIterations');
+if (testIterations !== null) {
+  const requested = Number(testIterations);
+  const minimum = Number(ui.iterations.min);
+  const maximum = Number(ui.iterations.max);
+  const step = Number(ui.iterations.step);
+  if (Number.isFinite(requested) && requested >= minimum && requested <= maximum) {
+    const snapped = minimum + Math.round((requested - minimum) / step) * step;
+    ui.iterations.value = String(Math.min(maximum, Math.max(minimum, snapped)));
+  }
+}
 const camera = new CameraModel();
 let renderer = await TileFieldRenderer.create(ui.canvas);
 let rendererEpoch = 1;
@@ -156,7 +167,7 @@ function updateReadouts(): void {
     resourceEpoch: String(presentation.resourceEpoch),
     reprojectionErrorTexels: presentation.worstReprojectionErrorTexels.toFixed(6),
     presentationCpuMs: presentation.lastFrameCpuMs.toFixed(3),
-    validationErrors: String(presentation.validationErrors.length)
+    validationErrors: String(presentation.validationErrors)
   });
 }
 
@@ -178,7 +189,7 @@ function diagnosticsReport(): string {
     `Presentation resource epoch: ${presentation.resourceEpoch}`,
     `Worst reprojection error: ${presentation.worstReprojectionErrorTexels.toFixed(6)} source texel`,
     `Presentation CPU: ${presentation.lastFrameCpuMs.toFixed(3)} ms`,
-    `WebGPU validation errors: ${presentation.validationErrors.length}`,
+    `WebGPU validation errors: ${presentation.validationErrors}`,
     `URL: ${location.href}`,
     `Zoom depth: 10^${camera.log10Magnification().toFixed(6)}`,
     `Center X raw: ${snapshot.centerX.raw.toString()} (bits ${snapshot.centerX.bits})`,
@@ -384,11 +395,11 @@ function tick(now: number): void {
   if (wasMoving && !moving) beginSettling();
   wasMoving = moving;
 
-  if (renderer.present(
-    camera.snapshot(),
-    Math.max(1, ui.canvas.clientWidth),
-    Math.max(1, ui.canvas.clientHeight),
-    renderDevicePixelRatio()
+    if (renderer.present(
+      camera.snapshot(),
+      ui.canvas.clientWidth,
+      ui.canvas.clientHeight,
+      renderDevicePixelRatio()
   )) {
     notePresentation(now);
   }

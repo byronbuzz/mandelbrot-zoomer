@@ -19,7 +19,7 @@ struct Output { @builtin(position) position: vec4f, @location(0) uv: vec2f }
 }`;
 
 export const atlasOverlayShader = /* wgsl */ `
-struct Instance { rect: vec4f, atlas: vec4f }
+struct Instance { rect: vec4f, atlasOrigin: vec2u, slot: u32, lease: u32 }
 struct Output {
   @builtin(position) position: vec4f,
   @location(0) tileUv: vec2f,
@@ -36,8 +36,8 @@ struct Output {
     vec2f(0.0,1.0),vec2f(1.0,0.0),vec2f(1.0,1.0));
   let item=instances[instance]; let corner=corners[vertex]; let uv=mix(item.rect.xy,item.rect.zw,corner);
   var out: Output; out.position=vec4f(uv*vec2f(2.0,-2.0)+vec2f(-1.0,1.0),0.0,1.0);
-  out.tileUv=corner; out.atlasOrigin=vec2u(item.atlas.xy);
-  out.slotLease=vec2u(item.atlas.zw); return out;
+  out.tileUv=corner; out.atlasOrigin=item.atlasOrigin;
+  out.slotLease=vec2u(item.slot,item.lease); return out;
 }
 @fragment fn fragmentMain(input: Output) -> @location(0) vec4f {
   if (leases[input.slotLease.x] != input.slotLease.y) { discard; }

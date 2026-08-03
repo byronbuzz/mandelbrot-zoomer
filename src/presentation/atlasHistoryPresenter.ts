@@ -42,7 +42,8 @@ export type AtlasPresenterDiagnostics = Readonly<{
   resourceEpoch: number;
   worstReprojectionErrorTexels: number;
   lastFrameCpuMs: number;
-}>;
+  validationErrors: number;
+}>; 
 
 function f32SourceCoordinate(scale: number, offset: number, uv: number): number {
   return Math.fround(Math.fround(0.5 + offset) + Math.fround(Math.fround(uv - 0.5) * scale));
@@ -109,6 +110,9 @@ export class AtlasHistoryPresenter {
   private instanceCount = 0;
   private worstReprojectionErrorTexels = 0;
   private lastFrameCpuMs = 0;
+  private promotionPending = false;
+  private validationErrors = 0;
+  private destroyed = false;
 
   private constructor(
     private readonly device: GPUDevice,
@@ -181,7 +185,8 @@ export class AtlasHistoryPresenter {
       instanceCount: this.instanceCount,
       resourceEpoch: this.resourceEpoch,
       worstReprojectionErrorTexels: this.worstReprojectionErrorTexels,
-      lastFrameCpuMs: this.lastFrameCpuMs
+      lastFrameCpuMs: this.lastFrameCpuMs,
+      validationErrors: this.validationErrors
     };
   }
 
@@ -195,7 +200,7 @@ export class AtlasHistoryPresenter {
     authoritative: boolean
   ): boolean {
     const started = performance.now();
-    if (width <= 0 || height <= 0 || instances.length === 0) return false;
+    if (this.destroyed || this.promotionPending || width <= 0 || height <= 0) return false;
     this.ensureSize(width, height);
     const resources = this.resources;
     if (!resources) return false;
@@ -216,7 +221,9 @@ export class AtlasHistoryPresenter {
       admission.accepted ? 1 : 0, 0, 0, 0
     ]));
 
-    const packedInstances = new Float32Array(Math.min(MAX_INSTANCES, instances.length) * INSTANCE_FLOATS);
+    const packedInstances = new ArrayBuffer(Math.min(MAX_INSTANCES, instances.length) * INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT);
+    const instanceFloats = new Float32Array(packedInstances);
+    const instanceU32 = new Uint32Array(packedInstances);
     let count = 0;
     for (const { transform, slot } of instances) {
       if (count >= MAX_INSTANCES || !transformIsFinite(transform) || transform.scaleX <= 0 || transform.scaleY <= 0) continue;
@@ -225,17 +232,21 @@ export class AtlasHistoryPresenter {
       const right = 0.5 + (0.5 - transform.offsetX) / transform.scaleX;
       const bottom = 0.5 + (0.5 - transform.offsetY) / transform.scaleY;
       if (right <= 0 || bottom <= 0 || left >= 1 || top >= 1) continue;
-      packedInstances.set([
-        left, top, right, bottom,
-        slot.x, slot.y, slot.index, slot.lease
-      ], count * INSTANCE_FLOATS);
+      const base = count * INSTANCE_FLOATS;
+      instanceFloats.set([left, top, right, bottom], base);
+      instanceU32.set([slot.x, slot.y, slot.index, slot.lease], base + 4);
       count++;
     }
-    if (count === 0) return false;
     this.instanceCount = count;
-    this.device.queue.writeBuffer(this.instanceBuffer, 0, packedInstances, 0, count * INSTANCE_FLOATS);
+    if (count > 0) {
+      this.device.queue.writeBuffer(
+        this.instanceBuffer, 0, packedInstances, 0,
+        count * INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT
+      );
+    }
 
     const historyTexture = this.anchor?.texture ?? resources.anchor;
+    this.device.pushErrorScope('validation');
     const reprojectGroup = this.device.createBindGroup({
       layout: this.reprojectPipeline.getBindGroupLayout(0),
       entries: [
@@ -275,14 +286,30 @@ export class AtlasHistoryPresenter {
     canvasPass.setPipeline(this.presentPipeline); canvasPass.setBindGroup(0, presentGroup); canvasPass.draw(3);
     canvasPass.end();
     this.device.queue.submit([encoder.finish()]);
+    const validation = this.device.popErrorScope();
     this.frames++;
 
-    if (authoritative) this.promote(resources, view);
+    if (authoritative) {
+      this.promotionPending = true;
+      const epoch = resources.epoch;
+      void Promise.all([this.device.queue.onSubmittedWorkDone(), validation]).then(([, error]) => {
+        if (this.destroyed) return;
+        if (error) {
+          this.validationErrors++;
+        } else if (this.resources === resources && resources.epoch === epoch) {
+          this.promote(resources, view);
+        }
+        this.promotionPending = false;
+      }, () => { this.promotionPending = false; });
+    } else {
+      void validation.then(error => { if (error && !this.destroyed) this.validationErrors++; });
+    }
     this.lastFrameCpuMs = performance.now() - started;
     return true;
   }
 
   destroy(): void {
+    this.destroyed = true;
     const owners = new Set<ResourceSet>();
     if (this.resources) owners.add(this.resources);
     if (this.anchor) owners.add(this.anchor.owner);

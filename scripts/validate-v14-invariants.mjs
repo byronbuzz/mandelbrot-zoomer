@@ -16,17 +16,25 @@ const required = [
   ['nearest validity lookup', shaders, 'textureLoad(qualityAtlas'],
   ['one instanced overlay', presenter, 'compose.draw(6, count)'],
   ['persistent history reprojection', presenter, 'historyTransform'],
-  ['reprojected-only anchor prohibition', presenter, 'if (authoritative) this.promote'],
+  ['reprojected-only anchor prohibition', presenter, 'if (authoritative) {'],
+  ['completion-gated anchor promotion', presenter, 'this.device.queue.onSubmittedWorkDone()'],
+  ['exact integer slot leases', shaders, 'slot: u32, lease: u32'],
   ['resize retains accepted source owner', presenter, "this.anchor?.owner !== previous"],
   ['deep relative tile transform', renderer, 'fixedDifferenceOverDyadic'],
   ['legacy comparison fallback', renderer, "get('presenter') === 'legacy'"],
   ['tile publication copy', renderer, 'this.acceptedAtlas.encodeCopy'],
   ['device-loss recreation hook', main, 'onDeviceLost'],
   ['executable device-loss test hook', main, '__ZOOMER_FORCE_DEVICE_LOSS__'],
+  ['deterministic iteration test hook', main, "get('testIterations')"],
   ['rAF survival guard', main, 'finally {\n    requestAnimationFrame(tick)'],
-  ['no absolute scale materialization', math, 'scaleRatio']
+  ['no absolute scale materialization', math, 'scaleRatio'],
+  ['zero-size presentation suspension', renderer, 'cssWidth <= 0 || cssHeight <= 0'],
+  ['adapter texture-limit clamp', renderer, 'maxTextureDimension2D']
 ];
 const failures = required.filter(([, source, needle]) => !source.includes(needle)).map(([label]) => `Missing 1.4 invariant: ${label}`);
+if (renderer.includes('if (this.hasCompleteChildren(tile)) continue;')) {
+  failures.push('Premature parent culling can create uncovered presentation rectangles.');
+}
 
 function scaled(mantissa, exponent) {
   return mantissa * Math.pow(2, exponent);
