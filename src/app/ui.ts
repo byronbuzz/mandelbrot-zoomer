@@ -38,7 +38,7 @@ export function createUi(root: HTMLElement): AppUi {
       </header>
       <aside id="control-panel" class="control-panel" aria-label="Fractal controls">
         <div class="panel-header">
-          <div><strong>Controls</strong><small>Persistent field renderer</small></div>
+          <div><strong>Controls</strong><small>Persistent numerical tiles</small></div>
           <button id="panel-close" class="close-button" type="button" aria-label="Close controls">×</button>
         </div>
         <section class="control-section">
@@ -54,17 +54,17 @@ export function createUi(root: HTMLElement): AppUi {
         <section class="stats-section">
           ${outputRow('Zoom depth', 'zoom-out')}
           ${outputRow('Interaction state', 'state-out')}
-          ${outputRow('Precision', 'precision-out')}
-          ${outputRow('Field', 'field-out')}
-          ${outputRow('Jobs', 'jobs-out')}
+          ${outputRow('Numerical modes', 'precision-out')}
+          ${outputRow('Numerical field', 'field-out')}
+          ${outputRow('Tile work', 'jobs-out')}
           ${outputRow('Compute batch', 'timing-out')}
           ${outputRow('Presentation', 'display-out')}
-          ${outputRow('Render size', 'render-size-out')}
-          ${outputRow('Navigation budget', 'navigation-out')}
+          ${outputRow('Tile lattice', 'render-size-out')}
+          ${outputRow('Deep rendering', 'navigation-out')}
           ${outputRow('GPU', 'gpu-out')}
           ${outputRow('Build', 'build-out')}
         </section>
-        <p class="help-copy">Hold or tap the canvas to zoom in. Right-click to zoom out. Middle-drag to pan. The displayed field is continuously reprojected while new samples replace it.</p>
+        <p class="help-copy">Hold or tap the canvas to zoom in. Right-click to zoom out. Middle-drag to pan. World-space numerical tiles persist across movement; local high-precision references and perturbation repair difficult regions without replacing the whole viewport.</p>
       </aside>
       <div id="status" class="status-line" aria-live="polite"></div>
     </div>

@@ -1,6 +1,6 @@
 import './style.css';
 import { CameraModel } from '../camera/cameraModel';
-import { FieldRenderer } from '../presentation/fieldRenderer';
+import { TileFieldRenderer } from '../presentation/tileFieldRenderer';
 import type { InteractionState } from '../tiles/types';
 import { APP_NAME, APP_VERSION, BUILD_LABEL } from './build';
 import { createUi } from './ui';
@@ -10,7 +10,7 @@ if (!root) throw new Error('Missing app root');
 
 const ui = createUi(root);
 const camera = new CameraModel();
-const renderer = await FieldRenderer.create(ui.canvas);
+const renderer = await TileFieldRenderer.create(ui.canvas);
 
 const MOVING_REQUEST_INTERVAL_MS = 85;
 const PAN_REQUEST_INTERVAL_MS = 70;
@@ -118,23 +118,28 @@ function displayRate(now = performance.now()): number {
   return presentationTimestamps.length;
 }
 
+function precisionSummary(): string {
+  const stats = renderer.stats;
+  const parts: string[] = [];
+  if (stats.perturbationTiles > 0) parts.push(`${stats.perturbationTiles} perturbation`);
+  if (stats.directTiles > 0) parts.push(`${stats.directTiles} direct`);
+  if (stats.pendingReferences > 0) parts.push(`${stats.pendingReferences} refs pending`);
+  if (stats.repairTiles > 0) parts.push(`${stats.repairTiles} repair`);
+  return parts.length > 0 ? parts.join(' · ') : 'awaiting numerical tiles';
+}
+
 function updateReadouts(): void {
   const stats = renderer.stats;
   const depth = camera.log10Magnification();
-  const precision = stats.precision === 'f32-direct'
-    ? 'native f32 direct'
-    : depth >= 6
-      ? 'double-float direct · perturbation stage pending'
-      : 'double-float direct';
   ui.zoomOut.value = `10^${depth.toFixed(3)}`;
   ui.stateOut.value = `${interaction}${renderer.isBusy ? ' · calculating' : ''}`;
-  ui.precisionOut.value = precision;
-  ui.fieldOut.value = `${stats.phase} · ${(stats.fieldAgeMs / 1000).toFixed(1)} s old · anchor ${stats.anchorGeneration}`;
-  ui.jobsOut.value = `${stats.completedJobs}/${stats.totalJobs} · ${stats.publishedJobs} published`;
-  ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.batchJobs} jobs`;
+  ui.precisionOut.value = precisionSummary();
+  ui.fieldOut.value = `${stats.visibleTiles} visible · ${stats.cachedTiles} cached · ${(stats.numericalFreshnessMs / 1000).toFixed(1)} s numerical`;
+  ui.jobsOut.value = `${stats.activeTiles} active · ${stats.convergedTiles} converged · ${stats.completedChunks} chunks`;
+  ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.queuedChunks} queued`;
   ui.displayOut.value = `${displayRate()} Hz`;
-  ui.renderSizeOut.value = `${stats.renderWidth} × ${stats.renderHeight}`;
-  ui.navigationOut.value = `${stats.navigationBlockSize}×${stats.navigationBlockSize} · ${stats.navigationIterations} iter · ${(stats.navigationResolution * 100).toFixed(0)}%`;
+  ui.renderSizeOut.value = `${stats.tileSize}×${stats.tileSize} tiles · 2^${stats.sampleExponent} sample`;
+  ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceFailures} ref failures`;
   ui.gpuOut.value = renderer.adapterLabel;
   ui.buildOut.value = BUILD_LABEL;
 }
@@ -152,15 +157,22 @@ function diagnosticsReport(): string {
     `Center Y raw: ${snapshot.centerY.raw.toString()} (bits ${snapshot.centerY.bits})`,
     `Scale: ${snapshot.scale.mantissa} * 2^${snapshot.scale.exponent}`,
     `Interaction: ${interaction}`,
-    `Precision: ${stats.precision}`,
-    `Field phase: ${stats.phase}`,
-    `Field anchor generation: ${stats.anchorGeneration}`,
-    `Field age: ${stats.fieldAgeMs.toFixed(3)} ms`,
-    `Render size: ${stats.renderWidth} x ${stats.renderHeight}`,
-    `Jobs: ${stats.completedJobs}/${stats.totalJobs}`,
-    `Published jobs: ${stats.publishedJobs}`,
-    `Last batch: ${stats.lastBatchMs.toFixed(3)} ms (${stats.batchJobs} jobs)`,
-    `Navigation profile: ${stats.navigationBlockSize}x${stats.navigationBlockSize}, ${stats.navigationIterations} iterations, ${stats.navigationResolution.toFixed(4)} resolution`,
+    `Visible tiles: ${stats.visibleTiles}`,
+    `Cached tiles: ${stats.cachedTiles}`,
+    `Active tiles: ${stats.activeTiles}`,
+    `Converged tiles: ${stats.convergedTiles}`,
+    `Direct tiles: ${stats.directTiles}`,
+    `Perturbation tiles: ${stats.perturbationTiles}`,
+    `Pending references: ${stats.pendingReferences}`,
+    `Repair tiles: ${stats.repairTiles}`,
+    `Reference failures: ${stats.referenceFailures}`,
+    `Completed chunks: ${stats.completedChunks}`,
+    `Queued chunks: ${stats.queuedChunks}`,
+    `Last batch: ${stats.lastBatchMs.toFixed(3)} ms`,
+    `Numerical freshness: ${stats.numericalFreshnessMs.toFixed(3)} ms`,
+    `Presentation history: ${stats.presentationHistoryMs.toFixed(3)} ms`,
+    `Sample exponent: ${stats.sampleExponent}`,
+    `Tile size: ${stats.tileSize}`,
     `Display presentation rate: ${displayRate()} Hz`,
     `Iteration target: ${targetIterations()}`,
     `Palette phase: ${palettePhase().toFixed(4)}`
