@@ -68,6 +68,19 @@ The final presentation candidate `c410bc7` was also tested from a user-selected,
 
 Fine-grained speckling and structured banding emerge around `10^7` and become severe by `10^8`. Because the artifact remains in a settled, fully converged frame while presentation coverage, reprojection admission and validation remain clean—and every affected tile is still using direct mode—the evidence identifies a direct numerical precision failure rather than a presentation/history failure. This is a locked regression scene for the later precision milestone. No perturbation, series, BLA, reference-orbit or recurrence change is included in Release 1.4.
 
+### Live zoom-out blocker
+
+Settled captures concealed a separate presentation failure. From the same `10^8.007`, 5,000-iteration endpoint, the browser captured the canvas immediately after each zoom-out submission and before the next numerical field settled, at every decade down to approximately `10^2`.
+
+- `10^8 -> 10^7`: the canvas became almost black with large rectangular retained islands before recovering at `10^7.131`;
+- `10^7 -> 10^6`: only a small square of the old view survived; the post-transition packet had 16 atlas instances, 5 converged tiles and 31 active tiles;
+- `10^5 -> 10^4`: the live frame showed a stale, block-edged plume while the UI reported `moving · calculating`, zero visible numerical tiles and zero converged tiles;
+- `10^3 -> 10^2`: a large stale vertical band and block-shaped edge fill remained visible before refinement.
+
+All captures retained 60 Hz presentation and zero WebGPU validation errors, so validation-clean submission is not a coverage guarantee. The root architectural defect is that the presenter retains only one full-screen history view. During zoom-out that source maps to a small rectangle inside the newly exposed viewport; the reprojection shader clears all source-UV misses to black, while the accepted atlas has too few retained coarser/outside tiles to cover the remainder. Subsequent 128x128 tile admission causes the visible block in-fill and jumps.
+
+This is a Release 1.4 presentation blocker. The milestone must remain draft until a bounded multi-scale/overscanned history or equivalent retained coarse-coverage layer keeps the full target viewport continuously covered during zoom-out, and an executable pre-settle coverage gate passes the recorded `10^8 -> 10^2` trace. Evidence is stored in `outputs/v14-evidence/live-zoom-out-5000-order-{7..2}.{png,json}` and `live-zoom-out-5000-summary.json`.
+
 The failing pre-fix atlas capture at approximately `10^2` is retained alongside the passing captures. It reproduced a hard rectangular cutoff. The same class of hole appeared in the legacy path, proving that the fault was in shared tile admission rather than history sampling or atlas composition.
 
 ## Failures found and fixed by the executable gates
