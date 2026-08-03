@@ -12,7 +12,7 @@ Release 1.4 integrates the presentation kernel with the existing accepted numeri
 - 25 WGSL template strings parsed by the source validator;
 - all 1.x foundation, persistent-field, local-reference, repair and 1.3 invariants passed;
 - 12 Phase 1 invariants and 15 original reprojection samples passed;
-- 22 production 1.4 invariants passed;
+- 27 production 1.4 invariants passed;
 - TypeScript and the production Vite build passed;
 - presentation-only deep-scale ratios passed at binary exponents -1022, -1074, -2048 and -4096;
 - worst simulated f32 shader-coordinate error: `0.0001831` source texel (limit `0.01`).
@@ -48,7 +48,7 @@ The executable `?testDeviceLoss=1` hook destroyed the active device. Renderer ep
 The browser harness accepts `?testIterations=1000`, which snaps the native control to a valid step before the first numerical request. This makes the prescribed trace repeatable without synthetic range-control timing.
 
 - anchor: a visually confirmed point on the main cardioid/bulb boundary at canvas CSS position `(300, 382)` in the recorded 756x927 viewport;
-- input: eleven continuous wheel-in steps at the same anchor, with no pan or cursor relocation;
+- input: eleven wheel-in steps with `scrollY=-420`, spaced 240 ms apart at the same anchor, with no pan or cursor relocation;
 - atlas-history capture at `10^2.676`: 1,000 iterations, 256 visible/converged tiles, 60 Hz, zero validation errors;
 - atlas-history capture at `10^3.114`: 1,000 iterations, 508 visible/converged tiles, 60 Hz, zero validation errors;
 - independent legacy replay beyond `10^4`: 1,000 iterations, 446 visible/converged tiles, 60 Hz, zero validation errors;
@@ -67,5 +67,8 @@ The failing pre-fix atlas capture at approximately `10^2` is retained alongside 
 7. Slot and lease identifiers were packed through f32, becoming inexact above `2^24`. They are now host-packed and shader-consumed as exact `u32` values.
 8. A candidate history anchor was promoted immediately after submission. Promotion now waits for queue completion and a clean validation error scope; the candidate cannot be reused while promotion is pending.
 9. Parent tiles were culled as soon as four complete children existed in cache, even when those children were not all admitted to the current draw packet. That created the reproduced rectangular holes during cross-level transitions. The presentation loop now retains the parent; ordinary draw ordering lets admitted children overlay it without risking uncovered pixels.
+10. Zero CSS extent originally suspended presentation but not numerical submissions. The resize/request path now suspends the scheduler, clears queued work and resumes only after a non-zero request.
+11. Display dimensions were independently clamped to the adapter limit, which could distort the mathematical aspect ratio. One common scale factor now constrains both axes.
+12. A resize could reconfigure and clear the canvas while authoritative-anchor promotion was pending. Drawing-buffer resize is now deferred until promotion completes, preserving the last presented frame and pending-resource lifetime.
 
 Visual evidence is retained in the release handoff under `outputs/v14-evidence/`.

@@ -190,6 +190,10 @@ export class AtlasHistoryPresenter {
     };
   }
 
+  get hasPendingPromotion(): boolean {
+    return this.promotionPending;
+  }
+
   present(
     camera: CameraSnapshot,
     aspect: number,

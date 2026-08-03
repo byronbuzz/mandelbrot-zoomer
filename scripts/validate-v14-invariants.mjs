@@ -22,14 +22,19 @@ const required = [
   ['resize retains accepted source owner', presenter, "this.anchor?.owner !== previous"],
   ['deep relative tile transform', renderer, 'fixedDifferenceOverDyadic'],
   ['legacy comparison fallback', renderer, "get('presenter') === 'legacy'"],
+  ['independent legacy allocation path', renderer, 'const acceptedAtlas = useLegacyPresenter ? null'],
   ['tile publication copy', renderer, 'this.acceptedAtlas.encodeCopy'],
   ['device-loss recreation hook', main, 'onDeviceLost'],
   ['executable device-loss test hook', main, '__ZOOMER_FORCE_DEVICE_LOSS__'],
   ['deterministic iteration test hook', main, "get('testIterations')"],
+  ['zero-size numerical suspension hook', main, 'renderer.setSuspended(suspended)'],
+  ['scheduler submission suspension', renderer, '!this.dead && !this.suspended'],
   ['rAF survival guard', main, 'finally {\n    requestAnimationFrame(tick)'],
   ['no absolute scale materialization', math, 'scaleRatio'],
   ['zero-size presentation suspension', renderer, 'cssWidth <= 0 || cssHeight <= 0'],
-  ['adapter texture-limit clamp', renderer, 'maxTextureDimension2D']
+  ['adapter texture-limit clamp', renderer, 'maxTextureDimension2D'],
+  ['aspect-preserving display clamp', renderer, 'limit / requestedWidth, limit / requestedHeight'],
+  ['resize defers during anchor promotion', renderer, 'this.atlasPresenter?.hasPendingPromotion']
 ];
 const failures = required.filter(([, source, needle]) => !source.includes(needle)).map(([label]) => `Missing 1.4 invariant: ${label}`);
 if (renderer.includes('if (this.hasCompleteChildren(tile)) continue;')) {

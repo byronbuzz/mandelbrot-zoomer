@@ -74,14 +74,19 @@ function clearSettleTimers(): void {
 }
 
 function requestField(nextInteraction: InteractionState): void {
+  const cssWidth = ui.canvas.clientWidth;
+  const cssHeight = ui.canvas.clientHeight;
+  const suspended = cssWidth <= 0 || cssHeight <= 0;
+  renderer.setSuspended(suspended);
+  if (suspended) return;
   interaction = nextInteraction;
   requestId++;
   lastRequestAt = performance.now();
   renderer.request({
     requestId,
     camera: camera.snapshot(),
-    cssWidth: Math.max(1, ui.canvas.clientWidth),
-    cssHeight: Math.max(1, ui.canvas.clientHeight),
+    cssWidth,
+    cssHeight,
     devicePixelRatio: renderDevicePixelRatio(),
     targetIterations: targetIterations(),
     palettePhase: palettePhase(),
@@ -362,14 +367,26 @@ attachRenderer(renderer);
 ui.status.textContent = `${renderer.adapterLabel} · ${APP_NAME} ${BUILD_LABEL}`;
 
 Object.assign(window, {
-  __ZOOMER_DIAGNOSTICS__: () => ({
-    build: BUILD_LABEL,
-    rendererEpoch,
-    recovering: recoveryPromise !== null,
-    presenter: renderer.presentationMode,
-    presentation: renderer.presentationDiagnostics,
-    field: renderer.stats
-  }),
+  __ZOOMER_DIAGNOSTICS__: () => {
+    const snapshot = camera.snapshot();
+    return {
+      build: BUILD_LABEL,
+      rendererEpoch,
+      recovering: recoveryPromise !== null,
+      presenter: renderer.presentationMode,
+      camera: {
+        centerXRaw: snapshot.centerX.raw.toString(),
+        centerXBits: snapshot.centerX.bits,
+        centerYRaw: snapshot.centerY.raw.toString(),
+        centerYBits: snapshot.centerY.bits,
+        scaleMantissa: snapshot.scale.mantissa,
+        scaleExponent: snapshot.scale.exponent,
+        log10Magnification: camera.log10Magnification()
+      },
+      presentation: renderer.presentationDiagnostics,
+      field: renderer.stats
+    };
+  },
   __ZOOMER_FORCE_DEVICE_LOSS__: () => renderer.forceDeviceLossForTest()
 });
 
