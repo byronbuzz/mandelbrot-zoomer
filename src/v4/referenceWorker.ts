@@ -391,18 +391,19 @@ function buildDoubleDoubleReference(request: ReferenceRequest, candidate: Refere
     const y = splitF32ExpansionDD(zy);
     storeOrbitPoint(orbit, index, layout.floatsPerPoint, layout.limbCount, x, y);
     length = index + 1;
+    const approximateX = zx[0] + zx[1];
+    const approximateY = zy[0] + zy[1];
+    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY)
+      || approximateX * approximateX + approximateY * approximateY > 256) {
+      escaped = true;
+      break;
+    }
     if (index === request.iterations) break;
     const zx2 = ddMul(zx, zx);
     const zy2 = ddMul(zy, zy);
     const zxy = ddMul(zx, zy);
     zx = ddAdd(ddSub(zx2, zy2), cx);
     zy = ddAdd(ddScale(zxy, 2), cy);
-    const approximateX = zx[0] + zx[1];
-    const approximateY = zy[0] + zy[1];
-    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY) || approximateX * approximateX + approximateY * approximateY > 256) {
-      escaped = true;
-      break;
-    }
   }
   const trimmed = orbit.slice(0, length * layout.floatsPerPoint) as Float32Array<ArrayBuffer>;
   return {
@@ -438,18 +439,19 @@ function buildTripleDoubleReference(request: ReferenceRequest, candidate: Refere
     const y = layout.limbCount > 4 ? splitF32ExpansionTD8(zy) : splitF32ExpansionTD(zy);
     storeOrbitPoint(orbit, index, layout.floatsPerPoint, layout.limbCount, x, y);
     length = index + 1;
+    const approximateX = zx[0] + zx[1] + zx[2];
+    const approximateY = zy[0] + zy[1] + zy[2];
+    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY)
+      || approximateX * approximateX + approximateY * approximateY > 256) {
+      escaped = true;
+      break;
+    }
     if (index === request.iterations) break;
     const zx2 = tdMul(zx, zx);
     const zy2 = tdMul(zy, zy);
     const zxy = tdMul(zx, zy);
     zx = tdAdd(tdSub(zx2, zy2), cx);
     zy = tdAdd(tdScale(zxy, 2), cy);
-    const approximateX = zx[0] + zx[1] + zx[2];
-    const approximateY = zy[0] + zy[1] + zy[2];
-    if (!Number.isFinite(approximateX) || !Number.isFinite(approximateY) || approximateX * approximateX + approximateY * approximateY > 256) {
-      escaped = true;
-      break;
-    }
   }
   const trimmed = orbit.slice(0, length * layout.floatsPerPoint) as Float32Array<ArrayBuffer>;
   return {
@@ -497,15 +499,15 @@ function buildExactFixedReference(request: ReferenceRequest, candidate: Referenc
     const y = splitFixedF32Expansion(zy, bits);
     storeOrbitPoint(orbit, index, layout.floatsPerPoint, layout.limbCount, x, y);
     length = index + 1;
+    if (zx * zx + zy * zy > escapeSquared) {
+      escaped = true;
+      break;
+    }
     if (index === request.iterations) break;
     const nextX = multiplyFixed(zx, zx, bits) - multiplyFixed(zy, zy, bits) + cx;
     const nextY = 2n * multiplyFixed(zx, zy, bits) + cy;
     zx = nextX;
     zy = nextY;
-    if (zx * zx + zy * zy > escapeSquared) {
-      escaped = true;
-      break;
-    }
   }
   const trimmed = orbit.slice(0, length * layout.floatsPerPoint) as Float32Array<ArrayBuffer>;
   return {

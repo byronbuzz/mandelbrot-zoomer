@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-mixed-mode-1e6-2026-08-03",
+  "description": "Exact user-reported 10^6.039 position showing mixed direct/perturbation corruption and stalled reference work.",
+  "capturedAt": "2026-08-03T16:00:49.564Z",
+  "build": "1.4-4dbe048",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "deepOrder": 6.039,
+  "coarseOrder": 4,
+  "camera": {
+    "centerX": {
+      "raw": "-1078120589056858039257304649347269066244422107136",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-247356361544437790975776470606066388202436952064",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.7188873584843792,
+      "exponent": -18
+    },
+    "log10Magnification": 6.039
+  },
+  "viewport": {
+    "cssWidth": 1518,
+    "cssHeight": 1016,
+    "devicePixelRatio": 1
+  }
+}

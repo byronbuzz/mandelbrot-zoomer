@@ -178,8 +178,14 @@ try {
   if ((field?.referenceWorkingBits ?? 0) < 224) failures.push(`Expected at least 224 working bits, got ${field?.referenceWorkingBits}.`);
   if (field?.precisionLimitedTiles !== 0) failures.push('Overlap canary was incorrectly precision-limited.');
   if (presentation?.validationErrors !== 0) failures.push('WebGPU validation errors were reported.');
-  const firstAdmittedIndex = settledTrace.findIndex(sample => (sample.field?.finestTiles ?? 0) > 0);
-  if (firstAdmittedIndex >= 0 && settledTrace.slice(firstAdmittedIndex).some(
+  const correlatedSettledTrace = settledTrace.filter(sample =>
+    sample.requestId === settledTarget.requestId
+    && sample.field?.requestId === settledTarget.requestId
+  );
+  const firstAdmittedIndex = correlatedSettledTrace.findIndex(
+    sample => (sample.field?.finestTiles ?? 0) > 0
+  );
+  if (firstAdmittedIndex >= 0 && correlatedSettledTrace.slice(firstAdmittedIndex).some(
     sample => sample.field?.finestTiles === 0
   )) {
     failures.push('Finest spatial level disappeared during reference activation.');
