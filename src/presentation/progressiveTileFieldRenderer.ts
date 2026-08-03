@@ -1343,19 +1343,26 @@ export class TileFieldRenderer {
       if (this.latestRequest) return false;
       const batchDescriptors = missing.slice(start, start + RESOURCE_CREATION_BATCH_TILES);
       const created: FieldTile[] = [];
+      let atlasCapacityExhausted = false;
       this.device.pushErrorScope('validation');
       for (const descriptor of batchDescriptors) {
         if (this.tileMap.has(descriptor.key)) continue;
         const tile = this.createTile(descriptor);
+        if (!tile) {
+          atlasCapacityExhausted = true;
+          break;
+        }
         this.tileMap.set(descriptor.key, tile);
         created.push(tile);
       }
       const validationError = await this.device.popErrorScope();
-      if (validationError) {
+      if (validationError || atlasCapacityExhausted) {
         for (const tile of created) {
           this.tileMap.delete(tile.descriptor.key);
           this.destroyTile(tile);
         }
+        if (atlasCapacityExhausted) return false;
+        if (!validationError) return false;
         throw new Error(`Tile resource layout validation failed: ${validationError.message}`);
       }
       if (created.length > 0) {
@@ -1381,11 +1388,12 @@ export class TileFieldRenderer {
     return !this.latestRequest;
   }
 
-  private createTile(descriptor: PersistentTileDescriptor): FieldTile {
+  private createTile(descriptor: PersistentTileDescriptor): FieldTile | null {
     if (this.acceptedAtlas?.availableSlots === 0 && !this.evictOneColdTile()) {
-      throw new Error('Accepted tile atlas exhausted with no retireable tile');
+      return null;
     }
     const atlasSlot = this.acceptedAtlas?.allocate() ?? null;
+    if (this.acceptedAtlas && !atlasSlot) return null;
     const stateBuffer = this.device.createBuffer({
       size: TILE_PIXEL_COUNT * STATE_BYTES_PER_PIXEL,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST

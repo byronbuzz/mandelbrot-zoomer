@@ -9,6 +9,8 @@ const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 const outputDirectory = resolve(root, process.env.PRECISION_OUTPUT ?? 'test-results/precision-overlap-canary');
 mkdirSync(outputDirectory, { recursive: true });
 const port = Number(process.env.PRECISION_PORT ?? 4179);
+const expectReferenceDrain = process.env.PRECISION_EXPECT_DRAIN !== '0';
+const stressMs = Math.max(0, Number(process.env.PRECISION_STRESS_MS ?? 0));
 const url = `http://127.0.0.1:${port}/mandelbrot-zoomer/?testIterations=${fixture.iterationTarget}&continuityTest=1`;
 const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
 const server = spawn(process.execPath, [
@@ -56,7 +58,13 @@ try {
     headless: true,
     args: ['--enable-unsafe-webgpu', '--disable-background-timer-throttling']
   });
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  const page = await browser.newPage({
+    viewport: {
+      width: fixture.viewport?.cssWidth ?? 1200,
+      height: fixture.viewport?.cssHeight ?? 800
+    },
+    deviceScaleFactor: fixture.viewport?.devicePixelRatio ?? 1
+  });
   const errors = [];
   page.on('console', message => {
     if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
@@ -109,9 +117,13 @@ try {
     if (diagnostics.requestId === settledTarget.requestId
       && diagnostics.field.requestId === settledTarget.requestId
       && diagnostics.field.perturbationTiles > 0
-      && diagnostics.field.pendingReferences === 0
+      && (!expectReferenceDrain || diagnostics.field.pendingReferences === 0)
       && diagnostics.field.submittedChunks > 0) break;
     await page.waitForTimeout(100);
+  }
+  if (stressMs > 0) {
+    await page.waitForTimeout(stressMs);
+    diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
   }
   await page.screenshot({ path: resolve(outputDirectory, 'precision-overlap-settled.png'), type: 'png' });
   const report = {
@@ -141,7 +153,9 @@ try {
     || field?.requestId !== settledTarget.requestId) {
     failures.push(`Settled diagnostics belonged to request ${diagnostics?.requestId}/${field?.requestId}, expected ${settledTarget.requestId}.`);
   }
-  if (field?.pendingReferences !== 0) failures.push('Reference demand did not drain after settling.');
+  if (expectReferenceDrain && field?.pendingReferences !== 0) {
+    failures.push('Reference demand did not drain after settling.');
+  }
   if (field?.referenceFailures !== 0) failures.push(`Reference failures: ${field.referenceFailures}.`);
   if (field?.referenceTransportBits !== 96) failures.push(`Expected declared 96-bit transport, got ${field?.referenceTransportBits}.`);
   if ((field?.referenceWorkingBits ?? 0) < 224) failures.push(`Expected at least 224 working bits, got ${field?.referenceWorkingBits}.`);

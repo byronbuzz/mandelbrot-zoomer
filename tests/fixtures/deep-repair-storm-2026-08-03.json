@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "deep-repair-storm-2026-08-03",
+  "description": "Exact user-reported 10^11.457 position that triggered prolonged repair churn and accepted-atlas exhaustion.",
+  "capturedAt": "2026-08-03T14:05:06.589Z",
+  "build": "1.4-dev-after-0c15d93",
+  "gpu": "amd",
+  "iterationTarget": 11100,
+  "palettePhase": 0.08,
+  "deepOrder": 11.457249,
+  "coarseOrder": 9.026053,
+  "camera": {
+    "centerX": {
+      "raw": "-1074788477571874238124292423478415414129187618816",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-225037893802927241757723552826372553133585858560",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.7193699826584204,
+      "exponent": -36
+    },
+    "log10Magnification": 11.457249
+  },
+  "viewport": {
+    "cssWidth": 1600,
+    "cssHeight": 1000,
+    "devicePixelRatio": 1.25,
+    "canvasWidth": 2000,
+    "canvasHeight": 1250
+  },
+  "traceAnchorCss": {
+    "x": 650,
+    "y": 500
+  }
+}
