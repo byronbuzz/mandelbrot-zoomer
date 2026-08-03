@@ -5,7 +5,22 @@ import { chromium } from 'playwright-core';
 
 const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(.:)/, '$1'));
 const fixturePath = resolve(root, process.env.CONTINUITY_FIXTURE ?? 'tests/fixtures/continuity-boundary.json');
-const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+const fixtureSource = JSON.parse(readFileSync(fixturePath, 'utf8'));
+const fixture = fixtureSource.camera?.centerX
+  ? {
+    ...fixtureSource,
+    deepOrder: fixtureSource.deepOrder ?? fixtureSource.camera.log10Magnification,
+    coarseOrder: fixtureSource.coarseOrder ?? 2,
+    camera: {
+      centerXRaw: fixtureSource.camera.centerX.raw,
+      centerXBits: fixtureSource.camera.centerX.bits,
+      centerYRaw: fixtureSource.camera.centerY.raw,
+      centerYBits: fixtureSource.camera.centerY.bits,
+      scaleMantissa: fixtureSource.camera.scale.mantissa,
+      scaleExponent: fixtureSource.camera.scale.exponent
+    }
+  }
+  : fixtureSource;
 if (fixture.provisional && process.env.ALLOW_PROVISIONAL_FIXTURE !== '1') {
   throw new Error('The continuity fixture is provisional. Capture the user-selected complex boundary fixture before the release gate.');
 }
@@ -86,6 +101,17 @@ function assertNoRegression(frame, label, requestId) {
   if (failures.length) throw new Error(`${label}: ${failures.join('; ')}`);
 }
 
+async function nextFrameForRequest(page, afterFrame, requestId) {
+  return page.evaluate(async ({ afterFrame, requestId }) => {
+    let after = afterFrame;
+    for (;;) {
+      const frame = await window.__ZOOMER_TEST__.nextPresentedFrame(after);
+      if (frame.requestId === requestId) return frame;
+      after = frame.frameId;
+    }
+  }, { afterFrame, requestId });
+}
+
 let browser;
 const records = [];
 try {
@@ -134,9 +160,7 @@ try {
     camera => window.__ZOOMER_TEST__.setExactCamera(camera, 'moving'),
     cameraAtOrder(fixture.coarseOrder)
   );
-  const coldFrame = await page.evaluate(
-    after => window.__ZOOMER_TEST__.nextPresentedFrame(after), coldBefore
-  );
+  const coldFrame = await nextFrameForRequest(page, coldBefore, coldTarget.requestId);
   assertNoRegression(coldFrame, 'cold deep-to-coarse transformed', coldTarget.requestId);
   await page.screenshot({
     path: resolve(outputDirectory, 'cold-deep-to-coarse-transformed.png'), type: 'png'
@@ -179,9 +203,7 @@ try {
         camera => window.__ZOOMER_TEST__.setExactCamera(camera, 'moving'),
         cameraAtOrder(order)
       );
-      const transformed = await page.evaluate(
-        after => window.__ZOOMER_TEST__.nextPresentedFrame(after), before
-      );
+      const transformed = await nextFrameForRequest(page, before, target.requestId);
       assertFrame(transformed, `${direction} order ${order} transformed`, target.requestId);
       await page.screenshot({
         path: resolve(outputDirectory, `${direction}-order-${order}-transformed.png`),
@@ -190,9 +212,7 @@ try {
       const batch = await page.evaluate(() => window.__ZOOMER_TEST__.releaseBatches(1));
       let afterBatch = transformed;
       for (let attempt = 0; attempt < 120 && afterBatch.completedBatchRevision < batch.batchRevision; attempt++) {
-        afterBatch = await page.evaluate(
-          after => window.__ZOOMER_TEST__.nextPresentedFrame(after), afterBatch.frameId
-        );
+        afterBatch = await nextFrameForRequest(page, afterBatch.frameId, target.requestId);
       }
       assertFrame(afterBatch, `${direction} order ${order} first batch`, target.requestId, batch.batchRevision);
       records.push({ direction, order, target, transformed, batch, afterBatch });

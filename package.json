@@ -23,8 +23,9 @@
     "validate:numerical-browser-build": "tsc -p tests/tsconfig.numerical.json --pretty false",
     "test:continuity-browser": "node scripts/run-continuity-browser-gate.mjs",
     "test:numerical-browser": "node scripts/run-numerical-browser-gate.mjs",
+    "test:performance-browser": "node scripts/run-performance-browser-gate.mjs",
     "validate:v6": "node scripts/validate-v6-invariants.mjs",
-    "build": "node scripts/validate-release-invariants.mjs && node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && node scripts/validate-v14-invariants.mjs && node scripts/validate-provenance-oracle.mjs && node scripts/validate-numerical-contract.mjs && tsc -p tests/tsconfig.numerical.json --pretty false && tsc -b && vite build --configLoader runner",
+    "build": "node scripts/validate-release-invariants.mjs && node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && node scripts/validate-v14-invariants.mjs && node scripts/validate-performance-pipeline.mjs && node scripts/validate-provenance-oracle.mjs && node scripts/validate-numerical-contract.mjs && tsc -p tests/tsconfig.numerical.json --pretty false && tsc -b && vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "typecheck": "tsc -b --pretty false"
   },
