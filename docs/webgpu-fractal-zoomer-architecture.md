@@ -28,6 +28,8 @@ The renderer is a persistent numerical tile field viewed through a continuously 
 12. Moving, settling and settled states advance the same cached tile population.
 13. A stopped view must converge to an authoritative lattice whose sample pitch is no larger than one display pixel.
 14. Provisional coverage may improve navigation but must never be counted as numerical convergence.
+15. Refinement is presentation-monotonic: unresolved work, precision escalation and repair may replace accepted display samples only with newer accepted samples, never with holes.
+16. Spatial levels are admitted lazily: a finer lattice is created and scheduled only after the current coarser level drains and no newer camera request supersedes it.
 
 ## 1.0.0 — greenfield presentation prototype
 
@@ -87,6 +89,24 @@ The 1.2 browser traces exposed that the scheduler—not only the arithmetic—wa
 - WebGPU resource creation is guarded by validation scopes, and host/shader uniform layouts are CI invariants.
 
 Per-batch diagnostic readback remains temporarily present in 1.3.0. It is amortised over larger adaptive batches; GPU-resident active compaction and indirect continuation remain a measured optimisation rather than a prerequisite for correctness.
+
+## 1.3.1 — monotonic refinement and lazy admission
+
+The first production trace of 1.3.0 exposed three implementation mismatches inside the otherwise correct stage architecture:
+
+- every double-float tile was escalated immediately to perturbation, even while adjacent sample coordinates remained distinguishable in the double-float representation;
+- all three spatial levels were allocated and queued at once instead of being admitted progressively;
+- numerical reset and unresolved shader paths erased accepted quality data, so precision escalation and repair created rectangular presentation holes.
+
+1.3.1 corrects those mismatches without adding a new precision threshold or viewport fallback:
+
+- double-float direct remains a complete numerical tier and escalates only when exact adjacent-coordinate splitting collapses or measured tile health fails;
+- coarse, intermediate and authoritative levels are admitted one at a time, with newer camera requests allowed to supersede finer admission;
+- resource creation and clearing are batched and yield to presentation between batches;
+- recurrence resets do not clear result, colour or quality resources;
+- active, failed and unaccepted-cap paths preserve prior accepted presentation until a newer accepted result is available;
+- coverage accounting is monotonic while authoritative convergence remains independently tracked;
+- fully covered child tiles suppress redundant parent draws, reducing per-frame command and uniform traffic.
 
 ## 1.4.0 — deep acceleration and verification
 
