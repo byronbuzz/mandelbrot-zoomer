@@ -11,8 +11,10 @@ import { tileSpanExponent } from '../tiles/worldTilePlanner';
 const ORBIT_BYTES_PER_POINT = 8 * Float32Array.BYTES_PER_ELEMENT;
 const MAX_REFERENCE_ITERATIONS = 65_536;
 const REQUEST_TIMEOUT_MS = 30_000;
+const REFERENCE_GROUP_TILE_SPAN = 2n;
 
-const CANDIDATE_GRID = [-0.375, -0.1875, 0, 0.1875, 0.375] as const;
+const INITIAL_CANDIDATE_GRID = [-0.25, 0, 0.25] as const;
+const REPAIR_CANDIDATE_GRID = [-0.4, -0.2, 0, 0.2, 0.4] as const;
 const REPAIR_PHASES = [
   [0, 0],
   [0.0625, 0.0625],
@@ -38,6 +40,7 @@ export type TileGpuReference = Readonly<{
 type QueuedRequest = {
   id: number;
   cacheKey: string;
+  groupKey: PersistentTileKey;
   tile: PersistentTileDescriptor;
   iterations: number;
   repairPass: number;
@@ -45,6 +48,30 @@ type QueuedRequest = {
   resolve: (reference: TileGpuReference) => void;
   reject: (error: Error) => void;
 };
+
+function floorDiv(value: bigint, divisor: bigint): bigint {
+  const quotient = value / divisor;
+  const remainder = value % divisor;
+  return remainder < 0n ? quotient - 1n : quotient;
+}
+
+function groupKeyForParts(
+  sampleExponent: number,
+  tileX: bigint,
+  tileY: bigint
+): PersistentTileKey {
+  return `${sampleExponent}:${floorDiv(tileX, REFERENCE_GROUP_TILE_SPAN).toString()}:${floorDiv(tileY, REFERENCE_GROUP_TILE_SPAN).toString()}`;
+}
+
+function groupKeyForTile(tile: PersistentTileDescriptor): PersistentTileKey {
+  return groupKeyForParts(tile.sampleExponent, tile.tileX, tile.tileY);
+}
+
+function groupKeyFromTileKey(tileKey: PersistentTileKey): PersistentTileKey {
+  const [sampleExponentValue, tileXValue, tileYValue] = tileKey.split(':');
+  const sampleExponent = Number(sampleExponentValue);
+  return groupKeyForParts(sampleExponent, BigInt(tileXValue), BigInt(tileYValue));
+}
 
 export class TileReferenceAtlas {
   private worker: Worker;
@@ -66,7 +93,8 @@ export class TileReferenceAtlas {
     repairPass = 0
   ): Promise<TileGpuReference> {
     const boundedIterations = Math.max(1, Math.min(MAX_REFERENCE_ITERATIONS, Math.floor(iterations)));
-    const cacheKey = `${tile.key}:${boundedIterations}:${repairPass}`;
+    const groupKey = groupKeyForTile(tile);
+    const cacheKey = `${groupKey}:${boundedIterations}:${repairPass}`;
     const cached = this.cache.get(cacheKey);
     if (cached) return Promise.resolve(cached);
     const existing = this.pendingByKey.get(cacheKey);
@@ -76,6 +104,7 @@ export class TileReferenceAtlas {
       this.queue.push({
         id: ++this.nextId,
         cacheKey,
+        groupKey,
         tile,
         iterations: boundedIterations,
         repairPass,
@@ -87,7 +116,10 @@ export class TileReferenceAtlas {
       this.pump();
     });
     this.pendingByKey.set(cacheKey, promise);
-    void promise.finally(() => this.pendingByKey.delete(cacheKey));
+    void promise.then(
+      () => this.pendingByKey.delete(cacheKey),
+      () => this.pendingByKey.delete(cacheKey)
+    );
     return promise;
   }
 
@@ -95,9 +127,10 @@ export class TileReferenceAtlas {
     tileKey: PersistentTileKey,
     iterations: number
   ): TileGpuReference | null {
+    const groupKey = groupKeyFromTileKey(tileKey);
     let best: TileGpuReference | null = null;
     for (const reference of this.cache.values()) {
-      if (reference.tileKey !== tileKey) continue;
+      if (reference.tileKey !== groupKey) continue;
       if (reference.length < iterations + 1 || reference.escaped) continue;
       if (!best || reference.requestedIterations < best.requestedIterations) best = reference;
     }
@@ -136,7 +169,7 @@ export class TileReferenceAtlas {
       centerX: serializeFixed(request.tile.centerX),
       centerY: serializeFixed(request.tile.centerY),
       iterations: request.iterations,
-      probeIterations: Math.min(request.iterations, 4096),
+      probeIterations: Math.min(request.iterations, request.repairPass === 0 ? 1024 : 4096),
       candidates: this.candidates(request.tile, request.repairPass)
     };
     this.worker.postMessage(workerRequest);
@@ -148,10 +181,11 @@ export class TileReferenceAtlas {
   ): readonly ReferenceCandidate[] {
     const spanExponent = tileSpanExponent(tile.sampleExponent);
     const phase = REPAIR_PHASES[repairPass % REPAIR_PHASES.length] ?? REPAIR_PHASES[0];
+    const grid = repairPass === 0 ? INITIAL_CANDIDATE_GRID : REPAIR_CANDIDATE_GRID;
     const result: ReferenceCandidate[] = [];
     const seen = new Set<string>();
-    for (const y of CANDIDATE_GRID) {
-      for (const x of CANDIDATE_GRID) {
+    for (const y of grid) {
+      for (const x of grid) {
         const centerX = fixedAddScaled(tile.centerX, x + phase[0], spanExponent);
         const centerY = fixedAddScaled(tile.centerY, y + phase[1], spanExponent);
         const serializedX = serializeFixed(centerX);
@@ -169,6 +203,8 @@ export class TileReferenceAtlas {
     const worker = new Worker(new URL('../v4/referenceWorker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', event => this.onMessage(event.data as ReferenceResponse));
     worker.addEventListener('error', event => {
+      if (this.timeout) clearTimeout(this.timeout);
+      this.timeout = null;
       const active = this.active;
       if (active) active.reject(new Error(event.message || 'Reference worker failed'));
       this.active = null;
@@ -198,7 +234,7 @@ export class TileReferenceAtlas {
       }
       if (response.escaped || response.length < active.iterations + 1) {
         throw new Error(
-          `No full-length local reference survived ${active.iterations} iterations for tile ${active.tile.key}`
+          `No full-length local reference survived ${active.iterations} iterations for group ${active.groupKey}`
         );
       }
       const buffer = this.device.createBuffer({
@@ -208,7 +244,7 @@ export class TileReferenceAtlas {
       this.device.queue.writeBuffer(buffer, 0, response.orbit);
       const reference: TileGpuReference = {
         cacheKey: active.cacheKey,
-        tileKey: active.tile.key,
+        tileKey: active.groupKey,
         requestedIterations: active.iterations,
         repairPass: active.repairPass,
         centerX: deserializeFixed(response.referenceCenterX),
