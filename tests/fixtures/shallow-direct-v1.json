@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 1,
+  "formula": "mandelbrot-quadratic",
+  "initialState": [0, 0],
+  "bailoutRadiusSquared": 256,
+  "escapeComparison": ">",
+  "iterationConvention": "completed recurrence updates; radius checked before update; escape at target wins over cap",
+  "strictCases": [
+    {
+      "id": "cardioid-origin",
+      "cx": 0,
+      "cy": 0,
+      "targetIterations": 64,
+      "expectedStatus": 2,
+      "expectedIteration": 0
+    },
+    {
+      "id": "period-two-centre",
+      "cx": -1,
+      "cy": 0,
+      "targetIterations": 64,
+      "expectedStatus": 2,
+      "expectedIteration": 0
+    },
+    {
+      "id": "inclusive-cardioid-cusp",
+      "cx": 0.25,
+      "cy": 0,
+      "targetIterations": 64,
+      "expectedStatus": 2,
+      "expectedIteration": 0
+    },
+    {
+      "id": "inclusive-shared-boundary",
+      "cx": -0.75,
+      "cy": 0,
+      "targetIterations": 64,
+      "expectedStatus": 2,
+      "expectedIteration": 0
+    },
+    {
+      "id": "period-three-nonanalytic-cap",
+      "cx": -0.122561166876653,
+      "cy": 0.744861766619744,
+      "targetIterations": 128,
+      "expectedStatus": 4,
+      "expectedIteration": 128
+    },
+    {
+      "id": "target-edge-cap",
+      "cx": 2,
+      "cy": 0,
+      "targetIterations": 2,
+      "expectedStatus": 4,
+      "expectedIteration": 2
+    },
+    {
+      "id": "target-edge-escape",
+      "cx": 2,
+      "cy": 0,
+      "targetIterations": 3,
+      "expectedStatus": 1,
+      "expectedIteration": 3
+    },
+    {
+      "id": "short-escape",
+      "cx": 1,
+      "cy": 0,
+      "targetIterations": 64,
+      "expectedStatus": 1,
+      "expectedIteration": 4
+    },
+    {
+      "id": "strict-bailout-equality-cap",
+      "cx": 16,
+      "cy": 0,
+      "targetIterations": 1,
+      "expectedStatus": 4,
+      "expectedIteration": 1
+    },
+    {
+      "id": "strict-bailout-equality-then-escape",
+      "cx": 16,
+      "cy": 0,
+      "targetIterations": 2,
+      "expectedStatus": 1,
+      "expectedIteration": 2
+    },
+    {
+      "id": "minus-two-boundary-cap",
+      "cx": -2,
+      "cy": 0,
+      "targetIterations": 128,
+      "expectedStatus": 4,
+      "expectedIteration": 128
+    },
+    {
+      "id": "left-exterior",
+      "cx": -2.125,
+      "cy": 0,
+      "targetIterations": 128,
+      "expectedStatus": 1,
+      "expectedIteration": 5
+    },
+    {
+      "id": "conjugate-positive",
+      "cx": -0.75,
+      "cy": 0.1,
+      "targetIterations": 256,
+      "expectedStatus": 1,
+      "expectedIteration": 35,
+      "pair": "conjugate-negative"
+    },
+    {
+      "id": "conjugate-negative",
+      "cx": -0.75,
+      "cy": -0.1,
+      "targetIterations": 256,
+      "expectedStatus": 1,
+      "expectedIteration": 35,
+      "pair": "conjugate-positive"
+    }
+  ],
+  "sensitivityCases": [
+    {
+      "id": "cusp-f32-inside",
+      "cx": 0.2499999850988388,
+      "cy": 0,
+      "targetIterations": 256,
+      "purpose": "record classification around the inclusive cardioid cusp without imposing f64 parity"
+    },
+    {
+      "id": "cusp-f32-outside",
+      "cx": 0.2500000298023224,
+      "cy": 0,
+      "targetIterations": 256,
+      "purpose": "record classification around the inclusive cardioid cusp without imposing f64 parity"
+    },
+    {
+      "id": "signed-zero-positive",
+      "cx": -0.75,
+      "cy": 0,
+      "targetIterations": 64,
+      "purpose": "signed-zero diagnostic"
+    },
+    {
+      "id": "signed-zero-negative",
+      "cx": -0.75,
+      "cy": -0.0,
+      "targetIterations": 64,
+      "purpose": "signed-zero diagnostic"
+    }
+  ],
+  "benchmark": {
+    "id": "boundary-throughput-128",
+    "centerX": -0.743643887037151,
+    "centerY": 0.13182590420533,
+    "sampleExponent": -14,
+    "tileSize": 128,
+    "targetIterations": 1000,
+    "chunkIterations": 64,
+    "warmupRuns": 2,
+    "measuredRuns": 7,
+    "metric": "queue-completion wall time; telemetry only, not a correctness threshold"
+  }
+}
