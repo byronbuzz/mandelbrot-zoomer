@@ -56,6 +56,18 @@ The browser harness accepts `?testIterations=1000`, which snaps and locks the na
 
 The raw candidate record includes every observed zoom depth, exact fixed-point camera centre, binary scale, DPR, viewport/canvas sizes, presenter counters and the PNG filename in `outputs/v14-evidence/stress-boundary-stable-1000-depth3.json`.
 
+### User-selected deep-boundary trace at 5,000 iterations
+
+The final presentation candidate `c410bc7` was also tested from a user-selected, densely filamented boundary endpoint rather than an automatically chosen coarse-view coordinate.
+
+- baseline: `10^5.818`, exactly 5,000 requested iterations, 512 visible/converged tiles, 60 Hz and zero validation errors;
+- fixed continuation anchor: CSS `(300, 460)` in the 756x927 viewport at DPR 1.375;
+- stable `10^7.131` capture: 334 visible/converged tiles, complete canvas coverage, 60 Hz, `0.000035` worst admitted source-texel reprojection error and zero validation errors;
+- stable `10^8.007` capture: 379 visible/converged tiles, complete canvas coverage, 60 Hz, the same `0.000035` reprojection error and zero browser warnings, browser errors or WebGPU validation errors;
+- numerical state at `10^8.007`: 379 direct tiles, zero perturbation tiles, zero references and zero reference failures.
+
+Fine-grained speckling and structured banding emerge around `10^7` and become severe by `10^8`. Because the artifact remains in a settled, fully converged frame while presentation coverage, reprojection admission and validation remain clean—and every affected tile is still using direct mode—the evidence identifies a direct numerical precision failure rather than a presentation/history failure. This is a locked regression scene for the later precision milestone. No perturbation, series, BLA, reference-orbit or recurrence change is included in Release 1.4.
+
 The failing pre-fix atlas capture at approximately `10^2` is retained alongside the passing captures. It reproduced a hard rectangular cutoff. The same class of hole appeared in the legacy path, proving that the fault was in shared tile admission rather than history sampling or atlas composition.
 
 ## Failures found and fixed by the executable gates
