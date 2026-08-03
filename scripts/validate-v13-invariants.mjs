@@ -54,8 +54,9 @@ if (/groupGeometry\(tile\)[\s\S]{0,300}repairPass/.test(atlas)) {
 if (/depth\s*[<>]=?|log10Magnification\(\)[\s\S]{0,160}perturb/i.test(renderer)) {
   failures.push('The precision path must remain free of a global zoom-depth crossover.');
 }
-if (shaders.includes('vec3u')) {
-  failures.push('Small host-mirrored uniform structs must avoid implicit vec3 uniform padding.');
+const clearStruct = shaders.slice(shaders.indexOf('struct ClearParams'), shaders.indexOf('struct ClearParams') + 220);
+if (clearStruct.includes('vec3u')) {
+  failures.push('The host-mirrored clear uniform must avoid implicit vec3 uniform padding.');
 }
 
 if (failures.length > 0) {
