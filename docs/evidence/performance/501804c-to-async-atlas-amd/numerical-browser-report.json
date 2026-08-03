@@ -928,7 +928,869 @@
       "schedules": [
         {
           "id": "monolithic",
-         …4864 tokens truncated…": 2.799999952316284,
+          "chunks": [
+            2
+          ],
+          "outputSha256": "75f40980863f038ea99172f82347d433fecba199802fa3f03cbb824af294f990",
+          "normalized": {
+            "status": 4,
+            "iteration": 2,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 2.700000047683716,
+          "readbackWallMs": 2.6999998092651367
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1
+          ],
+          "outputSha256": "75f40980863f038ea99172f82347d433fecba199802fa3f03cbb824af294f990",
+          "normalized": {
+            "status": 4,
+            "iteration": 2,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 2.6999998092651367,
+          "readbackWallMs": 3
+        }
+      ]
+    },
+    {
+      "id": "target-edge-escape",
+      "oracle": {
+        "status": 1,
+        "iteration": 3,
+        "smooth": 1.6082522070100267,
+        "previousRadiusSquared": 36,
+        "radiusSquared": 1444
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            3
+          ],
+          "outputSha256": "d8acd0d22482cab8c53fb2d195e610223f5c3f404b5fc8abe7ae4b4dc16b1c42",
+          "normalized": {
+            "status": 1,
+            "iteration": 3,
+            "smooth": 1.6082522869110107
+          },
+          "smoothAbsoluteError": 7.990098405130652e-8,
+          "queueCompletionWallMs": 2.6999998092651367,
+          "readbackWallMs": 2.4000000953674316
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1,
+            1
+          ],
+          "outputSha256": "d8acd0d22482cab8c53fb2d195e610223f5c3f404b5fc8abe7ae4b4dc16b1c42",
+          "normalized": {
+            "status": 1,
+            "iteration": 3,
+            "smooth": 1.6082522869110107
+          },
+          "smoothAbsoluteError": 7.990098405130652e-8,
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 3
+        },
+        {
+          "id": "fibonacci",
+          "chunks": [
+            1,
+            2
+          ],
+          "outputSha256": "d8acd0d22482cab8c53fb2d195e610223f5c3f404b5fc8abe7ae4b4dc16b1c42",
+          "normalized": {
+            "status": 1,
+            "iteration": 3,
+            "smooth": 1.6082522869110107
+          },
+          "smoothAbsoluteError": 7.990098405130652e-8,
+          "queueCompletionWallMs": 3.5,
+          "readbackWallMs": 3.0999999046325684
+        }
+      ]
+    },
+    {
+      "id": "short-escape",
+      "oracle": {
+        "status": 1,
+        "iteration": 4,
+        "smooth": 2.7672042752292847,
+        "previousRadiusSquared": 25,
+        "radiusSquared": 676
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            64
+          ],
+          "outputSha256": "c2e2e3847d8d63a88605614dd9b1cafc9a287127302efa234d4f8edc52ee0f9b",
+          "normalized": {
+            "status": 1,
+            "iteration": 4,
+            "smooth": 2.767204523086548
+          },
+          "smoothAbsoluteError": 2.478572631581244e-7,
+          "queueCompletionWallMs": 2.6999998092651367,
+          "readbackWallMs": 2.5
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "outputSha256": "c2e2e3847d8d63a88605614dd9b1cafc9a287127302efa234d4f8edc52ee0f9b",
+          "normalized": {
+            "status": 1,
+            "iteration": 4,
+            "smooth": 2.767204523086548
+          },
+          "smoothAbsoluteError": 2.478572631581244e-7,
+          "queueCompletionWallMs": 3.5999999046325684,
+          "readbackWallMs": 3
+        },
+        {
+          "id": "prime-7",
+          "chunks": [
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            1
+          ],
+          "outputSha256": "c2e2e3847d8d63a88605614dd9b1cafc9a287127302efa234d4f8edc52ee0f9b",
+          "normalized": {
+            "status": 1,
+            "iteration": 4,
+            "smooth": 2.767204523086548
+          },
+          "smoothAbsoluteError": 2.478572631581244e-7,
+          "queueCompletionWallMs": 3,
+          "readbackWallMs": 3.1000001430511475
+        },
+        {
+          "id": "fibonacci",
+          "chunks": [
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            11
+          ],
+          "outputSha256": "c2e2e3847d8d63a88605614dd9b1cafc9a287127302efa234d4f8edc52ee0f9b",
+          "normalized": {
+            "status": 1,
+            "iteration": 4,
+            "smooth": 2.767204523086548
+          },
+          "smoothAbsoluteError": 2.478572631581244e-7,
+          "queueCompletionWallMs": 2.9000000953674316,
+          "readbackWallMs": 3.5
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": [
+            3,
+            1,
+            60
+          ],
+          "outputSha256": "c2e2e3847d8d63a88605614dd9b1cafc9a287127302efa234d4f8edc52ee0f9b",
+          "normalized": {
+            "status": 1,
+            "iteration": 4,
+            "smooth": 2.767204523086548
+          },
+          "smoothAbsoluteError": 2.478572631581244e-7,
+          "queueCompletionWallMs": 2.700000047683716,
+          "readbackWallMs": 3.5999999046325684
+        }
+      ]
+    },
+    {
+      "id": "strict-bailout-equality-cap",
+      "oracle": {
+        "status": 4,
+        "iteration": 1,
+        "smooth": null,
+        "previousRadiusSquared": 0,
+        "radiusSquared": 256
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            1
+          ],
+          "outputSha256": "f78c0f546d7c645a9efe774da49fa1437ed733e73efd7a44e601df63ec9e8d69",
+          "normalized": {
+            "status": 4,
+            "iteration": 1,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 3.1000001430511475,
+          "readbackWallMs": 3.1999998092651367
+        }
+      ]
+    },
+    {
+      "id": "strict-bailout-equality-then-escape",
+      "oracle": {
+        "status": 1,
+        "iteration": 2,
+        "smooth": -0.015687178497167942,
+        "previousRadiusSquared": 256,
+        "radiusSquared": 73984
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            2
+          ],
+          "outputSha256": "bc184d4e47f4c53d74ee793884ff62803942ae3ce450f6de1157f9848b50b1b3",
+          "normalized": {
+            "status": 1,
+            "iteration": 2,
+            "smooth": -0.015686988830566406
+          },
+          "smoothAbsoluteError": 1.8966660153552084e-7,
+          "queueCompletionWallMs": 2.6999998092651367,
+          "readbackWallMs": 0.3000001907348633
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1
+          ],
+          "outputSha256": "bc184d4e47f4c53d74ee793884ff62803942ae3ce450f6de1157f9848b50b1b3",
+          "normalized": {
+            "status": 1,
+            "iteration": 2,
+            "smooth": -0.015686988830566406
+          },
+          "smoothAbsoluteError": 1.8966660153552084e-7,
+          "queueCompletionWallMs": 3.5999999046325684,
+          "readbackWallMs": 3
+        }
+      ]
+    },
+    {
+      "id": "minus-two-boundary-cap",
+      "oracle": {
+        "status": 4,
+        "iteration": 128,
+        "smooth": null,
+        "previousRadiusSquared": 4,
+        "radiusSquared": 4
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            128
+          ],
+          "outputSha256": "8e5f3451c28b9a4df81372477bf0c5ae2dfb73faee47bdfecf21ff36d84830ab",
+          "normalized": {
+            "status": 4,
+            "iteration": 128,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 2.5999999046325684,
+          "readbackWallMs": 3.5
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "outputSha256": "8e5f3451c28b9a4df81372477bf0c5ae2dfb73faee47bdfecf21ff36d84830ab",
+          "normalized": {
+            "status": 4,
+            "iteration": 128,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 4.099999904632568,
+          "readbackWallMs": 2.9000000953674316
+        },
+        {
+          "id": "prime-7",
+          "chunks": [
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            2
+          ],
+          "outputSha256": "8e5f3451c28b9a4df81372477bf0c5ae2dfb73faee47bdfecf21ff36d84830ab",
+          "normalized": {
+            "status": 4,
+            "iteration": 128,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 3.0999999046325684,
+          "readbackWallMs": 3.1000001430511475
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": [
+            64,
+            64
+          ],
+          "outputSha256": "8e5f3451c28b9a4df81372477bf0c5ae2dfb73faee47bdfecf21ff36d84830ab",
+          "normalized": {
+            "status": 4,
+            "iteration": 128,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 2.5
+        },
+        {
+          "id": "fibonacci",
+          "chunks": [
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            34,
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            9
+          ],
+          "outputSha256": "8e5f3451c28b9a4df81372477bf0c5ae2dfb73faee47bdfecf21ff36d84830ab",
+          "normalized": {
+            "status": 4,
+            "iteration": 128,
+            "smooth": null
+          },
+          "smoothAbsoluteError": null,
+          "queueCompletionWallMs": 3.5,
+          "readbackWallMs": 3.200000047683716
+        }
+      ]
+    },
+    {
+      "id": "left-exterior",
+      "oracle": {
+        "status": 1,
+        "iteration": 5,
+        "smooth": 3.2282187893768732,
+        "previousRadiusSquared": 115.8579063839386,
+        "radiusSquared": 12935.173994537741
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            128
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 3.200000047683716
+        },
+        {
+          "id": "ones",
+          "chunks": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 4.700000047683716,
+          "readbackWallMs": 3.0999999046325684
+        },
+        {
+          "id": "prime-7",
+          "chunks": [
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            2
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 3.700000047683716,
+          "readbackWallMs": 2.3999998569488525
+        },
+        {
+          "id": "workgroup-64",
+          "chunks": [
+            64,
+            64
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 3.200000047683716
+        },
+        {
+          "id": "fibonacci",
+          "chunks": [
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            21,
+            34,
+            1,
+            2,
+            3,
+            5,
+            8,
+            13,
+            9
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 4.700000047683716,
+          "readbackWallMs": 3
+        },
+        {
+          "id": "escape-boundary",
+          "chunks": [
+            4,
+            1,
+            123
+          ],
+          "outputSha256": "6cc4a7fe648d52bf5443786f86218e1dbd401343cdf2c9f5ab65b822413cf382",
+          "normalized": {
+            "status": 1,
+            "iteration": 5,
+            "smooth": 3.2282190322875977
+          },
+          "smoothAbsoluteError": 2.4291072442395034e-7,
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 2.5
+        }
+      ]
+    },
+    {
+      "id": "conjugate-positive",
+      "oracle": {
+        "status": 1,
+        "iteration": 35,
+        "smooth": 33.42458649243402,
+        "previousRadiusSquared": 62.58705436786122,
+        "radiusSquared": 3877.2982105287633
+      },
+      "schedules": [
+        {
+          "id": "monolithic",
+          "chunks": [
+            256
+          ],
+          "outputSha256": "74b10ce2bf69d13aa99bd1712bb7646dc9d48203da3d7510b868fc72fd3c25ab",
+          "normalized": {
+            "status": 1,
+            "iteration": 35,
+            "smooth": 33.424503326416016
+          },
+          "smoothAbsoluteError": 0.00008316601800117951,
+          "queueCompletionWallMs": 2.799999952316284,
           "readbackWallMs": 3.5
         },
         {
