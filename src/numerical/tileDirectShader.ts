@@ -95,13 +95,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= p.tileSize || gid.y >= p.tileSize) { return; }
   let index = gid.y * p.tileSize + gid.x;
   let pixel = vec2i(gid.xy);
-  var meta = recurrenceMeta[index];
-  if (meta.y == STATUS_ESCAPED) { atomicAdd(&counters.escapedPixels, 1u); return; }
-  if (meta.y == STATUS_INTERIOR) { atomicAdd(&counters.analyticInteriorPixels, 1u); return; }
-  if (meta.y == STATUS_NON_FINITE) { atomicAdd(&counters.nonFinitePixels, 1u); return; }
+  var pixelMeta = recurrenceMeta[index];
+  if (pixelMeta.y == STATUS_ESCAPED) { atomicAdd(&counters.escapedPixels, 1u); return; }
+  if (pixelMeta.y == STATUS_INTERIOR) { atomicAdd(&counters.analyticInteriorPixels, 1u); return; }
+  if (pixelMeta.y == STATUS_NON_FINITE) { atomicAdd(&counters.nonFinitePixels, 1u); return; }
 
   let coordinate = tileCoordinate(gid.x, gid.y);
-  if (meta.x == 0u) {
+  if (pixelMeta.x == 0u) {
     let interior = select(
       analyticInteriorF32(vec2f(dsValue(coordinate[0]), dsValue(coordinate[1]))),
       analyticInteriorDs(coordinate[0], coordinate[1]),
@@ -119,7 +119,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   var zx = recurrenceState[index].xy;
   var zy = recurrenceState[index].zw;
-  var iteration = meta.x;
+  var iteration = pixelMeta.x;
   let iterationEnd = min(p.iterationTarget, iteration + p.chunkIterations);
   var radiusSquared = 0.0;
   loop {
