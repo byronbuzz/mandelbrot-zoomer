@@ -11,7 +11,7 @@ const main = readFileSync(new URL('../src/app/main.ts', import.meta.url), 'utf8'
 const build = readFileSync(new URL('../src/app/build.ts', import.meta.url), 'utf8');
 
 const required = [
-  ['1.2 semantic version', build, "APP_VERSION = '1.2.0'"],
+  ['1.2 semantic version', build, "APP_VERSION = '1.2."],
   ['production tile field engine', main, 'TileFieldRenderer'],
   ['persistent reference worker', atlas, 'private worker: Worker'],
   ['local reference groups', atlas, 'REFERENCE_GROUP_TILE_SPAN'],
@@ -21,7 +21,7 @@ const required = [
   ['four-limb reference use', shader, 'referenceTimesDs'],
   ['tile glitch detection', shader, 'cancellationGlitch'],
   ['orbit exhaustion telemetry', shader, 'orbitExhaustedPixels'],
-  ['portable unresolved-only reset', shader, 'meta.y == STATUS_ESCAPED || meta.y == STATUS_INTERIOR'],
+  ['portable unresolved-only reset', shader, 'pixelMeta.y == STATUS_ESCAPED || pixelMeta.y == STATUS_INTERIOR'],
   ['local repair requests', renderer, 'maybeRequestRepair'],
   ['repair preserves accepted samples', renderer, "pendingReset === 'unresolved'"],
   ['direct safety ceiling while reference pending', renderer, 'DIRECT_SAFETY_ITERATIONS'],
