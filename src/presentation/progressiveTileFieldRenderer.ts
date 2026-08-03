@@ -541,11 +541,10 @@ export class TileFieldRenderer {
         : request.interaction === 'settling' ? 96 : 128;
       const needsIterations = tile.iterationFrontier < finalTarget;
       const needsRecolour = Math.abs(tile.palettePhase - request.palettePhase) > 1e-6;
-      if (!needsIterations && !needsRecolour) continue;
       const scheduledEnd = needsIterations
         ? Math.min(finalTarget, tile.iterationFrontier + chunkIterations)
         : tile.iterationFrontier;
-      queue.push(this.makeScheduledWork(
+      const scheduled = this.makeScheduledWork(
         request,
         tile,
         planned.levelOffset,
@@ -553,7 +552,10 @@ export class TileFieldRenderer {
         finalTarget,
         scheduledEnd,
         needsIterations ? chunkIterations : 0
-      ));
+      );
+      const needsAcceptanceUpdate = tile.capPresentationMode !== scheduled.capMode;
+      if (!needsIterations && !needsRecolour && !needsAcceptanceUpdate) continue;
+      queue.push(scheduled);
     }
     return queue;
   }
@@ -569,11 +571,13 @@ export class TileFieldRenderer {
   ): ScheduledWork {
     const finalChunk = scheduledEnd >= finalTarget;
     const numericallyFinal = finalTarget >= request.targetIterations;
-    const capMode: CapPresentationMode = finalChunk
-      && numericallyFinal
-      && request.interaction === 'settled'
+    const retainsAuthoritativeCap = tile.capPresentationMode === 2
+      && tile.iterationFrontier >= request.targetIterations;
+    const capMode: CapPresentationMode = retainsAuthoritativeCap
       ? 2
-      : (levelOffset > 0 || request.interaction === 'moving') ? 1 : 0;
+      : finalChunk && numericallyFinal && request.interaction === 'settled'
+        ? 2
+        : (levelOffset > 0 || request.interaction === 'moving') ? 1 : 0;
     const spatialPriority = maximumLevel - levelOffset;
     const coveragePenalty = tile.coveragePixels > 0 ? 2 : 0;
     const iterationTier = Math.floor(tile.iterationFrontier / Math.max(1, chunkIterations || 128));
