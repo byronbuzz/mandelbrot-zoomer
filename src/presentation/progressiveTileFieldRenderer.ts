@@ -378,6 +378,7 @@ export class TileFieldRenderer {
     const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio);
     const aspect = Math.max(1, cssWidth) / Math.max(1, cssHeight);
     const fineExponent = sampleExponentForViewport(targetCamera, renderHeight, 0);
+    const settledPresentation = (this.currentRequest?.interaction ?? 'settled') === 'settled';
     const drawTiles: FieldTile[] = [];
     const seen = new Set<PersistentTileKey>();
 
@@ -412,7 +413,7 @@ export class TileFieldRenderer {
       ]));
       renderable.push({
         tile,
-        group: tile.descriptor.sampleExponent <= fineExponent
+        group: settledPresentation && tile.descriptor.sampleExponent <= fineExponent
           ? tile.presentNearestGroup
           : tile.presentLinearGroup
       });
