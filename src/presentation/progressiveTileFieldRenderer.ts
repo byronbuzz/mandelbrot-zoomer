@@ -1315,7 +1315,7 @@ export class TileFieldRenderer {
     const baseY = tile.descriptor.tileY * 2n;
     for (let y = 0n; y < 2n; y++) {
       for (let x = 0n; x < 2n; x++) {
-        const key = `${childExponent}:${(baseX + x).toString()}:${(baseY + y).toString()}`;
+        const key: PersistentTileKey = `${childExponent}:${(baseX + x).toString()}:${(baseY + y).toString()}`;
         const child = this.tileMap.get(key);
         if (!child || child.coveragePixels < TILE_PIXEL_COUNT) return false;
       }
