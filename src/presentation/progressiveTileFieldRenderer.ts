@@ -1,12 +1,18 @@
 import {
   fixedAddScaled,
-  fixedDifferenceToNumber,
   fixedSplitF32,
   fixedSub,
   fixedToNumber
 } from '../bigFixed';
-import { scaleToNumber } from '../binaryScale';
 import type { CameraSnapshot } from '../camera/types';
+import { AcceptedTileAtlas, type AtlasSlot } from './acceptedTileAtlas';
+import { AtlasHistoryPresenter, type AtlasInstance } from './atlasHistoryPresenter';
+import {
+  fixedDifferenceOverDyadic,
+  packTransform,
+  scaleOverDyadic,
+  transformIsFinite
+} from './presentationMath';
 import {
   tileClearShader,
   tileColourShader,
@@ -125,6 +131,7 @@ type FieldTile = {
   resetGroup: GPUBindGroup;
   presentLinearGroup: GPUBindGroup;
   presentNearestGroup: GPUBindGroup;
+  atlasSlot: AtlasSlot;
   health: PersistentTileHealth;
   iterationFrontier: number;
   coveragePixels: number;
@@ -182,6 +189,9 @@ export class TileFieldRenderer {
   private readonly nearestSampler: GPUSampler;
   private readonly clearUniform: GPUBuffer;
   private readonly referenceAtlas: TileReferenceAtlas;
+  private readonly acceptedAtlas: AcceptedTileAtlas;
+  private readonly atlasPresenter: AtlasHistoryPresenter;
+  private readonly useLegacyPresenter: boolean;
   private latestRequest: PersistentTileRequest | null = null;
   private currentRequest: PersistentTileRequest | null = null;
   private currentPlan: PlannedDescriptor[] = [];
@@ -199,6 +209,9 @@ export class TileFieldRenderer {
   private adaptiveBatchTiles = INITIAL_BATCH_TILES;
   private completedChunks = 0;
   private lastBatchMs = 0;
+  private dead = false;
+  private deviceLostListener: ((message: string) => void) | null = null;
+  private readonly deviceErrors: string[] = [];
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -211,6 +224,8 @@ export class TileFieldRenderer {
     clearPipeline: GPUComputePipeline,
     resetPipeline: GPUComputePipeline,
     presentPipeline: GPURenderPipeline,
+    acceptedAtlas: AcceptedTileAtlas,
+    atlasPresenter: AtlasHistoryPresenter,
     readonly adapterLabel: string
   ) {
     this.directPipeline = directPipeline;
@@ -219,6 +234,9 @@ export class TileFieldRenderer {
     this.clearPipeline = clearPipeline;
     this.resetPipeline = resetPipeline;
     this.presentPipeline = presentPipeline;
+    this.acceptedAtlas = acceptedAtlas;
+    this.atlasPresenter = atlasPresenter;
+    this.useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
     this.clearUniform = device.createBuffer({
       size: CLEAR_PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -319,6 +337,8 @@ export class TileFieldRenderer {
       ]);
 
     const label = adapter.info.vendor || adapter.info.description || 'GPU';
+    const acceptedAtlas = new AcceptedTileAtlas(device);
+    const atlasPresenter = await AtlasHistoryPresenter.create(device, context, canvasFormat);
     return new TileFieldRenderer(
       canvas,
       device,
@@ -330,6 +350,8 @@ export class TileFieldRenderer {
       clearPipeline,
       resetPipeline,
       presentPipeline,
+      acceptedAtlas,
+      atlasPresenter,
       label
     );
   }
@@ -340,14 +362,22 @@ export class TileFieldRenderer {
 
   onDeviceError(listener: (message: string) => void): void {
     this.device.addEventListener('uncapturederror', (event: GPUUncapturedErrorEvent) => {
+      this.deviceErrors.push(event.error.message);
+      if (this.deviceErrors.length > 32) this.deviceErrors.shift();
       listener(`WebGPU error: ${event.error.message}`);
     });
+  }
+
+  onDeviceLost(listener: (message: string) => void): void {
+    this.deviceLostListener = listener;
     void this.device.lost.then((reason: { message?: string; reason?: string }) => {
-      listener(`GPU device lost: ${reason.message || reason.reason}`);
+      if (this.dead) return;
+      listener(reason.message || reason.reason || 'Unknown device loss');
     });
   }
 
   request(request: PersistentTileRequest): void {
+    if (this.dead) return;
     this.latestRequest = request;
     if (!this.running) void this.pump();
   }
@@ -389,7 +419,7 @@ export class TileFieldRenderer {
     cssHeight: number,
     devicePixelRatio: number
   ): boolean {
-    if (this.tileMap.size === 0) return false;
+    if (this.dead || this.tileMap.size === 0) return false;
     const width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
     const height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
     this.resizeCanvas(width, height);
@@ -419,7 +449,7 @@ export class TileFieldRenderer {
     if (drawTiles.length === 0) return false;
     drawTiles.sort((left, right) => right.descriptor.sampleExponent - left.descriptor.sampleExponent);
 
-    const renderable: Array<{ tile: FieldTile; group: GPUBindGroup }> = [];
+    const renderable: Array<{ tile: FieldTile; group: GPUBindGroup; transform: ReturnType<TileFieldRenderer['tileTransform']> }> = [];
     for (const tile of drawTiles) {
       if (this.hasCompleteChildren(tile)) continue;
       const transform = this.tileTransform(tile, targetCamera, aspect);
@@ -432,12 +462,28 @@ export class TileFieldRenderer {
       ]));
       renderable.push({
         tile,
+        transform,
         group: settledPresentation && tile.descriptor.sampleExponent <= fineExponent
           ? tile.presentNearestGroup
           : tile.presentLinearGroup
       });
     }
     if (renderable.length === 0) return false;
+
+    if (!this.useLegacyPresenter) {
+      const instances: AtlasInstance[] = renderable.flatMap(item => item.transform
+        ? [{ transform: item.transform, slot: item.tile.atlasSlot }]
+        : []);
+      const authoritative = settledPresentation
+        && this.currentVisibleKeys.size > 0
+        && [...this.currentVisibleKeys].every(key => {
+          const tile = this.tileMap.get(key);
+          return Boolean(tile && tile.coveragePixels >= TILE_PIXEL_COUNT);
+        });
+      return this.atlasPresenter.present(
+        targetCamera, aspect, width, height, this.acceptedAtlas, instances, authoritative
+      );
+    }
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -458,14 +504,41 @@ export class TileFieldRenderer {
     return true;
   }
 
+  get presentationMode(): 'atlas-history' | 'legacy' {
+    return this.useLegacyPresenter ? 'legacy' : 'atlas-history';
+  }
+
+  get presentationDiagnostics() {
+    return { ...this.atlasPresenter.diagnostics, validationErrors: [...this.deviceErrors] };
+  }
+
+  forceDeviceLossForTest(): void {
+    if (!this.dead) this.device.destroy();
+  }
+
+  dispose(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.latestRequest = null;
+    this.currentQueue = [];
+    this.pendingLevelOffsets = [];
+    this.referenceAtlas.dispose();
+    for (const tile of this.tileMap.values()) this.destroyTile(tile);
+    this.tileMap.clear();
+    this.atlasPresenter.destroy();
+    this.acceptedAtlas.destroy();
+    this.clearUniform.destroy();
+    this.context.unconfigure();
+  }
+
   private async pump(): Promise<void> {
     if (this.running) return;
     this.running = true;
     try {
       while (
-        this.latestRequest
+        !this.dead && (this.latestRequest
         || this.currentQueue.length > 0
-        || this.pendingLevelOffsets.length > 0
+        || this.pendingLevelOffsets.length > 0)
       ) {
         if (this.latestRequest) {
           const request = this.latestRequest;
@@ -924,6 +997,10 @@ export class TileFieldRenderer {
   }
 
   private createTile(descriptor: PersistentTileDescriptor): FieldTile {
+    if (this.acceptedAtlas.availableSlots === 0 && !this.evictOneColdTile()) {
+      throw new Error('Accepted tile atlas exhausted with no retireable tile');
+    }
+    const atlasSlot = this.acceptedAtlas.allocate();
     const stateBuffer = this.device.createBuffer({
       size: TILE_PIXEL_COUNT * STATE_BYTES_PER_PIXEL,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
@@ -943,17 +1020,17 @@ export class TileFieldRenderer {
     const resultTexture = this.device.createTexture({
       size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
       format: 'rgba32float',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
     });
     const qualityTexture = this.device.createTexture({
       size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
     });
     const colourTexture = this.device.createTexture({
       size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
     });
     const directUniform = this.device.createBuffer({
       size: DIRECT_PARAMETER_BYTES,
@@ -1069,6 +1146,7 @@ export class TileFieldRenderer {
       resetGroup,
       presentLinearGroup,
       presentNearestGroup,
+      atlasSlot,
       health: { ...EMPTY_HEALTH },
       iterationFrontier: 0,
       coveragePixels: 0,
@@ -1178,6 +1256,9 @@ export class TileFieldRenderer {
         Math.ceil(PERSISTENT_TILE_SIZE / 8)
       );
       colourPass.end();
+      this.acceptedAtlas.encodeCopy(
+        encoder, tile.atlasSlot, tile.colourTexture, tile.qualityTexture
+      );
       if (scheduled.work.chunkIterations > 0) {
         encoder.copyBufferToBuffer(
           tile.counterBuffer,
@@ -1328,17 +1409,15 @@ export class TileFieldRenderer {
     targetCamera: CameraSnapshot,
     aspect: number
   ): { scaleX: number; scaleY: number; offsetX: number; offsetY: number } | null {
-    const tileSpan = Math.pow(2, tileSpanExponent(tile.descriptor.sampleExponent));
-    const viewportHeight = scaleToNumber(targetCamera.scale);
-    const transform = {
-      scaleX: viewportHeight * aspect / tileSpan,
-      scaleY: viewportHeight / tileSpan,
-      offsetX: fixedDifferenceToNumber(targetCamera.centerX, tile.descriptor.centerX) / tileSpan,
-      offsetY: fixedDifferenceToNumber(targetCamera.centerY, tile.descriptor.centerY) / tileSpan
-    };
-    return Object.values(transform).every(value => Number.isFinite(value) && Math.abs(value) <= 3.3e38)
-      ? transform
-      : null;
+    const spanExponent = tileSpanExponent(tile.descriptor.sampleExponent);
+    const scaleY = scaleOverDyadic(targetCamera.scale, spanExponent);
+    const transform = packTransform({
+      scaleX: scaleY * aspect,
+      scaleY,
+      offsetX: fixedDifferenceOverDyadic(targetCamera.centerX, tile.descriptor.centerX, spanExponent),
+      offsetY: fixedDifferenceOverDyadic(targetCamera.centerY, tile.descriptor.centerY, spanExponent)
+    });
+    return transformIsFinite(transform) ? transform : null;
   }
 
   private evictColdTiles(): void {
@@ -1358,7 +1437,18 @@ export class TileFieldRenderer {
     }
   }
 
+  private evictOneColdTile(): boolean {
+    const tile = [...this.tileMap.values()]
+      .filter(candidate => !this.currentVisibleKeys.has(candidate.descriptor.key))
+      .sort((left, right) => left.lastVisibleAt - right.lastVisibleAt)[0];
+    if (!tile) return false;
+    this.tileMap.delete(tile.descriptor.key);
+    this.destroyTile(tile);
+    return true;
+  }
+
   private destroyTile(tile: FieldTile): void {
+    this.acceptedAtlas.release(tile.atlasSlot);
     tile.stateBuffer.destroy();
     tile.metaBuffer.destroy();
     tile.counterBuffer.destroy();

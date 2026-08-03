@@ -11,8 +11,6 @@ const build = readFileSync(new URL('../src/app/build.ts', import.meta.url), 'utf
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const required = [
-  ['1.3.1 application version', build, "APP_VERSION = '1.3.1'"],
-  ['1.3.1 package version', JSON.stringify(packageJson), '"version":"1.3.1"'],
   ['lazy lattice level queue', renderer, 'pendingLevelOffsets = [2, 1, 0]'],
   ['one-level-at-a-time admission', renderer, 'admitNextSpatialLevel'],
   ['stable numerical render height', renderer, 'MAX_NUMERICAL_PIXELS'],

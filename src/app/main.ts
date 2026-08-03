@@ -10,7 +10,9 @@ if (!root) throw new Error('Missing app root');
 
 const ui = createUi(root);
 const camera = new CameraModel();
-const renderer = await TileFieldRenderer.create(ui.canvas);
+let renderer = await TileFieldRenderer.create(ui.canvas);
+let rendererEpoch = 1;
+let recoveryPromise: Promise<void> | null = null;
 
 const MOVING_REQUEST_INTERVAL_MS = 85;
 const PAN_REQUEST_INTERVAL_MS = 70;
@@ -130,6 +132,7 @@ function precisionSummary(): string {
 
 function updateReadouts(): void {
   const stats = renderer.stats;
+  const presentation = renderer.presentationDiagnostics;
   const depth = camera.log10Magnification();
   ui.zoomOut.value = `10^${depth.toFixed(3)}`;
   ui.stateOut.value = `${interaction}${renderer.isBusy ? ' · calculating' : ''}`;
@@ -142,15 +145,40 @@ function updateReadouts(): void {
   ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceFailures} ref failures`;
   ui.gpuOut.value = renderer.adapterLabel;
   ui.buildOut.value = BUILD_LABEL;
+  Object.assign(ui.canvas.dataset, {
+    rendererEpoch: String(rendererEpoch),
+    presenter: renderer.presentationMode,
+    presentationFrames: String(presentation.frames),
+    historyFrames: String(presentation.historyFrames),
+    fallbackFrames: String(presentation.fallbackFrames),
+    anchorPromotions: String(presentation.anchorPromotions),
+    atlasInstances: String(presentation.instanceCount),
+    resourceEpoch: String(presentation.resourceEpoch),
+    reprojectionErrorTexels: presentation.worstReprojectionErrorTexels.toFixed(6),
+    presentationCpuMs: presentation.lastFrameCpuMs.toFixed(3),
+    validationErrors: String(presentation.validationErrors.length)
+  });
 }
 
 function diagnosticsReport(): string {
   const snapshot = camera.snapshot();
   const stats = renderer.stats;
+  const presentation = renderer.presentationDiagnostics;
   return [
     `${APP_NAME} ${APP_VERSION} · ${BUILD_LABEL.split(' · ')[1] ?? 'dev'}`,
     `Captured: ${new Date().toISOString()}`,
     `GPU: ${renderer.adapterLabel}`,
+    `Renderer epoch: ${rendererEpoch}`,
+    `Presenter: ${renderer.presentationMode}`,
+    `Presentation frames: ${presentation.frames}`,
+    `History frames: ${presentation.historyFrames}`,
+    `Fallback frames: ${presentation.fallbackFrames}`,
+    `Anchor promotions: ${presentation.anchorPromotions}`,
+    `Atlas instances: ${presentation.instanceCount}`,
+    `Presentation resource epoch: ${presentation.resourceEpoch}`,
+    `Worst reprojection error: ${presentation.worstReprojectionErrorTexels.toFixed(6)} source texel`,
+    `Presentation CPU: ${presentation.lastFrameCpuMs.toFixed(3)} ms`,
+    `WebGPU validation errors: ${presentation.validationErrors.length}`,
     `URL: ${location.href}`,
     `Zoom depth: 10^${camera.log10Magnification().toFixed(6)}`,
     `Center X raw: ${snapshot.centerX.raw.toString()} (bits ${snapshot.centerX.bits})`,
@@ -293,11 +321,53 @@ document.addEventListener('keydown', event => {
   }
 });
 
-renderer.onDeviceError(message => { ui.status.textContent = message; });
-renderer.onRuntimeError(message => { ui.status.textContent = `Renderer error: ${message}`; });
+function attachRenderer(next: TileFieldRenderer): void {
+  next.onDeviceError(message => {
+    console.error(message);
+    ui.status.textContent = message;
+  });
+  next.onRuntimeError(message => { ui.status.textContent = `Renderer error: ${message}`; });
+  next.onDeviceLost(message => {
+    if (recoveryPromise) return;
+    ui.status.textContent = `GPU device lost: ${message}. Recovering...`;
+    const retired = renderer;
+    retired.dispose();
+    recoveryPromise = TileFieldRenderer.create(ui.canvas)
+      .then(replacement => {
+        renderer = replacement;
+        rendererEpoch++;
+        attachRenderer(replacement);
+        ui.status.textContent = `${replacement.adapterLabel} - recovered epoch ${rendererEpoch}`;
+        requestField('settled');
+      })
+      .catch(error => {
+        ui.status.textContent = `GPU recovery failed: ${error instanceof Error ? error.message : String(error)}`;
+      })
+      .finally(() => { recoveryPromise = null; });
+  });
+}
+
+attachRenderer(renderer);
 ui.status.textContent = `${renderer.adapterLabel} · ${APP_NAME} ${BUILD_LABEL}`;
 
+Object.assign(window, {
+  __ZOOMER_DIAGNOSTICS__: () => ({
+    build: BUILD_LABEL,
+    rendererEpoch,
+    recovering: recoveryPromise !== null,
+    presenter: renderer.presentationMode,
+    presentation: renderer.presentationDiagnostics,
+    field: renderer.stats
+  }),
+  __ZOOMER_FORCE_DEVICE_LOSS__: () => renderer.forceDeviceLossForTest()
+});
+
+if (new URLSearchParams(location.search).get('testDeviceLoss') === '1') {
+  window.setTimeout(() => renderer.forceDeviceLossForTest(), 1200);
+}
+
 function tick(now: number): void {
+  try {
   const deltaSeconds = Math.min(0.05, Math.max(0, (now - lastTick) / 1000));
   lastTick = now;
   const speed = Number(ui.speed.value);
@@ -327,7 +397,11 @@ function tick(now: number): void {
     lastReadoutAt = now;
     updateReadouts();
   }
-  requestAnimationFrame(tick);
+  } catch (error) {
+    ui.status.textContent = `Presentation error: ${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    requestAnimationFrame(tick);
+  }
 }
 
 requestField('settled');

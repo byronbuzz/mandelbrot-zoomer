@@ -1,7 +1,7 @@
 {
   "name": "webgpu-fractal-zoomer",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.4.0",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=22 <25"
@@ -16,8 +16,10 @@
     "validate:v13": "node scripts/validate-v13-invariants.mjs",
     "validate:persistent": "node scripts/validate-persistent-architecture.mjs",
     "validate:phase1": "node scripts/validate-phase1-presentation.mjs",
+    "validate:release": "node scripts/validate-release-invariants.mjs",
+    "validate:v14": "node scripts/validate-v14-invariants.mjs",
     "validate:v6": "node scripts/validate-v6-invariants.mjs",
-    "build": "node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && tsc -b && vite build --configLoader runner",
+    "build": "node scripts/validate-release-invariants.mjs && node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && node scripts/validate-v14-invariants.mjs && tsc -b && vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "typecheck": "tsc -b --pretty false"
   },
