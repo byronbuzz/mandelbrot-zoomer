@@ -151,6 +151,7 @@ function precisionSummary(): string {
   if (stats.directTiles > 0) parts.push(`${stats.directTiles} direct`);
   if (stats.pendingReferences > 0) parts.push(`${stats.pendingReferences} refs pending`);
   if (stats.repairTiles > 0) parts.push(`${stats.repairTiles} repair`);
+  if (stats.precisionLimitedTiles > 0) parts.push(`${stats.precisionLimitedTiles} precision-limited`);
   return parts.length > 0 ? parts.join(' · ') : 'awaiting numerical tiles';
 }
 
@@ -167,7 +168,7 @@ function updateReadouts(): void {
   ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.inFlightBatches} GPU batches · ${stats.queuedChunks} queued`;
   ui.displayOut.value = `${displayRate()} Hz`;
   ui.renderSizeOut.value = `${stats.tileSize}×${stats.tileSize} tiles · 2^${stats.sampleExponent} sample`;
-  ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceFailures} ref failures`;
+  ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceTransportBits}/${stats.referenceWorkingBits} transport/working bits · ${stats.precisionLimitedTiles} limited`;
   ui.gpuOut.value = renderer.adapterLabel;
   ui.buildOut.value = BUILD_LABEL;
   Object.assign(ui.canvas.dataset, {
@@ -253,6 +254,9 @@ function diagnosticsReport(): string {
     `Pending references: ${stats.pendingReferences}`,
     `Repair tiles: ${stats.repairTiles}`,
     `Reference failures: ${stats.referenceFailures}`,
+    `Reference working bits: ${stats.referenceWorkingBits}`,
+    `Reference transport bits: ${stats.referenceTransportBits}`,
+    `Precision-limited tiles: ${stats.precisionLimitedTiles}`,
     `Completed chunks: ${stats.completedChunks}`,
     `Submitted chunks: ${stats.submittedChunks}`,
     `Queued chunks: ${stats.queuedChunks}`,

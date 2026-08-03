@@ -35,6 +35,9 @@ export type ReferenceResponse = Readonly<{
   cameraGeneration: number;
   purpose: ReferencePurpose;
   bits: number;
+  workingBits: number;
+  transportBits: number;
+  contractVersion: number;
   length: number;
   escaped: boolean;
   generationMs: number;

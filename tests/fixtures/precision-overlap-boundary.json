@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-overlap-boundary-2026-08-03",
+  "description": "Complex user-selected boundary shifted into the direct/perturbation overlap band.",
+  "capturedAt": "2026-08-03T13:30:00.000Z",
+  "build": "1.4-precision-overlap",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "deepOrder": 5.117,
+  "coarseOrder": 3.01,
+  "camera": {
+    "centerX": {
+      "raw": "-1086987134517280290689879582078081936663748018176",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-182091033578402453896837821740817316653599555584",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.7505205815215608,
+      "exponent": -15
+    },
+    "log10Magnification": 5.117
+  },
+  "viewport": {
+    "cssWidth": 756,
+    "cssHeight": 927,
+    "devicePixelRatio": 1.375,
+    "canvasWidth": 1039,
+    "canvasHeight": 1274
+  },
+  "traceAnchorCss": {
+    "x": 300,
+    "y": 460
+  }
+}

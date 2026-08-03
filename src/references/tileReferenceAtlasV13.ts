@@ -8,6 +8,7 @@ import {
   type BigFixed
 } from '../bigFixed';
 import type { ReferenceCandidate, ReferenceRequest, ReferenceResponse } from '../v4/types';
+import { REFERENCE_CONTRACT_VERSION } from '../numerical/precisionPolicy';
 import {
   PERSISTENT_TILE_SIZE,
   type PersistentTileDescriptor,
@@ -45,6 +46,9 @@ export type TileGpuReference = Readonly<{
   length: number;
   escaped: boolean;
   bits: number;
+  workingBits: number;
+  transportBits: number;
+  contractVersion: number;
   generationMs: number;
   buffer: GPUBuffer;
 }>;
@@ -64,6 +68,8 @@ type QueuedRequest = {
   iterations: number;
   repairPass: number;
   priority: number;
+  demandEpoch: number;
+  requiredTransportBits: number;
   resolve: (reference: TileGpuReference) => void;
   reject: (error: Error) => void;
 };
@@ -176,6 +182,7 @@ export class TileReferenceAtlas {
   private readonly queue: QueuedRequest[] = [];
   private nextId = 0;
   private failureCountValue = 0;
+  private demandEpoch = 0;
 
   constructor(private readonly device: GPUDevice) {
     for (let index = 0; index < workerCount(); index++) {
@@ -197,17 +204,45 @@ export class TileReferenceAtlas {
     return this.cache.size;
   }
 
+  setDemandEpoch(epoch: number): void {
+    if (!Number.isInteger(epoch) || epoch <= this.demandEpoch) return;
+    this.demandEpoch = epoch;
+    for (let index = this.queue.length - 1; index >= 0; index--) {
+      const queued = this.queue[index];
+      if (queued.demandEpoch >= epoch) continue;
+      this.queue.splice(index, 1);
+      this.pendingByKey.delete(queued.cacheKey);
+      queued.reject(new Error('Reference request superseded'));
+    }
+    for (const slot of this.workers) {
+      const active = slot.active;
+      if (!active || active.demandEpoch >= epoch) continue;
+      if (slot.timeout) clearTimeout(slot.timeout);
+      slot.timeout = null;
+      slot.active = null;
+      this.pendingByKey.delete(active.cacheKey);
+      active.reject(new Error('Reference request superseded'));
+      this.restartWorker(slot);
+    }
+    this.pump();
+  }
+
   request(
     tile: PersistentTileDescriptor,
     iterations: number,
     priority: number,
-    repairPass = 0
+    repairPass = 0,
+    demandEpoch = this.demandEpoch,
+    requiredTransportBits = 48
   ): Promise<TileGpuReference> {
+    if (demandEpoch < this.demandEpoch) {
+      return Promise.reject(new Error('Reference request superseded'));
+    }
     const boundedIterations = Math.max(1, Math.min(MAX_REFERENCE_ITERATIONS, Math.floor(iterations)));
     const geometry = geometryForRequest(tile, repairPass);
-    const cacheKey = `${geometry.key}:${boundedIterations}:${repairPass}`;
+    const cacheKey = `${geometry.key}:${boundedIterations}:${repairPass}:v${REFERENCE_CONTRACT_VERSION}`;
     const cached = this.cache.get(cacheKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached && cached.transportBits >= requiredTransportBits) return Promise.resolve(cached);
     const existing = this.pendingByKey.get(cacheKey);
     if (existing) return existing;
 
@@ -220,6 +255,8 @@ export class TileReferenceAtlas {
         iterations: boundedIterations,
         repairPass,
         priority,
+        demandEpoch,
+        requiredTransportBits,
         resolve,
         reject
       });
@@ -234,13 +271,19 @@ export class TileReferenceAtlas {
     return promise;
   }
 
-  findReusable(tileKey: PersistentTileKey, iterations: number): TileGpuReference | null {
+  findReusable(
+    tileKey: PersistentTileKey,
+    iterations: number,
+    requiredTransportBits = 48
+  ): TileGpuReference | null {
     const exactInitialGroup = initialGroupKeyFromTileKey(tileKey);
     let best: TileGpuReference | null = null;
     let bestScore = Number.POSITIVE_INFINITY;
 
     for (const reference of this.cache.values()) {
       if (reference.length < 2) continue;
+      if (reference.contractVersion !== REFERENCE_CONTRACT_VERSION
+        || reference.transportBits < requiredTransportBits) continue;
       const [tileCenterX, tileCenterY] = centerForTileKey(tileKey, reference.coverageCenterX.bits);
       const coverageSpan = Math.pow(2, reference.coverageExponent);
       if (!Number.isFinite(coverageSpan) || coverageSpan <= 0) continue;
@@ -380,6 +423,14 @@ export class TileReferenceAtlas {
       if (!(response.orbit instanceof Float32Array)) {
         throw new Error('Reference worker returned an invalid orbit payload');
       }
+      if (response.contractVersion !== REFERENCE_CONTRACT_VERSION) {
+        throw new Error(`Reference contract ${response.contractVersion} does not match ${REFERENCE_CONTRACT_VERSION}`);
+      }
+      if (response.transportBits < active.requiredTransportBits) {
+        throw new Error(
+          `Reference transport ${response.transportBits} bits is below required ${active.requiredTransportBits} bits`
+        );
+      }
       if (!Number.isInteger(response.length) || response.length < 2) {
         throw new Error('Reference worker returned an empty orbit');
       }
@@ -406,6 +457,9 @@ export class TileReferenceAtlas {
         length: response.length,
         escaped: response.escaped,
         bits: response.bits,
+        workingBits: response.workingBits,
+        transportBits: response.transportBits,
+        contractVersion: response.contractVersion,
         generationMs: response.generationMs,
         buffer
       };

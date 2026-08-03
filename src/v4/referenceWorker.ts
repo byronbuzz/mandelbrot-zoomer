@@ -10,6 +10,8 @@ const PROBE_TRIPLE_DOUBLE_THRESHOLD_BITS = 224;
 const DENSE_COARSE_PROBE_ITERATIONS = 1024;
 const DENSE_MIDDLE_PROBE_ITERATIONS = 3072;
 const ORBIT_FLOATS_PER_POINT = 8;
+const REFERENCE_CONTRACT_VERSION = 1;
+const REFERENCE_TRANSPORT_BITS = 96;
 
 type DD = readonly [number, number];
 type TD = readonly [number, number, number];
@@ -274,7 +276,10 @@ function buildDoubleDoubleReference(request: ReferenceRequest, candidate: Refere
     id: request.id,
     cameraGeneration: request.cameraGeneration,
     purpose: request.purpose,
-    bits: Math.min(bits, 96),
+    bits: Math.min(bits, REFERENCE_TRANSPORT_BITS),
+    workingBits: bits,
+    transportBits: Math.min(bits, REFERENCE_TRANSPORT_BITS),
+    contractVersion: REFERENCE_CONTRACT_VERSION,
     length,
     escaped,
     generationMs: performance.now() - started,
@@ -318,7 +323,10 @@ function buildTripleDoubleReference(request: ReferenceRequest, candidate: Refere
     id: request.id,
     cameraGeneration: request.cameraGeneration,
     purpose: request.purpose,
-    bits: Math.min(bits, 96),
+    bits: Math.min(bits, REFERENCE_TRANSPORT_BITS),
+    workingBits: bits,
+    transportBits: Math.min(bits, REFERENCE_TRANSPORT_BITS),
+    contractVersion: REFERENCE_CONTRACT_VERSION,
     length,
     escaped,
     generationMs: performance.now() - started,

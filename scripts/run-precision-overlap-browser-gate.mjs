@@ -1,0 +1,117 @@
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { chromium } from 'playwright-core';
+
+const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(.:)/, '$1'));
+const fixture = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/precision-overlap-boundary.json'), 'utf8'));
+const outputDirectory = resolve(root, process.env.PRECISION_OUTPUT ?? 'test-results/precision-overlap-canary');
+mkdirSync(outputDirectory, { recursive: true });
+const port = Number(process.env.PRECISION_PORT ?? 4179);
+const url = `http://127.0.0.1:${port}/mandelbrot-zoomer/?testIterations=${fixture.iterationTarget}&continuityTest=1`;
+const viteEntry = resolve(root, 'node_modules/vite/bin/vite.js');
+const server = spawn(process.execPath, [
+  viteEntry, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort', '--configLoader', 'runner'
+], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+let serverOutput = '';
+server.stdout.on('data', chunk => { serverOutput += String(chunk); });
+server.stderr.on('data', chunk => { serverOutput += String(chunk); });
+
+const browserCandidates = [
+  process.env.WEBGPU_BROWSER_PATH,
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+].filter(Boolean);
+const executablePath = browserCandidates.find(candidate => existsSync(candidate));
+if (!executablePath) throw new Error('No hardware WebGPU Chrome/Edge executable was found.');
+
+async function waitForServer() {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      if ((await fetch(url)).ok) return;
+    } catch {}
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
+  }
+  throw new Error(`Precision preview did not start.\n${serverOutput}`);
+}
+
+const camera = {
+  centerXRaw: fixture.camera.centerX.raw,
+  centerXBits: fixture.camera.centerX.bits,
+  centerYRaw: fixture.camera.centerY.raw,
+  centerYBits: fixture.camera.centerY.bits,
+  scaleMantissa: fixture.camera.scale.mantissa,
+  scaleExponent: fixture.camera.scale.exponent
+};
+
+let browser;
+try {
+  await waitForServer();
+  browser = await chromium.launch({
+    executablePath,
+    headless: true,
+    args: ['--enable-unsafe-webgpu', '--disable-background-timer-throttling']
+  });
+  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  const errors = [];
+  page.on('console', message => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+      errors.push(message.text());
+    }
+  });
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => Boolean(window.__ZOOMER_TEST__), null, { timeout: 20_000 });
+
+  // Cancel several obsolete demands, then require the settled focus canary to win.
+  for (let exponent = -11; exponent >= -14; exponent--) {
+    await page.evaluate(
+      ({ exactCamera, scaleExponent }) => window.__ZOOMER_TEST__.setExactCamera(
+        { ...exactCamera, scaleExponent }, 'moving'
+      ),
+      { exactCamera: camera, scaleExponent: exponent }
+    );
+  }
+  const target = await page.evaluate(
+    exactCamera => window.__ZOOMER_TEST__.setExactCamera(exactCamera, 'settled'),
+    camera
+  );
+
+  const deadline = Date.now() + 60_000;
+  let diagnostics;
+  while (Date.now() < deadline) {
+    diagnostics = await page.evaluate(() => window.__ZOOMER_TEST__.diagnostics());
+    if (diagnostics.field.perturbationTiles > 0
+      && diagnostics.field.pendingReferences === 0
+      && diagnostics.field.submittedChunks > 0) break;
+    await page.waitForTimeout(100);
+  }
+  await page.screenshot({ path: resolve(outputDirectory, 'precision-overlap-settled.png'), type: 'png' });
+  const report = { capturedAt: new Date().toISOString(), executablePath, fixture, target, diagnostics, errors };
+  writeFileSync(resolve(outputDirectory, 'report.json'), JSON.stringify(report, null, 2));
+
+  const failures = [...errors];
+  const field = diagnostics?.field;
+  const presentation = diagnostics?.presentation;
+  if (!field || field.perturbationTiles <= 0) failures.push('No focus tile activated perturbation in the overlap band.');
+  if (field?.pendingReferences !== 0) failures.push('Reference demand did not drain after settling.');
+  if (field?.referenceFailures !== 0) failures.push(`Reference failures: ${field.referenceFailures}.`);
+  if (field?.referenceTransportBits !== 96) failures.push(`Expected declared 96-bit transport, got ${field?.referenceTransportBits}.`);
+  if ((field?.referenceWorkingBits ?? 0) < 224) failures.push(`Expected at least 224 working bits, got ${field?.referenceWorkingBits}.`);
+  if (field?.precisionLimitedTiles !== 0) failures.push('Overlap canary was incorrectly precision-limited.');
+  if (presentation?.validationErrors !== 0) failures.push('WebGPU validation errors were reported.');
+  if (/swiftshader|software|llvmpipe/i.test(diagnostics?.adapterLabel ?? '')) {
+    failures.push(`Hardware GPU required, got ${diagnostics?.adapterLabel}.`);
+  }
+  if (failures.length) throw new Error(failures.join('\n'));
+  console.log(
+    `Precision overlap gate passed on ${diagnostics.adapterLabel}: `
+    + `${field.perturbationTiles} perturbation tiles, ${field.referenceTransportBits}/${field.referenceWorkingBits} transport/working bits.`
+  );
+} finally {
+  if (browser) await browser.close();
+  server.kill();
+}
