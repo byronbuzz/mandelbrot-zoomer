@@ -22,7 +22,7 @@ const checks = [
   ['persistent tile cache', renderer, 'private readonly tileMap'],
   ['separate quality texture', renderer, 'qualityTexture'],
   ['opaque calculated colour', shaders, 'vec4f(palette(cycle), 1.0)'],
-  ['architecture governing model', architecture, 'persistent numerical field']
+  ['architecture governing model', architecture, 'persistent numerical tile field']
 ];
 
 const failures = checks
