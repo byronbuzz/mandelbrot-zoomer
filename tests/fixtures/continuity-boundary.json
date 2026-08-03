@@ -1,0 +1,15 @@
+{
+  "name": "provisional-cardioid-boundary",
+  "provisional": true,
+  "iterationTarget": 5000,
+  "deepOrder": 3,
+  "coarseOrder": 2,
+  "camera": {
+    "centerXRaw": "-730750818665451459101842416358141509827966271488",
+    "centerXBits": 160,
+    "centerYRaw": "0",
+    "centerYBits": 160,
+    "scaleMantissa": 0.768,
+    "scaleExponent": -8
+  }
+}

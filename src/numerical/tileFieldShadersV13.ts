@@ -12,6 +12,7 @@ struct ColourParams {
 @group(0) @binding(1) var resultTexture: texture_2d<f32>;
 @group(0) @binding(2) var qualityTexture: texture_2d<f32>;
 @group(0) @binding(3) var colourTexture: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var evidenceTexture: texture_storage_2d<r32uint, write>;
 fn palette(t: f32) -> vec3f {
   return 0.5 + 0.5 * cos(6.2831853 * (vec3f(t) + vec3f(0.0, 0.12, 0.24) + p.palettePhase));
 }
@@ -23,6 +24,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let quality = textureLoad(qualityTexture, pixel, 0);
   if (quality.x < 0.5) { return; }
   let status = u32(round(result.y));
+  textureStore(evidenceTexture, pixel, vec4u(u32(max(0.0, round(result.z))), 0u, 0u, 0u));
   if (status == 1u) {
     let cycle = fract(result.x / max(1.0, p.paletteLength));
     textureStore(colourTexture, pixel, vec4f(palette(cycle), 1.0));

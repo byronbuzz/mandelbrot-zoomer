@@ -18,13 +18,16 @@
     "validate:phase1": "node scripts/validate-phase1-presentation.mjs",
     "validate:release": "node scripts/validate-release-invariants.mjs",
     "validate:v14": "node scripts/validate-v14-invariants.mjs",
+    "validate:provenance": "node scripts/validate-provenance-oracle.mjs",
+    "test:continuity-browser": "node scripts/run-continuity-browser-gate.mjs",
     "validate:v6": "node scripts/validate-v6-invariants.mjs",
-    "build": "node scripts/validate-release-invariants.mjs && node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && node scripts/validate-v14-invariants.mjs && tsc -b && vite build --configLoader runner",
+    "build": "node scripts/validate-release-invariants.mjs && node scripts/validate-wgsl-source.mjs && node scripts/validate-v1-invariants.mjs && node scripts/validate-v11-invariants.mjs && node scripts/validate-v12-invariants.mjs && node scripts/validate-v13-invariants.mjs && node scripts/validate-persistent-architecture.mjs && node scripts/validate-phase1-presentation.mjs && node scripts/validate-v14-invariants.mjs && node scripts/validate-provenance-oracle.mjs && tsc -b && vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
+    "playwright-core": "^1.62.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.1",
     "wgsl_reflect": "^1.5.0"
