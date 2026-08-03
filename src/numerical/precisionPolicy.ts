@@ -3,12 +3,13 @@ import type { InteractionState } from '../tiles/types';
 export const REFERENCE_CONTRACT_VERSION = 1;
 export const REFERENCE_TRANSPORT_GUARD_BITS = 32;
 export const PERTURBATION_OVERLAP_SAMPLE_EXPONENT = -23;
-export const PREFERRED_REFERENCE_TILE_BUDGET = 4;
+export const PREFERRED_REFERENCE_SEED_BUDGET = 16;
+export const MAX_PENDING_REFERENCE_DEMAND = 16;
 
 export type PrecisionDecision = Readonly<{
   required: boolean;
   preferred: boolean;
-  reason: 'coordinate-collapse' | 'non-finite' | 'focus-overlap' | 'direct';
+  reason: 'coordinate-collapse' | 'non-finite' | 'deep-overlap' | 'direct';
   requiredTransportBits: number;
 }>;
 
@@ -28,10 +29,9 @@ export function precisionDecision(input: Readonly<{
   const required = input.coordinateCollapsed || input.nonFinitePixels > 0;
   const preferred = !required
     && input.doubleFloat
-    && input.interaction === 'settled'
     && input.levelOffset === 0
     && input.sampleExponent <= PERTURBATION_OVERLAP_SAMPLE_EXPONENT
-    && input.distanceFromFocus <= 1.5;
+    && Number.isFinite(input.distanceFromFocus);
   return {
     required,
     preferred,
@@ -39,7 +39,7 @@ export function precisionDecision(input: Readonly<{
       ? 'coordinate-collapse'
       : input.nonFinitePixels > 0
         ? 'non-finite'
-        : preferred ? 'focus-overlap' : 'direct',
+        : preferred ? 'deep-overlap' : 'direct',
     requiredTransportBits: requiredReferenceTransportBits(input.sampleExponent)
   };
 }

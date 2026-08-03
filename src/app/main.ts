@@ -168,7 +168,7 @@ function updateReadouts(): void {
   ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.inFlightBatches} GPU batches · ${stats.queuedChunks} queued`;
   ui.displayOut.value = `${displayRate()} Hz`;
   ui.renderSizeOut.value = `${stats.tileSize}×${stats.tileSize} tiles · 2^${stats.sampleExponent} sample`;
-  ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceTransportBits}/${stats.referenceWorkingBits} transport/working bits · ${stats.precisionLimitedTiles} limited`;
+  ui.navigationOut.value = `${stats.finestPerturbationTiles}/${stats.finestTiles} finest perturb · ${stats.directTiles} multiscale direct · ${stats.pendingReferences} refs · ${stats.referenceTransportBits}/${stats.referenceWorkingBits} transport/working bits · ${stats.precisionLimitedTiles} limited`;
   ui.gpuOut.value = renderer.adapterLabel;
   ui.buildOut.value = BUILD_LABEL;
   Object.assign(ui.canvas.dataset, {
@@ -251,6 +251,8 @@ function diagnosticsReport(): string {
     `Converged tiles: ${stats.convergedTiles}`,
     `Direct tiles: ${stats.directTiles}`,
     `Perturbation tiles: ${stats.perturbationTiles}`,
+    `Finest tiles: ${stats.finestTiles}`,
+    `Finest perturbation tiles: ${stats.finestPerturbationTiles}`,
     `Pending references: ${stats.pendingReferences}`,
     `Repair tiles: ${stats.repairTiles}`,
     `Reference failures: ${stats.referenceFailures}`,

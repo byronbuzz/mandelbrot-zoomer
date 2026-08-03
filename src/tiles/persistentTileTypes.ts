@@ -60,6 +60,8 @@ export type PersistentFieldStats = Readonly<{
   convergedTiles: number;
   directTiles: number;
   perturbationTiles: number;
+  finestTiles: number;
+  finestPerturbationTiles: number;
   pendingReferences: number;
   repairTiles: number;
   referenceFailures: number;

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "precision-user-failure-2026-08-03",
+  "description": "Exact user-reported complex boundary where direct rendering visibly loses precision below 10^5.",
+  "capturedAt": "2026-08-03T13:37:38.136Z",
+  "build": "1.4-afb6d6a",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "deepOrder": 5.942447,
+  "coarseOrder": 3.01,
+  "camera": {
+    "centerX": {
+      "raw": "-1094754282612631441136195986269190961334902063104",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-240999191986477269236474263803437467265499398144",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.89787096768873,
+      "exponent": -18
+    },
+    "log10Magnification": 5.942447
+  },
+  "viewport": {
+    "cssWidth": 1200,
+    "cssHeight": 800,
+    "devicePixelRatio": 1,
+    "canvasWidth": 1200,
+    "canvasHeight": 800
+  },
+  "traceAnchorCss": {
+    "x": 600,
+    "y": 400
+  }
+}
