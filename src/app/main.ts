@@ -10,6 +10,7 @@ if (!root) throw new Error('Missing app root');
 
 const ui = createUi(root);
 const testIterations = new URLSearchParams(location.search).get('testIterations');
+let testIterationTarget: number | null = null;
 if (testIterations !== null) {
   const requested = Number(testIterations);
   const minimum = Number(ui.iterations.min);
@@ -17,7 +18,8 @@ if (testIterations !== null) {
   const step = Number(ui.iterations.step);
   if (Number.isFinite(requested) && requested >= minimum && requested <= maximum) {
     const snapped = minimum + Math.round((requested - minimum) / step) * step;
-    ui.iterations.value = String(Math.min(maximum, Math.max(minimum, snapped)));
+    testIterationTarget = Math.min(maximum, Math.max(minimum, snapped));
+    ui.iterations.value = String(testIterationTarget);
   }
 }
 const camera = new CameraModel();
@@ -51,6 +53,10 @@ let lastReadoutAt = 0;
 const presentationTimestamps: number[] = [];
 
 function targetIterations(): number {
+  if (testIterationTarget !== null) {
+    ui.iterations.value = String(testIterationTarget);
+    return testIterationTarget;
+  }
   return Math.max(1, Math.floor(Number(ui.iterations.value)));
 }
 
@@ -149,6 +155,7 @@ function precisionSummary(): string {
 function updateReadouts(): void {
   const stats = renderer.stats;
   const presentation = renderer.presentationDiagnostics;
+  const cameraSnapshot = camera.snapshot();
   const depth = camera.log10Magnification();
   ui.zoomOut.value = `10^${depth.toFixed(3)}`;
   ui.stateOut.value = `${interaction}${renderer.isBusy ? ' · calculating' : ''}`;
@@ -172,7 +179,14 @@ function updateReadouts(): void {
     resourceEpoch: String(presentation.resourceEpoch),
     reprojectionErrorTexels: presentation.worstReprojectionErrorTexels.toFixed(6),
     presentationCpuMs: presentation.lastFrameCpuMs.toFixed(3),
-    validationErrors: String(presentation.validationErrors)
+    validationErrors: String(presentation.validationErrors),
+    centerXRaw: cameraSnapshot.centerX.raw.toString(),
+    centerXBits: String(cameraSnapshot.centerX.bits),
+    centerYRaw: cameraSnapshot.centerY.raw.toString(),
+    centerYBits: String(cameraSnapshot.centerY.bits),
+    scaleMantissa: cameraSnapshot.scale.mantissa.toPrecision(17),
+    scaleExponent: String(cameraSnapshot.scale.exponent),
+    log10Magnification: depth.toPrecision(17)
   });
 }
 

@@ -45,14 +45,16 @@ The executable `?testDeviceLoss=1` hook destroyed the active device. Renderer ep
 
 ### Boundary zoom stress trace
 
-The browser harness accepts `?testIterations=1000`, which snaps the native control to a valid step before the first numerical request. This makes the prescribed trace repeatable without synthetic range-control timing.
+The browser harness accepts `?testIterations=1000`, which snaps and locks the native control to a valid step before every numerical request. This makes the prescribed trace repeatable despite browser form-state restoration and without synthetic range-control timing.
 
-- anchor: a visually confirmed point on the main cardioid/bulb boundary at canvas CSS position `(300, 382)` in the recorded 756x927 viewport;
-- input: eleven wheel-in steps with `scrollY=-420`, spaced 240 ms apart at the same anchor, with no pan or cursor relocation;
-- atlas-history capture at `10^2.676`: 1,000 iterations, 256 visible/converged tiles, 60 Hz, zero validation errors;
-- atlas-history capture at `10^3.114`: 1,000 iterations, 508 visible/converged tiles, 60 Hz, zero validation errors;
+- anchor: a visually confirmed point on the main cardioid/bulb boundary at canvas CSS position `(300, 382)` in the recorded 756x927 viewport at DPR 1.375 (1039x1274 physical canvas);
+- input: eleven wheel-in steps with requested `scrollY=-420`, spaced 420 ms apart at the same anchor, with no pan or cursor relocation, followed by two settling corrections at 1.8 s spacing to counter browser gesture momentum;
+- atlas-history trace crossed `10^2` and `10^3.016`, then produced a stable settled capture at `10^3.074`;
+- final atlas-history capture: exactly 1,000 requested iterations, 180 visible/converged tiles, 224 cached tiles, 60 Hz, zero validation errors and `0.000035` worst admitted source-texel error;
 - independent legacy replay beyond `10^4`: 1,000 iterations, 446 visible/converged tiles, 60 Hz, zero validation errors;
 - visual result: continuous boundary detail with complete canvas coverage; no horizontal cutoff, rectangular hole, or parent/child transition seam.
+
+The raw candidate record includes every observed zoom depth, exact fixed-point camera centre, binary scale, DPR, viewport/canvas sizes, presenter counters and the PNG filename in `outputs/v14-evidence/stress-boundary-stable-1000-depth3.json`.
 
 The failing pre-fix atlas capture at approximately `10^2` is retained alongside the passing captures. It reproduced a hard rectangular cutoff. The same class of hole appeared in the legacy path, proving that the fault was in shared tile admission rather than history sampling or atlas composition.
 
@@ -70,5 +72,6 @@ The failing pre-fix atlas capture at approximately `10^2` is retained alongside 
 10. Zero CSS extent originally suspended presentation but not numerical submissions. The resize/request path now suspends the scheduler, clears queued work and resumes only after a non-zero request.
 11. Display dimensions were independently clamped to the adapter limit, which could distort the mathematical aspect ratio. One common scale factor now constrains both axes.
 12. A resize could reconfigure and clear the canvas while authoritative-anchor promotion was pending. Drawing-buffer resize is now deferred until promotion completes, preserving the last presented frame and pending-resource lifetime.
+13. Browser form-state restoration could overwrite the test iteration slider after startup. Test mode now locks the snapped target on every numerical request; the recorded trace remained exactly 1,000 throughout.
 
 Visual evidence is retained in the release handoff under `outputs/v14-evidence/`.
