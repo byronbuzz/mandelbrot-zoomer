@@ -30,7 +30,6 @@ import {
   type TileReferenceState
 } from '../tiles/persistentTileTypes';
 import {
-  sampleExponentForViewport,
   tileSpanExponent,
   visibleTileDescriptors
 } from '../tiles/worldTilePlanner';
@@ -158,7 +157,6 @@ export class TileFieldRenderer {
   private displayWidth = 1;
   private displayHeight = 1;
   private statsValue: PersistentFieldStats = EMPTY_STATS;
-  private referenceFailures = 0;
   private runtimeErrorListener: ((message: string) => void) | null = null;
 
   private constructor(
@@ -330,7 +328,7 @@ export class TileFieldRenderer {
       cachedTiles: this.tileMap.size,
       pendingReferences: [...this.tileMap.values()]
         .filter(tile => tile.referenceState === 'queued').length,
-      referenceFailures: this.referenceFailures,
+      referenceFailures: this.referenceAtlas.failureCount,
       numericalFreshnessMs: newestNumericalUpdate > 0 ? now - newestNumericalUpdate : 0,
       presentationHistoryMs: visibleTiles.length > 0 ? now - oldestCreated : 0
     };
@@ -500,19 +498,19 @@ export class TileFieldRenderer {
     const visible = descriptors
       .map(descriptor => this.tileMap.get(descriptor.key))
       .filter((tile): tile is FieldTile => Boolean(tile));
-    const activeKeys = new Set(queue.map(item => item.work.key));
+    const tilePixelCount = PERSISTENT_TILE_SIZE * PERSISTENT_TILE_SIZE;
     this.statsValue = {
       requestId: request.requestId,
       interaction: request.interaction,
       visibleTiles: visible.length,
       cachedTiles: this.tileMap.size,
-      activeTiles: activeKeys.size,
-      convergedTiles: Math.max(0, visible.length - activeKeys.size),
+      activeTiles: visible.filter(tile => tile.acceptedPixels < tilePixelCount).length,
+      convergedTiles: visible.filter(tile => tile.acceptedPixels >= tilePixelCount).length,
       directTiles: visible.filter(tile => tile.numericalMode !== 'perturbation').length,
       perturbationTiles: visible.filter(tile => tile.numericalMode === 'perturbation').length,
       pendingReferences: visible.filter(tile => tile.referenceState === 'queued').length,
       repairTiles: visible.filter(tile => tile.repairPass > 0).length,
-      referenceFailures: this.referenceFailures,
+      referenceFailures: this.referenceAtlas.failureCount,
       completedChunks,
       queuedChunks: queue.length,
       lastBatchMs,
@@ -527,21 +525,51 @@ export class TileFieldRenderer {
     request: PersistentTileRequest,
     descriptors: readonly PersistentTileDescriptor[]
   ): void {
+    const referenceTarget = this.referenceTargetForRequest(request);
     for (const descriptor of descriptors) {
       const tile = this.tileMap.get(descriptor.key);
       if (!tile || !this.tileNeedsPerturbation(tile, request)) continue;
-      if (tile.reference && tile.reference.length >= request.targetIterations + 1) continue;
-      const reusable = this.referenceAtlas.findReusable(tile.descriptor.key, request.targetIterations);
-      if (reusable) {
+      if (tile.referenceState === 'queued') continue;
+
+      const failurePixels = tile.health.glitchPixels
+        + tile.health.orbitExhaustedPixels
+        + tile.health.nonFinitePixels;
+      const unresolvedPixels = tile.health.activePixels
+        + tile.health.cappedPixels
+        + failurePixels;
+
+      if (tile.numericalMode === 'perturbation' && tile.reference) {
+        // GPU-detected failures are repaired by maybeRequestRepair after the batch.
+        if (failurePixels > 0) continue;
+        const needsLongerReference = tile.reference.requestedIterations < referenceTarget
+          && unresolvedPixels > 0;
+        if (!needsLongerReference) continue;
+      }
+
+      if (tile.referenceState === 'failed' && tile.referenceTarget >= referenceTarget) continue;
+
+      const reusable = this.referenceAtlas.findReusable(tile.descriptor.key, referenceTarget);
+      if (reusable && reusable !== tile.reference) {
         tile.pendingReference = reusable;
         tile.pendingReset = tile.numericalMode === 'perturbation' ? 'unresolved' : 'all';
         tile.referenceState = 'ready';
+        tile.referenceTarget = referenceTarget;
         this.requestCurrentAgain();
         continue;
       }
-      if (tile.referenceState === 'queued') continue;
-      this.queueReference(tile, request, tile.repairPass);
+
+      this.queueReference(tile, request, tile.repairPass, referenceTarget);
     }
+  }
+
+  private referenceTargetForRequest(request: PersistentTileRequest): number {
+    if (request.interaction === 'moving') {
+      return Math.min(request.targetIterations, MOVING_DIRECT_ITERATIONS);
+    }
+    if (request.interaction === 'settling') {
+      return Math.min(request.targetIterations, SETTLING_DIRECT_ITERATIONS);
+    }
+    return request.targetIterations;
   }
 
   private tileNeedsPerturbation(tile: FieldTile, request: PersistentTileRequest): boolean {
@@ -554,18 +582,20 @@ export class TileFieldRenderer {
   private queueReference(
     tile: FieldTile,
     request: PersistentTileRequest,
-    repairPass: number
+    repairPass: number,
+    referenceTarget = this.referenceTargetForRequest(request)
   ): void {
     if (repairPass > MAX_REFERENCE_REPAIR_PASSES) {
       tile.referenceState = 'failed';
+      tile.referenceTarget = referenceTarget;
       return;
     }
     tile.referenceState = 'queued';
-    tile.referenceTarget = request.targetIterations;
+    tile.referenceTarget = referenceTarget;
     tile.referenceError = null;
     void this.referenceAtlas.request(
       tile.descriptor,
-      request.targetIterations,
+      referenceTarget,
       tile.descriptor.distanceFromFocus + repairPass * 0.05,
       repairPass
     ).then(reference => {
@@ -575,17 +605,13 @@ export class TileFieldRenderer {
       tile.referenceState = 'ready';
       tile.referenceError = null;
       tile.repairPass = repairPass;
+      tile.referenceTarget = referenceTarget;
       this.requestCurrentAgain();
     }).catch(error => {
       if (this.tileMap.get(tile.descriptor.key) !== tile) return;
       tile.referenceError = error instanceof Error ? error.message : String(error);
-      this.referenceFailures++;
-      tile.referenceState = 'none';
-      if (repairPass < MAX_REFERENCE_REPAIR_PASSES) {
-        this.queueReference(tile, request, repairPass + 1);
-      } else {
-        tile.referenceState = 'failed';
-      }
+      tile.referenceState = 'failed';
+      tile.referenceTarget = referenceTarget;
     });
   }
 
@@ -595,11 +621,14 @@ export class TileFieldRenderer {
       + tile.health.orbitExhaustedPixels
       + tile.health.nonFinitePixels;
     if (unresolvedFailures <= 0 || tile.referenceState === 'queued') return;
+    const referenceTarget = Math.max(tile.referenceTarget, this.referenceTargetForRequest(request));
+    if (tile.referenceState === 'failed' && tile.referenceTarget >= referenceTarget) return;
     if (tile.repairPass >= MAX_REFERENCE_REPAIR_PASSES) {
       tile.referenceState = 'failed';
+      tile.referenceTarget = referenceTarget;
       return;
     }
-    this.queueReference(tile, request, tile.repairPass + 1);
+    this.queueReference(tile, request, tile.repairPass + 1, referenceTarget);
   }
 
   private requestCurrentAgain(): void {
