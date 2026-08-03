@@ -18,19 +18,27 @@ The browser fixture imports only `src/numerical/tileDirectShader.ts`. It creates
 - iteration count equals completed updates;
 - an escape observed exactly at the selected target wins over a provisional cap;
 - pixel centres use `centre + (index + 0.5 - tileSize/2) * 2^sampleExponent`;
-- recurrence metadata and accepted-result status encodings are tested independently.
+- recurrence metadata, accepted-result evidence and accepted quality must agree;
+- smooth tolerance is `max(0.001, 8 f32 ULP)`.
 
-The fixture SHA-256 is `8f9538a6d402b27c0c8df4d1fdb13c062c076271d62f502069f525d21a999666`. The unchanged production direct-shader source SHA-256 is `6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1`.
+The tested source commit is `f6433f52c067356c7060e46f61f42eb8c69bfd97`. SHA-256 identities:
 
-## Portable CPU gate
+- fixture: `50dbc8e2b80520fb3448ef079e32ebe97863f3ab176f32155a418153901fe943`;
+- unchanged production direct shader: `6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1`;
+- browser runner: `410f97b3137876415bccbea0984d2c235d143f7296a8afb1dcfcb68a70aba2bc`;
+- WebGPU harness: `3270a81a8b73985263d476b9232cd1bc717941eede09b384267b81f87708db64`;
+- CPU oracle contract: `9dd1df5e1cbfc9aa40ab3df2c94ff270ee5a6f081da20e1c7e1822588c165094`.
 
-- 14 strict stable cases passed their checked-in status and iteration goldens;
+## Portable CPU and compile gates
+
+- 16 strict stable cases passed their checked-in goldens and the executable oracle, including target zero;
 - monolithic, repeated-one, repeated-seven, repeated-64, Fibonacci and escape-boundary chunk schedules produced identical oracle state;
+- one 16x16 exact-dyadic coordinate grid independently tests half-pixel offsets, exponent mapping and both axes;
 - analytic-boundary inclusion, strict bailout equality, escape-at-target precedence, nonanalytic bounded cap, short escape, `-2` boundary behavior and conjugacy are represented;
-- four deliberately sensitive f32 boundary/signed-zero cases are recorded separately and are not forced into f64 goldens;
-- CPU-f64 benchmark median: `6.0663 ms` for `2,442,855` explicitly executed iterations on this machine.
+- four deliberately sensitive f32 boundary/signed-zero cases are recorded separately;
+- CPU-f64 benchmark median: `5.9731 ms` for `2,442,855` explicitly executed iterations.
 
-The CPU gate is now part of `pnpm run build`. All existing release, WGSL, persistent-field, presentation, provenance, TypeScript and production Vite gates continued to pass.
+The CPU gate and a test-specific TypeScript compilation of the browser harness are part of `pnpm run build`. All existing release, WGSL, persistent-field, presentation, provenance, production TypeScript and Vite gates continued to pass.
 
 ## Real-browser production-WGSL gate
 
@@ -38,16 +46,14 @@ Browser: Chromium/Edge `150.0.4078.83`
 Adapter: AMD, architecture `rdna-4`  
 Fixture: standalone Vite test page, no production app or presentation execution
 
-- all 14 strict cases matched CPU-f64 discrete status exactly;
-- all 14 strict cases matched escape/cap iteration exactly;
-- every same-device chunk schedule produced bit-identical recurrence state, metadata, accepted result and final counters;
-- maximum smooth-escape absolute difference from CPU-f64 was `0.0000831661`, below the initial portable bound of `0.02`;
-- WGSL compilation errors: `0`;
-- scoped validation/internal/out-of-memory errors: `0`;
-- uncaptured WebGPU errors: `0`;
-- non-finite pixels: `0`;
-- premature device loss: `false`;
-- browser console/page/HTTP errors: `0`.
+- all 16 strict cases matched CPU-f64 discrete status and iteration exactly;
+- every same-device chunk schedule produced bit-identical recurrence state, metadata, accepted result, quality and final counters;
+- all 256 exact-dyadic grid pixels matched: 245 escaped, 7 analytic and 4 capped;
+- maximum grid smooth-escape absolute difference: `0.0000003499`;
+- cap-suppressed state remained active at iteration 2 with no accepted quality, then published a cap, then continued to escape at iteration 3 when the target increased;
+- signed-zero results are bit-identical; cusp diagnostics retain the expected inside/outside analytic ordering;
+- maximum strict smooth-escape absolute difference: `0.0000831661`;
+- WGSL compilation, scoped validation/internal/out-of-memory, uncaptured, device-loss, browser and non-finite errors: `0`.
 
 The existing real-browser presentation continuity gate was rerun on the same source tree and passed all three transformed/batch pairs.
 
@@ -57,19 +63,20 @@ Scene: 128x128 boundary tile at 1,000 target iterations, 64-iteration chunks. Se
 
 - explicitly executed GPU recurrence iterations: `2,436,847`;
 - final classes: 16,097 escaped, 287 capped, zero non-finite;
-- queue-completion wall time: p50 `3.500 ms`, p95 `4.200 ms`, range `2.500â€“4.500 ms`;
-- readback wall time p50: `3.000 ms`;
-- derived p50 throughput: approximately `696.2 million` explicit recurrence iterations/second.
+- fresh-run queue-completion latency: p50 `2.900 ms`, p95 `3.200 ms`, range `2.500â€“3.400 ms`;
+- readback wall time p50: `3.100 ms`.
 
-These are local before-optimization telemetry, not timestamp-query measurements and not a cross-adapter threshold. Shader compilation, resource allocation and readback are excluded from the queue-completion interval; submission and browser scheduling overhead are not. The next scheduler PR must report the same scene and raw metric definitions, together with end-to-end latency and publication-work counts.
+These are local before-optimization telemetry, not timestamp-query measurements, recurrence-only throughput, or a cross-adapter threshold. Each measured run creates fresh resources; the timed queue completion follows uniform uploads and can include upload completion, lazy GPU initialization, submission and browser scheduling overhead. Compilation, host allocation and readback are outside the interval.
 
 ## Evidence files
 
-The gate writes ignored, raw local artifacts under `test-results/numerical/`:
+Every invocation writes an isolated run directory and one authoritative terminal manifest. The immutable bundle for source commit `f6433f5` is checked in under `docs/evidence/numerical/f6433f5-amd-rdna4/`:
 
 - `cpu-oracle.json`;
 - `browser-report.json`;
+- `manifest.json`;
 - `numerical-playwright-trace.zip`;
-- `numerical-fixture.png`.
+- `numerical-fixture.png`;
+- `checksums.sha256`.
 
 No claim is made that CPU-f64 is an MPFR oracle. MPFR/direct-interval stabilization remains required before deep perturbation, BLA or series approximation can become authoritative.
