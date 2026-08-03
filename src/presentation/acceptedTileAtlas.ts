@@ -16,7 +16,9 @@ export class AcceptedTileAtlas {
   private readonly leases = new Uint32Array(ATLAS_COLUMNS * ATLAS_ROWS);
 
   constructor(private readonly device: GPUDevice) {
-    const usage = GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING;
+    const usage = GPUTextureUsage.COPY_DST
+      | GPUTextureUsage.TEXTURE_BINDING
+      | GPUTextureUsage.STORAGE_BINDING;
     this.colour = device.createTexture({
       label: 'accepted-tile-colour-atlas',
       size: [this.width, this.height],
@@ -62,30 +64,6 @@ export class AcceptedTileAtlas {
 
   release(slot: AtlasSlot): void {
     this.free.push(slot.index);
-  }
-
-  encodeCopy(
-    encoder: GPUCommandEncoder,
-    slot: AtlasSlot,
-    colour: GPUTexture,
-    quality: GPUTexture,
-    evidence: GPUTexture
-  ): void {
-    const destination = { texture: this.colour, origin: { x: slot.x, y: slot.y } };
-    encoder.copyTextureToTexture({ texture: colour }, destination, {
-      width: PERSISTENT_TILE_SIZE,
-      height: PERSISTENT_TILE_SIZE
-    });
-    encoder.copyTextureToTexture(
-      { texture: quality },
-      { texture: this.quality, origin: { x: slot.x, y: slot.y } },
-      { width: PERSISTENT_TILE_SIZE, height: PERSISTENT_TILE_SIZE }
-    );
-    encoder.copyTextureToTexture(
-      { texture: evidence },
-      { texture: this.evidence, origin: { x: slot.x, y: slot.y } },
-      { width: PERSISTENT_TILE_SIZE, height: PERSISTENT_TILE_SIZE }
-    );
   }
 
   destroy(): void {

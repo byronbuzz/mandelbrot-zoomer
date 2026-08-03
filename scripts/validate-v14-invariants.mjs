@@ -45,7 +45,7 @@ const required = [
   ['deep relative tile transform', renderer, 'fixedDifferenceOverDyadic'],
   ['legacy comparison fallback', renderer, "get('presenter') === 'legacy'"],
   ['independent legacy allocation path', renderer, 'const acceptedAtlas = useLegacyPresenter ? null'],
-  ['tile publication copy', renderer, 'this.acceptedAtlas.encodeCopy'],
+  ['direct tile publication into accepted atlas', renderer, 'this.acceptedAtlas.colour.createView()'],
   ['device-loss recreation hook', main, 'onDeviceLost'],
   ['executable device-loss test hook', main, '__ZOOMER_FORCE_DEVICE_LOSS__'],
   ['deterministic iteration test hook', main, "get('testIterations')"],
@@ -79,6 +79,9 @@ if (presenter.includes('promotionPending')) {
 }
 if (!shaders.includes('isDisplayDefinite(semantic(base)) && isCap(semantic(candidate))')) {
   failures.push('Continuity instrumentation does not explicitly detect definite-to-cap regression.');
+}
+if (renderer.includes('this.acceptedAtlas.encodeCopy')) {
+  failures.push('Production atlas publication must not restore full-tile texture copies.');
 }
 
 // Direct source-to-target reprojection is path-independent: intermediate rAF

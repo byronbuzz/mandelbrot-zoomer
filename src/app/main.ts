@@ -163,8 +163,8 @@ function updateReadouts(): void {
   ui.stateOut.value = `${interaction}${renderer.isBusy ? ' · calculating' : ''}`;
   ui.precisionOut.value = precisionSummary();
   ui.fieldOut.value = `${stats.visibleTiles} visible · ${stats.cachedTiles} cached · ${(stats.numericalFreshnessMs / 1000).toFixed(1)} s numerical`;
-  ui.jobsOut.value = `${stats.activeTiles} active · ${stats.convergedTiles} converged · ${stats.completedChunks} chunks`;
-  ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.queuedChunks} queued`;
+  ui.jobsOut.value = `${stats.activeTiles} active · ${stats.convergedTiles} converged · ${stats.completedChunks}/${stats.submittedChunks} retired/submitted`;
+  ui.timingOut.value = `${stats.lastBatchMs.toFixed(1)} ms · ${stats.inFlightBatches} GPU batches · ${stats.queuedChunks} queued`;
   ui.displayOut.value = `${displayRate()} Hz`;
   ui.renderSizeOut.value = `${stats.tileSize}×${stats.tileSize} tiles · 2^${stats.sampleExponent} sample`;
   ui.navigationOut.value = `${stats.directTiles} direct · ${stats.perturbationTiles} perturb · ${stats.pendingReferences} refs · ${stats.referenceFailures} ref failures`;
@@ -254,7 +254,12 @@ function diagnosticsReport(): string {
     `Repair tiles: ${stats.repairTiles}`,
     `Reference failures: ${stats.referenceFailures}`,
     `Completed chunks: ${stats.completedChunks}`,
+    `Submitted chunks: ${stats.submittedChunks}`,
     `Queued chunks: ${stats.queuedChunks}`,
+    `GPU batches in flight: ${stats.inFlightBatches}`,
+    `GPU tiles in flight: ${stats.inFlightTiles}`,
+    `Direct atlas publications: ${stats.atlasPublications}`,
+    `Avoided full-tile atlas copies: ${stats.avoidedAtlasCopies}`,
     `Last batch: ${stats.lastBatchMs.toFixed(3)} ms`,
     `Numerical freshness: ${stats.numericalFreshnessMs.toFixed(3)} ms`,
     `Presentation history: ${stats.presentationHistoryMs.toFixed(3)} ms`,
@@ -489,6 +494,7 @@ if (continuityTestEnabled) {
       }
     },
     diagnostics: () => ({
+      build: BUILD_LABEL,
       batchRevision: renderer.completedTestBatchRevision,
       requestId: renderer.currentTestRequestId,
       adapterLabel: renderer.adapterLabel,

@@ -33,6 +33,70 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   }
 }`;
 
+// Production atlas publication is deliberately separate from the frozen
+// numerical kernels. It publishes only newly accepted pixels (or escaped
+// pixels whose palette changed) directly into the accepted atlas. The first
+// publication clears the whole leased slot so data from an older lease can
+// never become visible.
+export const tileAtlasPublishShader = /* wgsl */ `
+struct PublishParams {
+  tileSize: u32,
+  paletteChanged: u32,
+  previousFrontier: u32,
+  publishFlags: u32,
+  atlasOrigin: vec2u,
+  palettePhase: f32,
+  paletteLength: f32,
+}
+@group(0) @binding(0) var<uniform> p: PublishParams;
+@group(0) @binding(1) var resultTexture: texture_2d<f32>;
+@group(0) @binding(2) var qualityTexture: texture_2d<f32>;
+@group(0) @binding(3) var colourAtlas: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var qualityAtlas: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(5) var evidenceAtlas: texture_storage_2d<r32uint, write>;
+
+fn palette(t: f32) -> vec3f {
+  return 0.5 + 0.5 * cos(6.2831853 * (vec3f(t) + vec3f(0.0, 0.12, 0.24) + p.palettePhase));
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x >= p.tileSize || gid.y >= p.tileSize) { return; }
+  let local = vec2i(gid.xy);
+  let destination = vec2i(p.atlasOrigin) + local;
+  let quality = textureLoad(qualityTexture, local, 0);
+  let forceCapPublication = (p.publishFlags & 1u) != 0u;
+  let firstPublication = (p.publishFlags & 2u) != 0u;
+
+  // A fresh lease must overwrite invalid pixels as well as accepted ones.
+  if (firstPublication) {
+    textureStore(qualityAtlas, destination, quality);
+    textureStore(evidenceAtlas, destination, vec4u(0u));
+    textureStore(colourAtlas, destination, vec4f(0.0, 0.0, 0.0, 1.0));
+  }
+  if (quality.x <= 0.0) { return; }
+
+  let result = textureLoad(resultTexture, local, 0);
+  let status = u32(round(result.y));
+  let pixelEvidence = u32(max(0.0, round(result.z)));
+  let newlyEscaped = status == 1u && pixelEvidence > p.previousFrontier;
+  let newlyAnalytic = status == 2u && firstPublication;
+  let capAdvanced = status == 4u && (
+    pixelEvidence > p.previousFrontier || firstPublication || forceCapPublication
+  );
+  let recolour = p.paletteChanged != 0u && status == 1u;
+  if (!(newlyEscaped || newlyAnalytic || capAdvanced || recolour)) { return; }
+
+  textureStore(qualityAtlas, destination, quality);
+  textureStore(evidenceAtlas, destination, vec4u(pixelEvidence, 0u, 0u, 0u));
+  if (status == 1u) {
+    let cycle = fract(result.x / max(1.0, p.paletteLength));
+    textureStore(colourAtlas, destination, vec4f(palette(cycle), 1.0));
+  } else {
+    textureStore(colourAtlas, destination, vec4f(0.0, 0.0, 0.0, 1.0));
+  }
+}`;
+
 export const tileClearShader = /* wgsl */ `
 struct ClearParams {
   tileSize: u32,

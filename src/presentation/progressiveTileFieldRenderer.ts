@@ -14,6 +14,7 @@ import {
   transformIsFinite
 } from './presentationMath';
 import {
+  tileAtlasPublishShader,
   tileClearShader,
   tileColourShader,
   tileDirectIterationShader,
@@ -44,12 +45,13 @@ import {
 
 const DIRECT_PARAMETER_BYTES = 64;
 const PERTURB_PARAMETER_BYTES = 96;
-const COLOUR_PARAMETER_BYTES = 16;
+const COLOUR_PARAMETER_BYTES = 32;
 const PRESENT_PARAMETER_BYTES = 16;
 const CLEAR_PARAMETER_BYTES = 16;
 const RESET_PARAMETER_BYTES = 16;
 const COUNTER_VALUES = 7;
 const COUNTER_BYTES = COUNTER_VALUES * Uint32Array.BYTES_PER_ELEMENT;
+const COUNTER_READBACK_STRIDE = 32;
 const STATE_BYTES_PER_PIXEL = 16;
 const META_BYTES_PER_PIXEL = 16;
 const TILE_PIXEL_COUNT = PERSISTENT_TILE_SIZE * PERSISTENT_TILE_SIZE;
@@ -70,6 +72,7 @@ const SETTLED_QUANTUM_MS = 40;
 const MOVING_BATCH_TARGET_MS = 7;
 const SETTLING_BATCH_TARGET_MS = 11;
 const SETTLED_BATCH_TARGET_MS = 16;
+const MAX_IN_FLIGHT_BATCHES = 3;
 
 const EMPTY_HEALTH: PersistentTileHealth = {
   activePixels: TILE_PIXEL_COUNT,
@@ -94,7 +97,12 @@ const EMPTY_STATS: PersistentFieldStats = {
   repairTiles: 0,
   referenceFailures: 0,
   completedChunks: 0,
+  submittedChunks: 0,
   queuedChunks: 0,
+  inFlightBatches: 0,
+  inFlightTiles: 0,
+  atlasPublications: 0,
+  avoidedAtlasCopies: 0,
   lastBatchMs: 0,
   numericalFreshnessMs: 0,
   presentationHistoryMs: 0,
@@ -115,7 +123,6 @@ type FieldTile = {
   stateBuffer: GPUBuffer;
   metaBuffer: GPUBuffer;
   counterBuffer: GPUBuffer;
-  counterReadback: GPUBuffer;
   resultTexture: GPUTexture;
   qualityTexture: GPUTexture;
   colourTexture: GPUTexture;
@@ -133,6 +140,7 @@ type FieldTile = {
   presentLinearGroup: GPUBindGroup;
   presentNearestGroup: GPUBindGroup;
   atlasSlot: AtlasSlot | null;
+  atlasNeedsClear: boolean;
   health: PersistentTileHealth;
   iterationFrontier: number;
   coveragePixels: number;
@@ -161,6 +169,27 @@ type ScheduledWork = Readonly<{
   finalTarget: number;
   levelOffset: number;
   capMode: CapPresentationMode;
+}>;
+
+type PendingBatch = Readonly<{
+  batch: readonly ScheduledWork[];
+  request: PersistentTileRequest;
+  submittedAt: number;
+  slot: BatchReadbackSlot;
+  completed: Promise<BatchCompletion>;
+}>;
+
+type BatchReadbackSlot = {
+  buffer: GPUBuffer;
+  busy: boolean;
+};
+
+type BatchCompletion = Readonly<{
+  completedAt: number;
+  health: ReadonlyArray<Readonly<{
+    scheduled: ScheduledWork;
+    value: PersistentTileHealth;
+  }>>;
 }>;
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -224,6 +253,12 @@ export class TileFieldRenderer {
   private adaptiveBatchTiles = INITIAL_BATCH_TILES;
   private completedChunks = 0;
   private lastBatchMs = 0;
+  private lastBatchCompletedAt = 0;
+  private readonly pendingBatches: PendingBatch[] = [];
+  private readonly readbackSlots: BatchReadbackSlot[];
+  private submittedChunks = 0;
+  private atlasPublications = 0;
+  private avoidedAtlasCopies = 0;
   private dead = false;
   private deviceLostListener: ((message: string) => void) | null = null;
   private readonly deviceErrors: string[] = [];
@@ -275,6 +310,14 @@ export class TileFieldRenderer {
       addressModeV: 'clamp-to-edge'
     });
     this.referenceAtlas = new TileReferenceAtlas(device);
+    this.readbackSlots = Array.from({ length: MAX_IN_FLIGHT_BATCHES }, (_, index) => ({
+      buffer: device.createBuffer({
+        label: `tile-counter-readback-ring-${index}`,
+        size: MAX_BATCH_TILES * COUNTER_READBACK_STRIDE,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+      }),
+      busy: false
+    }));
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<TileFieldRenderer> {
@@ -288,17 +331,20 @@ export class TileFieldRenderer {
     if (!context) throw new Error('Unable to create a WebGPU canvas context');
     const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
     context.configure({ device, format: canvasFormat, alphaMode: 'opaque' });
+    const useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
 
     const directModule = device.createShaderModule({ code: tileDirectIterationShader });
     const perturbModule = device.createShaderModule({ code: tilePerturbationShader });
-    const colourModule = device.createShaderModule({ code: tileColourShader });
+    const colourModule = device.createShaderModule({
+      code: useLegacyPresenter ? tileColourShader : tileAtlasPublishShader
+    });
     const clearModule = device.createShaderModule({ code: tileClearShader });
     const resetModule = device.createShaderModule({ code: tileResetNumericalShader });
     const presentModule = device.createShaderModule({ code: tilePresentShader });
     await Promise.all([
       this.assertShaderValid(directModule, 'tile direct iteration'),
       this.assertShaderValid(perturbModule, 'tile perturbation'),
-      this.assertShaderValid(colourModule, 'tile colour'),
+      this.assertShaderValid(colourModule, useLegacyPresenter ? 'tile colour' : 'tile atlas publication'),
       this.assertShaderValid(clearModule, 'tile clear'),
       this.assertShaderValid(resetModule, 'tile numerical reset'),
       this.assertShaderValid(presentModule, 'tile presentation')
@@ -353,7 +399,6 @@ export class TileFieldRenderer {
       ]);
 
     const label = adapter.info.vendor || adapter.info.description || 'GPU';
-    const useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
     const acceptedAtlas = useLegacyPresenter ? null : new AcceptedTileAtlas(device);
     const atlasPresenter = useLegacyPresenter
       ? null
@@ -399,6 +444,8 @@ export class TileFieldRenderer {
   request(request: PersistentTileRequest): void {
     if (this.dead || this.suspended) return;
     this.latestRequest = request;
+    const gateWaiters = this.testGateWaiters.splice(0);
+    for (const resolve of gateWaiters) resolve();
     if (!this.running) void this.pump();
   }
 
@@ -465,6 +512,7 @@ export class TileFieldRenderer {
     return this.running
       || this.latestRequest !== null
       || this.currentQueue.length > 0
+      || this.pendingBatches.length > 0
       || this.pendingLevelOffsets.length > 0;
   }
 
@@ -585,6 +633,7 @@ export class TileFieldRenderer {
       const authoritative = settledPresentation
         && this.pendingLevelOffsets.length === 0
         && this.currentQueue.length === 0
+        && this.pendingBatches.length === 0
         && this.currentVisibleKeys.size > 0
         && [...this.currentVisibleKeys].every(key => {
           const tile = this.tileMap.get(key);
@@ -673,13 +722,22 @@ export class TileFieldRenderer {
     this.latestRequest = null;
     this.currentQueue = [];
     this.pendingLevelOffsets = [];
-    this.referenceAtlas.dispose();
-    for (const tile of this.tileMap.values()) this.destroyTile(tile);
-    this.tileMap.clear();
-    this.atlasPresenter?.destroy();
-    this.acceptedAtlas?.destroy();
-    this.clearUniform.destroy();
     this.context.unconfigure();
+    const destroyResources = () => {
+      this.referenceAtlas.dispose();
+      for (const tile of this.tileMap.values()) this.destroyTile(tile);
+      this.tileMap.clear();
+      for (const slot of this.readbackSlots) slot.buffer.destroy();
+      this.atlasPresenter?.destroy();
+      this.acceptedAtlas?.destroy();
+      this.clearUniform.destroy();
+    };
+    if (this.pendingBatches.length > 0) {
+      void Promise.allSettled(this.pendingBatches.map(pending => pending.completed))
+        .then(destroyResources);
+    } else {
+      destroyResources();
+    }
   }
 
   private async pump(): Promise<void> {
@@ -689,9 +747,11 @@ export class TileFieldRenderer {
       while (
         !this.dead && !this.suspended && (this.latestRequest
         || this.currentQueue.length > 0
+        || this.pendingBatches.length > 0
         || this.pendingLevelOffsets.length > 0)
       ) {
         if (this.latestRequest) {
+          await this.drainPendingBatches();
           const request = this.latestRequest;
           this.latestRequest = null;
           await this.prepareRequest(request);
@@ -700,6 +760,10 @@ export class TileFieldRenderer {
         if (!request) break;
 
         if (this.currentQueue.length === 0) {
+          if (this.pendingBatches.length > 0) {
+            await this.retireOldestBatch();
+            continue;
+          }
           const admitted = await this.admitNextSpatialLevel(request);
           if (this.latestRequest) continue;
           if (!admitted) break;
@@ -710,7 +774,22 @@ export class TileFieldRenderer {
         const quantumBudget = this.quantumBudget(request.interaction);
         do {
           if (this.suspended) break;
-          if (this.latestRequest || this.currentQueue.length === 0) break;
+          if (this.latestRequest) break;
+          if (this.pendingBatches.length >= MAX_IN_FLIGHT_BATCHES) {
+            await this.retireOldestBatch();
+            continue;
+          }
+          if (this.currentQueue.length === 0) {
+            if (this.pendingBatches.length > 0) {
+              await this.retireOldestBatch();
+              continue;
+            }
+            break;
+          }
+          if (this.testSchedulerPaused && this.pendingBatches.length > 0) {
+            await this.retireOldestBatch();
+            continue;
+          }
           const testPermit = await this.awaitTestBatchPermit();
           if (this.testSchedulerPaused && !testPermit) continue;
           if (this.latestRequest || this.currentQueue.length === 0) {
@@ -719,29 +798,18 @@ export class TileFieldRenderer {
           }
           this.currentQueue.sort((left, right) => left.work.priority - right.work.priority);
           const batch = this.currentQueue.splice(0, this.adaptiveBatchTiles);
-          const started = performance.now();
           this.testBatchExecuting = true;
-          try {
-            await this.executeBatch(batch, request.palettePhase);
-          } finally {
-            this.testBatchExecuting = false;
-            if (this.testSchedulerPaused) {
-              const pauseWaiters = this.testPauseWaiters.splice(0);
-              for (const resolve of pauseWaiters) resolve();
-            }
-          }
-          this.noteTestBatchCompleted(request.requestId);
-          this.lastBatchMs = Math.max(0.1, performance.now() - started);
-          this.completedChunks += batch.length;
-          this.adaptBatchSize(request.interaction, this.lastBatchMs);
-          this.finishBatch(batch, request);
+          this.pendingBatches.push(this.submitBatch(batch, request));
           this.updateStats();
+          if (this.testSchedulerPaused) await this.retireOldestBatch();
         } while (performance.now() - quantumStarted < quantumBudget);
 
         this.evictColdTiles();
         if (
           !this.latestRequest
-          && (this.currentQueue.length > 0 || this.pendingLevelOffsets.length > 0)
+          && (this.currentQueue.length > 0
+            || this.pendingBatches.length > 0
+            || this.pendingLevelOffsets.length > 0)
         ) {
           await schedulerYield();
         }
@@ -755,6 +823,7 @@ export class TileFieldRenderer {
       if (
         !this.suspended && (this.latestRequest
         || this.currentQueue.length > 0
+        || this.pendingBatches.length > 0
         || this.pendingLevelOffsets.length > 0)
       ) {
         void this.pump();
@@ -762,10 +831,62 @@ export class TileFieldRenderer {
     }
   }
 
+  private async retireOldestBatch(): Promise<void> {
+    // Keep the record owned by the FIFO while its GPU completion is pending.
+    // Authoritative-presentation checks, disposal, and diagnostics must continue
+    // to see this batch until all host state derived from it has been committed.
+    const pending = this.pendingBatches[0];
+    if (!pending) return;
+    try {
+      const completion = await pending.completed;
+      for (const snapshot of completion.health) {
+        const health = snapshot.value;
+        const classified = health.activePixels
+          + health.escapedPixels
+          + health.analyticInteriorPixels
+          + health.cappedPixels
+          + health.nonFinitePixels
+          + health.glitchPixels
+          + health.orbitExhaustedPixels;
+        if (classified !== TILE_PIXEL_COUNT) {
+          throw new Error(`Invalid tile counter total ${classified} for ${snapshot.scheduled.tile.descriptor.key}`);
+        }
+        snapshot.scheduled.tile.health = health;
+      }
+      const intervalStart = this.lastBatchCompletedAt > 0
+        ? this.lastBatchCompletedAt
+        : pending.submittedAt;
+      this.lastBatchMs = Math.max(0.1, completion.completedAt - intervalStart);
+      this.lastBatchCompletedAt = completion.completedAt;
+      this.completedChunks += pending.batch.length;
+      this.adaptBatchSize(pending.request.interaction, this.lastBatchMs);
+      this.finishBatch(pending.batch, pending.request);
+      this.noteTestBatchCompleted(pending.request.requestId);
+    } finally {
+      pending.slot.busy = false;
+      const pendingIndex = this.pendingBatches.indexOf(pending);
+      if (pendingIndex >= 0) this.pendingBatches.splice(pendingIndex, 1);
+      this.testBatchExecuting = this.pendingBatches.length > 0;
+      if (!this.testBatchExecuting && this.testSchedulerPaused) {
+        const pauseWaiters = this.testPauseWaiters.splice(0);
+        for (const resolve of pauseWaiters) resolve();
+      }
+      this.updateStats();
+    }
+  }
+
+  private async drainPendingBatches(): Promise<void> {
+    while (this.pendingBatches.length > 0) await this.retireOldestBatch();
+  }
+
   private async prepareRequest(request: PersistentTileRequest): Promise<void> {
     this.currentRequest = request;
     this.completedChunks = 0;
+    this.submittedChunks = 0;
+    this.atlasPublications = 0;
+    this.avoidedAtlasCopies = 0;
     this.lastBatchMs = 0;
+    this.lastBatchCompletedAt = 0;
     this.currentPlan = [];
     this.currentQueue = [];
     this.currentVisibleKeys = new Set<PersistentTileKey>();
@@ -951,7 +1072,12 @@ export class TileFieldRenderer {
       repairTiles: visible.filter(tile => tile.repairPass > 0).length,
       referenceFailures: this.referenceAtlas.failureCount,
       completedChunks: this.completedChunks,
+      submittedChunks: this.submittedChunks,
       queuedChunks: this.currentQueue.length,
+      inFlightBatches: this.pendingBatches.length,
+      inFlightTiles: this.pendingBatches.reduce((total, pending) => total + pending.batch.length, 0),
+      atlasPublications: this.atlasPublications,
+      avoidedAtlasCopies: this.avoidedAtlasCopies,
       lastBatchMs: this.lastBatchMs,
       numericalFreshnessMs: 0,
       presentationHistoryMs: 0,
@@ -1181,10 +1307,6 @@ export class TileFieldRenderer {
       size: COUNTER_BYTES,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
     });
-    const counterReadback = this.device.createBuffer({
-      size: COUNTER_BYTES,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-    });
     const resultTexture = this.device.createTexture({
       size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
       format: 'rgba32float',
@@ -1239,13 +1361,22 @@ export class TileFieldRenderer {
     });
     const colourGroup = this.device.createBindGroup({
       layout: this.colourPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: colourUniform } },
-        { binding: 1, resource: resultTexture.createView() },
-        { binding: 2, resource: qualityTexture.createView() },
-        { binding: 3, resource: colourTexture.createView() },
-        { binding: 4, resource: evidenceTexture.createView() }
-      ]
+      entries: this.acceptedAtlas && atlasSlot
+        ? [
+          { binding: 0, resource: { buffer: colourUniform } },
+          { binding: 1, resource: resultTexture.createView() },
+          { binding: 2, resource: qualityTexture.createView() },
+          { binding: 3, resource: this.acceptedAtlas.colour.createView() },
+          { binding: 4, resource: this.acceptedAtlas.quality.createView() },
+          { binding: 5, resource: this.acceptedAtlas.evidence.createView() }
+        ]
+        : [
+          { binding: 0, resource: { buffer: colourUniform } },
+          { binding: 1, resource: resultTexture.createView() },
+          { binding: 2, resource: qualityTexture.createView() },
+          { binding: 3, resource: colourTexture.createView() },
+          { binding: 4, resource: evidenceTexture.createView() }
+        ]
     });
     const clearGroup = this.device.createBindGroup({
       layout: this.clearPipeline.getBindGroupLayout(0),
@@ -1304,7 +1435,6 @@ export class TileFieldRenderer {
       stateBuffer,
       metaBuffer,
       counterBuffer,
-      counterReadback,
       resultTexture,
       qualityTexture,
       colourTexture,
@@ -1322,6 +1452,7 @@ export class TileFieldRenderer {
       presentLinearGroup,
       presentNearestGroup,
       atlasSlot,
+      atlasNeedsClear: atlasSlot !== null,
       health: { ...EMPTY_HEALTH },
       iterationFrontier: 0,
       coveragePixels: 0,
@@ -1376,10 +1507,20 @@ export class TileFieldRenderer {
     });
   }
 
-  private async executeBatch(
+  private submitBatch(
     batch: readonly ScheduledWork[],
-    palettePhase: number
-  ): Promise<void> {
+    request: PersistentTileRequest
+  ): PendingBatch {
+    const keys = new Set(batch.map(scheduled => scheduled.tile.descriptor.key));
+    if (keys.size !== batch.length) throw new Error('A tile was scheduled twice in one GPU batch');
+    for (const pending of this.pendingBatches) {
+      if (pending.batch.some(scheduled => keys.has(scheduled.tile.descriptor.key))) {
+        throw new Error('A tile already has an in-flight GPU mutation');
+      }
+    }
+    const slot = this.readbackSlots.find(candidate => !candidate.busy);
+    if (!slot) throw new Error('Counter readback ring exhausted');
+    slot.busy = true;
     for (const scheduled of batch) {
       const tile = scheduled.tile;
       if (tile.numericalMode === 'perturbation') {
@@ -1398,14 +1539,16 @@ export class TileFieldRenderer {
       this.device.queue.writeBuffer(
         tile.colourUniform,
         0,
-        this.createColourParameterData(palettePhase)
+        this.createColourParameterData(scheduled, request.palettePhase)
       );
     }
 
     const encoder = this.device.createCommandEncoder();
-    for (const scheduled of batch) {
+    encoder.clearBuffer(slot.buffer);
+    for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+      const scheduled = batch[batchIndex];
       const tile = scheduled.tile;
-      if (scheduled.work.chunkIterations > 0) {
+      if (this.requiresNumericalDispatch(scheduled)) {
         encoder.clearBuffer(tile.counterBuffer);
         const iterationPass = encoder.beginComputePass();
         if (tile.numericalMode === 'perturbation') {
@@ -1431,44 +1574,51 @@ export class TileFieldRenderer {
         Math.ceil(PERSISTENT_TILE_SIZE / 8)
       );
       colourPass.end();
-      if (this.acceptedAtlas && tile.atlasSlot) {
-        this.acceptedAtlas.encodeCopy(
-          encoder,
-          tile.atlasSlot,
-          tile.colourTexture,
-          tile.qualityTexture,
-          tile.evidenceTexture
-        );
-      }
-      if (scheduled.work.chunkIterations > 0) {
+      if (this.requiresNumericalDispatch(scheduled)) {
         encoder.copyBufferToBuffer(
           tile.counterBuffer,
           0,
-          tile.counterReadback,
-          0,
+          slot.buffer,
+          batchIndex * COUNTER_READBACK_STRIDE,
           COUNTER_BYTES
         );
       }
     }
+    const submittedAt = performance.now();
     this.device.queue.submit([encoder.finish()]);
-    await this.device.queue.onSubmittedWorkDone();
+    for (const scheduled of batch) {
+      if (scheduled.tile.atlasSlot) scheduled.tile.atlasNeedsClear = false;
+    }
+    const completed = slot.buffer.mapAsync(GPUMapMode.READ).then(() => {
+      const mapped = new Uint32Array(slot.buffer.getMappedRange());
+      const health = batch.flatMap((scheduled, batchIndex) => {
+        if (!this.requiresNumericalDispatch(scheduled)) return [];
+        const offset = batchIndex * (COUNTER_READBACK_STRIDE / Uint32Array.BYTES_PER_ELEMENT);
+        return [{
+          scheduled,
+          value: {
+            activePixels: mapped[offset] ?? 0,
+            escapedPixels: mapped[offset + 1] ?? 0,
+            analyticInteriorPixels: mapped[offset + 2] ?? 0,
+            cappedPixels: mapped[offset + 3] ?? 0,
+            nonFinitePixels: mapped[offset + 4] ?? 0,
+            glitchPixels: mapped[offset + 5] ?? 0,
+            orbitExhaustedPixels: mapped[offset + 6] ?? 0
+          }
+        }];
+      });
+      slot.buffer.unmap();
+      return { completedAt: performance.now(), health };
+    });
+    this.submittedChunks += batch.length;
+    this.atlasPublications += this.acceptedAtlas ? batch.length : 0;
+    this.avoidedAtlasCopies += this.acceptedAtlas ? batch.length * 3 : 0;
+    return { batch, request, submittedAt, slot, completed };
+  }
 
-    await Promise.all(batch.map(async scheduled => {
-      if (scheduled.work.chunkIterations <= 0) return;
-      const readback = scheduled.tile.counterReadback;
-      await readback.mapAsync(GPUMapMode.READ);
-      const values = new Uint32Array(readback.getMappedRange()).slice();
-      readback.unmap();
-      scheduled.tile.health = {
-        activePixels: values[0] ?? 0,
-        escapedPixels: values[1] ?? 0,
-        analyticInteriorPixels: values[2] ?? 0,
-        cappedPixels: values[3] ?? 0,
-        nonFinitePixels: values[4] ?? 0,
-        glitchPixels: values[5] ?? 0,
-        orbitExhaustedPixels: values[6] ?? 0
-      };
-    }));
+  private requiresNumericalDispatch(scheduled: ScheduledWork): boolean {
+    return scheduled.work.chunkIterations > 0
+      || scheduled.capMode > scheduled.tile.capPresentationMode;
   }
 
   private createDirectParameterData(scheduled: ScheduledWork): ArrayBuffer {
@@ -1524,13 +1674,27 @@ export class TileFieldRenderer {
     return data;
   }
 
-  private createColourParameterData(palettePhase: number): ArrayBuffer {
+  private createColourParameterData(
+    scheduled: ScheduledWork,
+    palettePhase: number
+  ): ArrayBuffer {
     const data = new ArrayBuffer(COLOUR_PARAMETER_BYTES);
     const unsigned = new Uint32Array(data);
     const floats = new Float32Array(data);
     unsigned[0] = PERSISTENT_TILE_SIZE;
-    floats[2] = palettePhase;
-    floats[3] = PALETTE_LENGTH;
+    if (this.acceptedAtlas && scheduled.tile.atlasSlot) {
+      unsigned[1] = Math.abs(scheduled.tile.palettePhase - palettePhase) > 1e-6 ? 1 : 0;
+      unsigned[2] = scheduled.tile.iterationFrontier;
+      const forceCapPublication = scheduled.capMode > scheduled.tile.capPresentationMode;
+      unsigned[3] = (forceCapPublication ? 1 : 0) | (scheduled.tile.atlasNeedsClear ? 2 : 0);
+      unsigned[4] = scheduled.tile.atlasSlot.x;
+      unsigned[5] = scheduled.tile.atlasSlot.y;
+      floats[6] = palettePhase;
+      floats[7] = PALETTE_LENGTH;
+    } else {
+      floats[2] = palettePhase;
+      floats[3] = PALETTE_LENGTH;
+    }
     return data;
   }
 
@@ -1547,7 +1711,11 @@ export class TileFieldRenderer {
   }
 
   private async awaitTestBatchPermit(): Promise<boolean> {
-    while (this.testSchedulerPaused && this.testBatchPermits <= 0 && !this.dead) {
+    while (this.testSchedulerPaused
+      && this.testBatchPermits <= 0
+      && !this.dead
+      && !this.suspended
+      && !this.latestRequest) {
       await new Promise<void>(resolve => this.testGateWaiters.push(resolve));
     }
     if (this.testSchedulerPaused && this.testBatchPermits > 0) {
@@ -1659,7 +1827,6 @@ export class TileFieldRenderer {
     tile.stateBuffer.destroy();
     tile.metaBuffer.destroy();
     tile.counterBuffer.destroy();
-    tile.counterReadback.destroy();
     tile.resultTexture.destroy();
     tile.qualityTexture.destroy();
     tile.colourTexture.destroy();

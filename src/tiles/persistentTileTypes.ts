@@ -64,7 +64,12 @@ export type PersistentFieldStats = Readonly<{
   repairTiles: number;
   referenceFailures: number;
   completedChunks: number;
+  submittedChunks: number;
   queuedChunks: number;
+  inFlightBatches: number;
+  inFlightTiles: number;
+  atlasPublications: number;
+  avoidedAtlasCopies: number;
   lastBatchMs: number;
   numericalFreshnessMs: number;
   presentationHistoryMs: number;
