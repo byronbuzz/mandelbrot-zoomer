@@ -8,13 +8,13 @@ The normative specification is `docs/webgpu-fractal-zoomer-technical-specificati
 
 ## Current milestone
 
-Phase 1 is presentation-only. It contains no Mandelbrot recurrence, reference orbit, perturbation, series approximation, BLA, precision crossover or numerical scheduler change.
+Phase 1 and its 1.4 production integration are presentation-only. They contain no Mandelbrot recurrence, reference orbit, perturbation, series approximation, BLA, precision crossover or numerical scheduler change.
 
 The executable Phase 1 route is:
 
 `/mandelbrot-zoomer/?mode=presentation-kernel`
 
-The production 1.3.1 route remains the default until the presentation kernel passes its gates and a later recorded decision authorizes integration.
+Decision 0002 authorizes the gated production integration as release 1.4. The atlas-history presenter is the default; `?presenter=legacy` preserves the prior presentation path for exact comparison and rollback.
 
 ## Phase 1 invariants
 
@@ -27,7 +27,7 @@ The production 1.3.1 route remains the default until the presentation kernel pas
 7. Zero physical size suspends acquisition and submission. Positive size creates a new resource epoch.
 8. Resize keeps the old anchor sampleable through the first new-size submission, then retires it after a completion watermark.
 9. Device loss stops use of the old device, requests a fresh adapter and device, rebuilds all GPU resources, and resumes with preserved CPU view state.
-10. The default Zoomer remains working and unchanged by this milestone.
+10. The numerical Zoomer remains working and numerically unchanged by this milestone.
 
 ## Gates required before integration
 
