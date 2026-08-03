@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 
 const renderer = readFileSync(new URL('../src/presentation/tileFieldRenderer.ts', import.meta.url), 'utf8');
-const shader = readFileSync(new URL('../src/numerical/tileFieldShaders.ts', import.meta.url), 'utf8');
+const shader = [
+  '../src/numerical/tileDirectShader.ts',
+  '../src/numerical/tilePerturbationShader.ts',
+  '../src/numerical/tileDisplayShaders.ts'
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const planner = readFileSync(new URL('../src/tiles/worldTilePlanner.ts', import.meta.url), 'utf8');
 
 const required = [
@@ -32,6 +36,9 @@ if (/blockSize:\s*8[\s\S]*blockSize:\s*4[\s\S]*blockSize:\s*2[\s\S]*blockSize:\s
 }
 if (/PERTURBATION_SCALE_EXPONENT|DOUBLE_FLOAT_THRESHOLD|depth\s*[<>]=?/.test(renderer)) {
   failures.push('Precision must not be selected by a global depth threshold.');
+}
+if (shader.includes('rgba8unorm, read_write')) {
+  failures.push('Core tile shaders must not require optional read/write storage-texture support.');
 }
 
 if (failures.length > 0) {
