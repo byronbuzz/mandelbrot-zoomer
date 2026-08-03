@@ -428,6 +428,7 @@ Object.assign(window, {
       rendererEpoch,
       recovering: recoveryPromise !== null,
       presenter: renderer.presentationMode,
+      busy: renderer.isBusy,
       camera: {
         centerXRaw: snapshot.centerX.raw.toString(),
         centerXBits: snapshot.centerX.bits,
@@ -504,6 +505,7 @@ if (continuityTestEnabled) {
       batchRevision: renderer.completedTestBatchRevision,
       requestId: renderer.currentTestRequestId,
       adapterLabel: renderer.adapterLabel,
+      busy: renderer.isBusy,
       presentation: renderer.presentationDiagnostics,
       field: renderer.stats
     })

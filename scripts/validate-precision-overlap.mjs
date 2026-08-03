@@ -16,7 +16,11 @@ const requirements = [
   ['request epochs enter the atlas', renderer, 'setDemandEpoch(request.requestId)'],
   ['stale queued reference cancellation', atlas, "queued.reject(new Error('Reference request superseded'))"],
   ['active work survives navigation epochs', atlas, 'Keep the bounded active worker set alive'],
-  ['moving viewport reference reuse', atlas, 'MAX_REUSE_COVERAGE_DISTANCE = 8'],
+  ['local moving viewport reference reuse', atlas, 'MAX_REUSE_COVERAGE_DISTANCE = 1'],
+  ['reuse requires requested iteration horizon', atlas, 'reference.requestedIterations < iterations'],
+  ['candidate probes cover requested iteration horizon', atlas, 'probeIterations: request.iterations'],
+  ['reference activation is coalesced', renderer, 'REFERENCE_ACTIVATION_COALESCE_MS = 24'],
+  ['reference activation preserves the spatial plan', renderer, 'applyReferenceRefresh(request)'],
   ['transport contract rejection', atlas, 'response.transportBits < active.requiredTransportBits'],
   ['worker reports working precision', worker, 'workingBits: bits'],
   ['worker reports finite transport ceiling', worker, 'REFERENCE_TRANSPORT_BITS = 96']

@@ -78,6 +78,7 @@ const SETTLED_QUANTUM_MS = 40;
 const MOVING_BATCH_TARGET_MS = 7;
 const SETTLING_BATCH_TARGET_MS = 11;
 const SETTLED_BATCH_TARGET_MS = 16;
+const REFERENCE_ACTIVATION_COALESCE_MS = 24;
 const MAX_IN_FLIGHT_BATCHES = 3;
 
 const EMPTY_HEALTH: PersistentTileHealth = {
@@ -272,6 +273,9 @@ export class TileFieldRenderer {
   private submittedChunks = 0;
   private atlasPublications = 0;
   private avoidedAtlasCopies = 0;
+  private referenceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private referenceRefreshPending = false;
+  private referencePolicyRescanPending = false;
   private dead = false;
   private deviceLostListener: ((message: string) => void) | null = null;
   private readonly deviceErrors: string[] = [];
@@ -456,6 +460,10 @@ export class TileFieldRenderer {
 
   request(request: PersistentTileRequest): void {
     if (this.dead || this.suspended) return;
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
     this.latestRequest = request;
     const gateWaiters = this.testGateWaiters.splice(0);
     for (const resolve of gateWaiters) resolve();
@@ -468,6 +476,10 @@ export class TileFieldRenderer {
     this.latestRequest = null;
     this.currentQueue = [];
     this.pendingLevelOffsets = [];
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
     const gateWaiters = this.testGateWaiters.splice(0);
     for (const resolve of gateWaiters) resolve();
     const batchWaiters = this.testBatchWaiters.splice(0);
@@ -524,6 +536,7 @@ export class TileFieldRenderer {
   get isBusy(): boolean {
     return this.running
       || this.latestRequest !== null
+      || this.referenceRefreshPending
       || this.currentQueue.length > 0
       || this.pendingBatches.length > 0
       || this.pendingLevelOffsets.length > 0;
@@ -740,6 +753,10 @@ export class TileFieldRenderer {
     this.latestRequest = null;
     this.currentQueue = [];
     this.pendingLevelOffsets = [];
+    if (this.referenceRefreshTimer) clearTimeout(this.referenceRefreshTimer);
+    this.referenceRefreshTimer = null;
+    this.referenceRefreshPending = false;
+    this.referencePolicyRescanPending = false;
     this.context.unconfigure();
     const destroyResources = () => {
       this.referenceAtlas.dispose();
@@ -764,6 +781,7 @@ export class TileFieldRenderer {
     try {
       while (
         !this.dead && !this.suspended && (this.latestRequest
+        || this.referenceRefreshPending
         || this.currentQueue.length > 0
         || this.pendingBatches.length > 0
         || this.pendingLevelOffsets.length > 0)
@@ -776,6 +794,11 @@ export class TileFieldRenderer {
         }
         const request = this.currentRequest;
         if (!request) break;
+
+        if (this.referenceRefreshPending) {
+          await this.applyReferenceRefresh(request);
+          if (this.latestRequest) continue;
+        }
 
         if (this.currentQueue.length === 0) {
           if (this.pendingBatches.length > 0) {
@@ -825,7 +848,8 @@ export class TileFieldRenderer {
         this.evictColdTiles();
         if (
           !this.latestRequest
-          && (this.currentQueue.length > 0
+          && (this.referenceRefreshPending
+            || this.currentQueue.length > 0
             || this.pendingBatches.length > 0
             || this.pendingLevelOffsets.length > 0)
         ) {
@@ -840,6 +864,7 @@ export class TileFieldRenderer {
       this.running = false;
       if (
         !this.suspended && (this.latestRequest
+        || this.referenceRefreshPending
         || this.currentQueue.length > 0
         || this.pendingBatches.length > 0
         || this.pendingLevelOffsets.length > 0)
@@ -1174,7 +1199,7 @@ export class TileFieldRenderer {
         tile.referenceState = 'ready';
         tile.referenceTarget = referenceTarget;
         tile.referenceRequiredTransportBits = decision.requiredTransportBits;
-        this.requestCurrentAgain();
+        this.requestReferenceRefresh();
         continue;
       }
       if (!decision.required && decision.preferred) {
@@ -1225,7 +1250,7 @@ export class TileFieldRenderer {
     ).then(reference => {
       if (this.tileMap.get(tile.descriptor.key) !== tile) return;
       if (tile.referenceDemandEpoch !== demandEpoch) {
-        this.requestCurrentAgain();
+        this.requestReferenceRefresh(true);
         return;
       }
       tile.pendingReference = reference;
@@ -1234,7 +1259,7 @@ export class TileFieldRenderer {
       tile.referenceError = null;
       tile.repairPass = repairPass;
       tile.referenceTarget = referenceTarget;
-      this.requestCurrentAgain();
+      this.requestReferenceRefresh();
     }).catch(error => {
       if (this.tileMap.get(tile.descriptor.key) !== tile) return;
       if (tile.referenceDemandEpoch !== demandEpoch) return;
@@ -1270,16 +1295,63 @@ export class TileFieldRenderer {
     );
   }
 
-  private requestCurrentAgain(): void {
-    if (!this.currentRequest || this.latestRequest) return;
-    this.latestRequest = this.currentRequest;
-    if (!this.running) void this.pump();
+  private requestReferenceRefresh(rescanPolicy = false): void {
+    if (!this.currentRequest || this.latestRequest || this.dead || this.suspended) return;
+    this.referencePolicyRescanPending ||= rescanPolicy;
+    if (this.referenceRefreshPending || this.referenceRefreshTimer) return;
+    this.referenceRefreshTimer = setTimeout(() => {
+      this.referenceRefreshTimer = null;
+      this.referenceRefreshPending = true;
+      if (!this.running) void this.pump();
+    }, REFERENCE_ACTIVATION_COALESCE_MS);
   }
 
-  private async activatePendingReferences(): Promise<void> {
+  private async applyReferenceRefresh(request: PersistentTileRequest): Promise<void> {
+    if (!this.referenceRefreshPending) return;
+    await this.drainPendingBatches();
+    if (this.latestRequest || this.dead || this.suspended) return;
+
+    const rescanPolicy = this.referencePolicyRescanPending;
+    this.referencePolicyRescanPending = false;
+    if (rescanPolicy) this.ensureReferencePolicy(request, this.currentPlan);
+
+    const resetKeys = new Set(
+      [...this.tileMap.values()]
+        .filter(tile => tile.pendingReference && tile.pendingReset)
+        .map(tile => tile.descriptor.key)
+    );
+    if (resetKeys.size > 0) {
+      this.currentQueue = this.currentQueue.filter(
+        scheduled => !resetKeys.has(scheduled.tile.descriptor.key)
+      );
+    }
+
+    const activated = await this.activatePendingReferences();
+    if (this.latestRequest || this.dead || this.suspended) return;
+    if (activated.length > 0) {
+      const activatedKeys = new Set(activated.map(tile => tile.descriptor.key));
+      const activatedPlan = this.currentPlan.filter(
+        planned => activatedKeys.has(planned.descriptor.key)
+      );
+      this.currentQueue.push(...this.initialWorkQueue(request, activatedPlan));
+    }
+
+    // Seed the next bounded reference wave and retry deferred repairs without
+    // rebuilding the spatial plan or momentarily dropping the finest level.
+    this.ensureReferencePolicy(request, this.currentPlan);
+    this.referenceRefreshPending = false;
+    this.updateStats();
+    if (this.referencePolicyRescanPending || [...this.tileMap.values()].some(
+      tile => tile.pendingReference && tile.pendingReset
+    )) {
+      this.requestReferenceRefresh(this.referencePolicyRescanPending);
+    }
+  }
+
+  private async activatePendingReferences(): Promise<FieldTile[]> {
     const activations = [...this.tileMap.values()]
       .filter(tile => tile.pendingReference && tile.pendingReset);
-    if (activations.length === 0) return;
+    if (activations.length === 0) return [];
 
     for (const tile of activations) {
       const reference = tile.pendingReference;
@@ -1325,6 +1397,7 @@ export class TileFieldRenderer {
       tile.capPresentationMode = tile.coveragePixels > 0 ? 1 : 0;
       tile.lastNumericalUpdateAt = performance.now();
     }
+    return activations;
   }
 
   private effectiveFinalTarget(tile: FieldTile, request: PersistentTileRequest): number {
