@@ -50,6 +50,16 @@ export class CameraModel {
     this.generationValue++;
   }
 
+  setExact(centerX: BigFixed, centerY: BigFixed, scale: BinaryScale): void {
+    const bits = Math.max(INITIAL_COORDINATE_BITS, centerX.bits, centerY.bits);
+    this.coordinateBitsValue = bits;
+    this.centerXValue = fixedRescale(centerX, bits);
+    this.centerYValue = fixedRescale(centerY, bits);
+    this.scaleValue = normalizeScale(scale.mantissa, scale.exponent);
+    this.ensurePrecision();
+    this.generationValue++;
+  }
+
   zoomAbout(normalizedX: number, normalizedY: number, factor: number, aspect: number): void {
     const xMultiplier = (normalizedX - 0.5) * aspect * (1 - factor);
     const yMultiplier = (normalizedY - 0.5) * (1 - factor);

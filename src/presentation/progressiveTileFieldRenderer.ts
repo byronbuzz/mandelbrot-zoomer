@@ -119,6 +119,7 @@ type FieldTile = {
   resultTexture: GPUTexture;
   qualityTexture: GPUTexture;
   colourTexture: GPUTexture;
+  evidenceTexture: GPUTexture;
   directUniform: GPUBuffer;
   perturbUniform: GPUBuffer;
   colourUniform: GPUBuffer;
@@ -131,7 +132,7 @@ type FieldTile = {
   resetGroup: GPUBindGroup;
   presentLinearGroup: GPUBindGroup;
   presentNearestGroup: GPUBindGroup;
-  atlasSlot: AtlasSlot;
+  atlasSlot: AtlasSlot | null;
   health: PersistentTileHealth;
   iterationFrontier: number;
   coveragePixels: number;
@@ -189,8 +190,8 @@ export class TileFieldRenderer {
   private readonly nearestSampler: GPUSampler;
   private readonly clearUniform: GPUBuffer;
   private readonly referenceAtlas: TileReferenceAtlas;
-  private readonly acceptedAtlas: AcceptedTileAtlas;
-  private readonly atlasPresenter: AtlasHistoryPresenter;
+  private readonly acceptedAtlas: AcceptedTileAtlas | null;
+  private readonly atlasPresenter: AtlasHistoryPresenter | null;
   private readonly useLegacyPresenter: boolean;
   private latestRequest: PersistentTileRequest | null = null;
   private currentRequest: PersistentTileRequest | null = null;
@@ -202,6 +203,20 @@ export class TileFieldRenderer {
   private currentAspect = 1;
   private maximumPlannedLevel = 2;
   private running = false;
+  private suspended = false;
+  private testSchedulerPaused = false;
+  private testBatchPermits = 0;
+  private testBatchRevision = 0;
+  private testBatchExecuting = false;
+  private readonly testRequestBatchCounts = new Map<number, number>();
+  private testGateWaiters: Array<() => void> = [];
+  private testPauseWaiters: Array<() => void> = [];
+  private testBatchWaiters: Array<{
+    requestId: number;
+    targetCount: number;
+    resolve: (result: { batchRevision: number; requestId: number; requestBatchCount: number }) => void;
+    reject: (error: Error) => void;
+  }> = [];
   private displayWidth = 1;
   private displayHeight = 1;
   private statsValue: PersistentFieldStats = EMPTY_STATS;
@@ -224,8 +239,9 @@ export class TileFieldRenderer {
     clearPipeline: GPUComputePipeline,
     resetPipeline: GPUComputePipeline,
     presentPipeline: GPURenderPipeline,
-    acceptedAtlas: AcceptedTileAtlas,
-    atlasPresenter: AtlasHistoryPresenter,
+    acceptedAtlas: AcceptedTileAtlas | null,
+    atlasPresenter: AtlasHistoryPresenter | null,
+    useLegacyPresenter: boolean,
     readonly adapterLabel: string
   ) {
     this.directPipeline = directPipeline;
@@ -236,7 +252,7 @@ export class TileFieldRenderer {
     this.presentPipeline = presentPipeline;
     this.acceptedAtlas = acceptedAtlas;
     this.atlasPresenter = atlasPresenter;
-    this.useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
+    this.useLegacyPresenter = useLegacyPresenter;
     this.clearUniform = device.createBuffer({
       size: CLEAR_PARAMETER_BYTES,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -337,8 +353,11 @@ export class TileFieldRenderer {
       ]);
 
     const label = adapter.info.vendor || adapter.info.description || 'GPU';
-    const acceptedAtlas = new AcceptedTileAtlas(device);
-    const atlasPresenter = await AtlasHistoryPresenter.create(device, context, canvasFormat);
+    const useLegacyPresenter = new URLSearchParams(location.search).get('presenter') === 'legacy';
+    const acceptedAtlas = useLegacyPresenter ? null : new AcceptedTileAtlas(device);
+    const atlasPresenter = useLegacyPresenter
+      ? null
+      : await AtlasHistoryPresenter.create(device, context, canvasFormat);
     return new TileFieldRenderer(
       canvas,
       device,
@@ -352,6 +371,7 @@ export class TileFieldRenderer {
       presentPipeline,
       acceptedAtlas,
       atlasPresenter,
+      useLegacyPresenter,
       label
     );
   }
@@ -377,9 +397,68 @@ export class TileFieldRenderer {
   }
 
   request(request: PersistentTileRequest): void {
-    if (this.dead) return;
+    if (this.dead || this.suspended) return;
     this.latestRequest = request;
     if (!this.running) void this.pump();
+  }
+
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    if (!suspended) return;
+    this.latestRequest = null;
+    this.currentQueue = [];
+    this.pendingLevelOffsets = [];
+    const gateWaiters = this.testGateWaiters.splice(0);
+    for (const resolve of gateWaiters) resolve();
+    const batchWaiters = this.testBatchWaiters.splice(0);
+    for (const waiter of batchWaiters) waiter.reject(new Error('Renderer suspended before the requested test batches completed'));
+    const pauseWaiters = this.testPauseWaiters.splice(0);
+    for (const resolve of pauseWaiters) resolve();
+  }
+
+  setTestSchedulerPaused(paused: boolean): Promise<void> {
+    this.testSchedulerPaused = paused;
+    if (paused) {
+      if (!this.testBatchExecuting) return Promise.resolve();
+      return new Promise(resolve => this.testPauseWaiters.push(resolve));
+    }
+    this.testBatchPermits = 0;
+    const waiters = this.testGateWaiters.splice(0);
+    for (const resolve of waiters) resolve();
+    return Promise.resolve();
+  }
+
+  releaseTestBatches(count: number): Promise<{
+    batchRevision: number;
+    requestId: number;
+    requestBatchCount: number;
+  }> {
+    if (!Number.isFinite(count) || count < 1) {
+      return Promise.reject(new Error('Batch release count must be a positive finite integer'));
+    }
+    const permitted = Math.floor(count);
+    const requestId = this.latestRequest?.requestId ?? this.currentRequest?.requestId;
+    if (requestId === undefined) return Promise.reject(new Error('No numerical request is available for the test gate'));
+    const targetCount = (this.testRequestBatchCounts.get(requestId) ?? 0) + permitted;
+    this.testBatchPermits += permitted;
+    const waiters = this.testGateWaiters.splice(0);
+    for (const resolve of waiters) resolve();
+    return new Promise((resolve, reject) => this.testBatchWaiters.push({
+      requestId, targetCount, resolve, reject
+    }));
+  }
+
+  get completedTestBatchRevision(): number {
+    return this.testBatchRevision;
+  }
+
+  get currentTestRequestId(): number {
+    return this.latestRequest?.requestId ?? this.currentRequest?.requestId ?? 0;
+  }
+
+  nextContinuityFrame(afterFrame: number) {
+    return this.atlasPresenter?.nextContinuityFrame(afterFrame)
+      ?? Promise.reject(new Error('Continuity frames require the atlas presenter'));
   }
 
   get isBusy(): boolean {
@@ -419,9 +498,13 @@ export class TileFieldRenderer {
     cssHeight: number,
     devicePixelRatio: number
   ): boolean {
-    if (this.dead || this.tileMap.size === 0) return false;
-    const width = Math.max(1, Math.floor(cssWidth * devicePixelRatio));
-    const height = Math.max(1, Math.floor(cssHeight * devicePixelRatio));
+    if (this.dead || cssWidth <= 0 || cssHeight <= 0 || devicePixelRatio <= 0) return false;
+    const limit = this.device.limits.maxTextureDimension2D;
+    const requestedWidth = Math.max(1, cssWidth * devicePixelRatio);
+    const requestedHeight = Math.max(1, cssHeight * devicePixelRatio);
+    const displayScale = Math.min(1, limit / requestedWidth, limit / requestedHeight);
+    const width = Math.max(1, Math.floor(requestedWidth * displayScale));
+    const height = Math.max(1, Math.floor(requestedHeight * displayScale));
     this.resizeCanvas(width, height);
     const renderHeight = this.renderHeight(cssWidth, cssHeight, devicePixelRatio);
     const aspect = Math.max(1, cssWidth) / Math.max(1, cssHeight);
@@ -446,12 +529,21 @@ export class TileFieldRenderer {
         drawTiles.push(tile);
       }
     }
-    if (drawTiles.length === 0) return false;
+    if (drawTiles.length === 0) {
+      return !this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas
+        ? this.atlasPresenter.present(
+          targetCamera, aspect, width, height, this.acceptedAtlas, [], false,
+          this.currentRequest?.targetIterations ?? 0,
+          this.currentRequest?.palettePhase ?? 0,
+          this.currentTestRequestId,
+          this.testBatchRevision
+        )
+        : false;
+    }
     drawTiles.sort((left, right) => right.descriptor.sampleExponent - left.descriptor.sampleExponent);
 
     const renderable: Array<{ tile: FieldTile; group: GPUBindGroup; transform: ReturnType<TileFieldRenderer['tileTransform']> }> = [];
     for (const tile of drawTiles) {
-      if (this.hasCompleteChildren(tile)) continue;
       const transform = this.tileTransform(tile, targetCamera, aspect);
       if (!transform) continue;
       this.device.queue.writeBuffer(tile.presentUniform, 0, new Float32Array([
@@ -468,20 +560,48 @@ export class TileFieldRenderer {
           : tile.presentLinearGroup
       });
     }
-    if (renderable.length === 0) return false;
+    if (renderable.length === 0) {
+      return !this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas
+        ? this.atlasPresenter.present(
+          targetCamera, aspect, width, height, this.acceptedAtlas, [], false,
+          this.currentRequest?.targetIterations ?? 0,
+          this.currentRequest?.palettePhase ?? 0,
+          this.currentTestRequestId,
+          this.testBatchRevision
+        )
+        : false;
+    }
 
-    if (!this.useLegacyPresenter) {
-      const instances: AtlasInstance[] = renderable.flatMap(item => item.transform
-        ? [{ transform: item.transform, slot: item.tile.atlasSlot }]
+    if (!this.useLegacyPresenter && this.atlasPresenter && this.acceptedAtlas) {
+      const instances: AtlasInstance[] = renderable.flatMap(item => item.transform && item.tile.atlasSlot
+        ? [{
+          transform: item.transform,
+          slot: item.tile.atlasSlot,
+          iterationFrontier: item.tile.iterationFrontier,
+          capMode: item.tile.capPresentationMode,
+          targetIterations: this.currentRequest?.targetIterations ?? 0
+        }]
         : []);
       const authoritative = settledPresentation
+        && this.pendingLevelOffsets.length === 0
+        && this.currentQueue.length === 0
         && this.currentVisibleKeys.size > 0
         && [...this.currentVisibleKeys].every(key => {
           const tile = this.tileMap.get(key);
-          return Boolean(tile && tile.coveragePixels >= TILE_PIXEL_COUNT);
+          return Boolean(tile && tile.resolvedPixels >= TILE_PIXEL_COUNT);
         });
       return this.atlasPresenter.present(
-        targetCamera, aspect, width, height, this.acceptedAtlas, instances, authoritative
+        targetCamera,
+        aspect,
+        width,
+        height,
+        this.acceptedAtlas,
+        instances,
+        authoritative,
+        this.currentRequest?.targetIterations ?? 0,
+        this.currentRequest?.palettePhase ?? 0,
+        this.currentTestRequestId,
+        this.testBatchRevision
       );
     }
 
@@ -509,7 +629,38 @@ export class TileFieldRenderer {
   }
 
   get presentationDiagnostics() {
-    return { ...this.atlasPresenter.diagnostics, validationErrors: [...this.deviceErrors] };
+    const diagnostics = this.atlasPresenter?.diagnostics ?? {
+      frames: 0,
+      historyFrames: 0,
+      fallbackFrames: 0,
+      anchorPromotions: 0,
+      instanceCount: 0,
+      resourceEpoch: 0,
+      worstReprojectionErrorTexels: 0,
+      lastFrameCpuMs: 0,
+      validationErrors: 0,
+      rollingFrames: 0,
+      snapshotCount: 0,
+      reducedFrame: 0,
+      totalPixels: 0,
+      invalidPixels: 0,
+      historyPixels: 0,
+      retainedPixels: 0,
+      currentPixels: 0,
+      provisionalCapPixels: 0,
+      finalCapPixels: 0,
+      terminalPixels: 0,
+      qualityRegressionPixels: 0,
+      escapedToProvisionalBlackPixels: 0,
+      candidateRejectedLowerQualityPixels: 0,
+      semanticConflictEvents: 0,
+      conflictPixels: 0,
+      droppedReadbacks: 0
+    };
+    return {
+      ...diagnostics,
+      validationErrors: diagnostics.validationErrors + this.deviceErrors.length
+    };
   }
 
   forceDeviceLossForTest(): void {
@@ -525,8 +676,8 @@ export class TileFieldRenderer {
     this.referenceAtlas.dispose();
     for (const tile of this.tileMap.values()) this.destroyTile(tile);
     this.tileMap.clear();
-    this.atlasPresenter.destroy();
-    this.acceptedAtlas.destroy();
+    this.atlasPresenter?.destroy();
+    this.acceptedAtlas?.destroy();
     this.clearUniform.destroy();
     this.context.unconfigure();
   }
@@ -536,7 +687,7 @@ export class TileFieldRenderer {
     this.running = true;
     try {
       while (
-        !this.dead && (this.latestRequest
+        !this.dead && !this.suspended && (this.latestRequest
         || this.currentQueue.length > 0
         || this.pendingLevelOffsets.length > 0)
       ) {
@@ -558,11 +709,28 @@ export class TileFieldRenderer {
         const quantumStarted = performance.now();
         const quantumBudget = this.quantumBudget(request.interaction);
         do {
+          if (this.suspended) break;
           if (this.latestRequest || this.currentQueue.length === 0) break;
+          const testPermit = await this.awaitTestBatchPermit();
+          if (this.testSchedulerPaused && !testPermit) continue;
+          if (this.latestRequest || this.currentQueue.length === 0) {
+            if (this.testSchedulerPaused) this.testBatchPermits++;
+            break;
+          }
           this.currentQueue.sort((left, right) => left.work.priority - right.work.priority);
           const batch = this.currentQueue.splice(0, this.adaptiveBatchTiles);
           const started = performance.now();
-          await this.executeBatch(batch, request.palettePhase);
+          this.testBatchExecuting = true;
+          try {
+            await this.executeBatch(batch, request.palettePhase);
+          } finally {
+            this.testBatchExecuting = false;
+            if (this.testSchedulerPaused) {
+              const pauseWaiters = this.testPauseWaiters.splice(0);
+              for (const resolve of pauseWaiters) resolve();
+            }
+          }
+          this.noteTestBatchCompleted(request.requestId);
           this.lastBatchMs = Math.max(0.1, performance.now() - started);
           this.completedChunks += batch.length;
           this.adaptBatchSize(request.interaction, this.lastBatchMs);
@@ -585,9 +753,9 @@ export class TileFieldRenderer {
     } finally {
       this.running = false;
       if (
-        this.latestRequest
+        !this.suspended && (this.latestRequest
         || this.currentQueue.length > 0
-        || this.pendingLevelOffsets.length > 0
+        || this.pendingLevelOffsets.length > 0)
       ) {
         void this.pump();
       }
@@ -997,10 +1165,10 @@ export class TileFieldRenderer {
   }
 
   private createTile(descriptor: PersistentTileDescriptor): FieldTile {
-    if (this.acceptedAtlas.availableSlots === 0 && !this.evictOneColdTile()) {
+    if (this.acceptedAtlas?.availableSlots === 0 && !this.evictOneColdTile()) {
       throw new Error('Accepted tile atlas exhausted with no retireable tile');
     }
-    const atlasSlot = this.acceptedAtlas.allocate();
+    const atlasSlot = this.acceptedAtlas?.allocate() ?? null;
     const stateBuffer = this.device.createBuffer({
       size: TILE_PIXEL_COUNT * STATE_BYTES_PER_PIXEL,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
@@ -1031,6 +1199,11 @@ export class TileFieldRenderer {
       size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
       format: 'rgba8unorm',
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+    });
+    const evidenceTexture = this.device.createTexture({
+      size: [PERSISTENT_TILE_SIZE, PERSISTENT_TILE_SIZE],
+      format: 'r32uint',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
     });
     const directUniform = this.device.createBuffer({
       size: DIRECT_PARAMETER_BYTES,
@@ -1070,7 +1243,8 @@ export class TileFieldRenderer {
         { binding: 0, resource: { buffer: colourUniform } },
         { binding: 1, resource: resultTexture.createView() },
         { binding: 2, resource: qualityTexture.createView() },
-        { binding: 3, resource: colourTexture.createView() }
+        { binding: 3, resource: colourTexture.createView() },
+        { binding: 4, resource: evidenceTexture.createView() }
       ]
     });
     const clearGroup = this.device.createBindGroup({
@@ -1134,6 +1308,7 @@ export class TileFieldRenderer {
       resultTexture,
       qualityTexture,
       colourTexture,
+      evidenceTexture,
       directUniform,
       perturbUniform,
       colourUniform,
@@ -1256,9 +1431,15 @@ export class TileFieldRenderer {
         Math.ceil(PERSISTENT_TILE_SIZE / 8)
       );
       colourPass.end();
-      this.acceptedAtlas.encodeCopy(
-        encoder, tile.atlasSlot, tile.colourTexture, tile.qualityTexture
-      );
+      if (this.acceptedAtlas && tile.atlasSlot) {
+        this.acceptedAtlas.encodeCopy(
+          encoder,
+          tile.atlasSlot,
+          tile.colourTexture,
+          tile.qualityTexture,
+          tile.evidenceTexture
+        );
+      }
       if (scheduled.work.chunkIterations > 0) {
         encoder.copyBufferToBuffer(
           tile.counterBuffer,
@@ -1365,6 +1546,32 @@ export class TileFieldRenderer {
     return Math.max(1, Math.floor(requestedHeight * scale));
   }
 
+  private async awaitTestBatchPermit(): Promise<boolean> {
+    while (this.testSchedulerPaused && this.testBatchPermits <= 0 && !this.dead) {
+      await new Promise<void>(resolve => this.testGateWaiters.push(resolve));
+    }
+    if (this.testSchedulerPaused && this.testBatchPermits > 0) {
+      this.testBatchPermits--;
+      return true;
+    }
+    return false;
+  }
+
+  private noteTestBatchCompleted(requestId: number): void {
+    this.testBatchRevision++;
+    const requestBatchCount = (this.testRequestBatchCounts.get(requestId) ?? 0) + 1;
+    this.testRequestBatchCounts.set(requestId, requestBatchCount);
+    const ready = this.testBatchWaiters.filter(
+      waiter => waiter.requestId === requestId && waiter.targetCount <= requestBatchCount
+    );
+    this.testBatchWaiters = this.testBatchWaiters.filter(waiter => !ready.includes(waiter));
+    for (const waiter of ready) waiter.resolve({
+      batchRevision: this.testBatchRevision,
+      requestId,
+      requestBatchCount
+    });
+  }
+
   private quantumBudget(interaction: PersistentTileRequest['interaction']): number {
     return interaction === 'moving'
       ? MOVING_QUANTUM_MS
@@ -1448,7 +1655,7 @@ export class TileFieldRenderer {
   }
 
   private destroyTile(tile: FieldTile): void {
-    this.acceptedAtlas.release(tile.atlasSlot);
+    if (this.acceptedAtlas && tile.atlasSlot) this.acceptedAtlas.release(tile.atlasSlot);
     tile.stateBuffer.destroy();
     tile.metaBuffer.destroy();
     tile.counterBuffer.destroy();
@@ -1456,6 +1663,7 @@ export class TileFieldRenderer {
     tile.resultTexture.destroy();
     tile.qualityTexture.destroy();
     tile.colourTexture.destroy();
+    tile.evidenceTexture.destroy();
     tile.directUniform.destroy();
     tile.perturbUniform.destroy();
     tile.colourUniform.destroy();

@@ -8,6 +8,7 @@ export type AtlasSlot = Readonly<{ index: number; x: number; y: number; lease: n
 export class AcceptedTileAtlas {
   readonly colour: GPUTexture;
   readonly quality: GPUTexture;
+  readonly evidence: GPUTexture;
   readonly leaseDirectory: GPUBuffer;
   readonly width = ATLAS_COLUMNS * PERSISTENT_TILE_SIZE;
   readonly height = ATLAS_ROWS * PERSISTENT_TILE_SIZE;
@@ -26,6 +27,12 @@ export class AcceptedTileAtlas {
       label: 'accepted-tile-quality-atlas',
       size: [this.width, this.height],
       format: 'rgba8unorm',
+      usage
+    });
+    this.evidence = device.createTexture({
+      label: 'accepted-tile-evidence-atlas',
+      size: [this.width, this.height],
+      format: 'r32uint',
       usage
     });
     this.leaseDirectory = device.createBuffer({
@@ -57,7 +64,13 @@ export class AcceptedTileAtlas {
     this.free.push(slot.index);
   }
 
-  encodeCopy(encoder: GPUCommandEncoder, slot: AtlasSlot, colour: GPUTexture, quality: GPUTexture): void {
+  encodeCopy(
+    encoder: GPUCommandEncoder,
+    slot: AtlasSlot,
+    colour: GPUTexture,
+    quality: GPUTexture,
+    evidence: GPUTexture
+  ): void {
     const destination = { texture: this.colour, origin: { x: slot.x, y: slot.y } };
     encoder.copyTextureToTexture({ texture: colour }, destination, {
       width: PERSISTENT_TILE_SIZE,
@@ -68,11 +81,17 @@ export class AcceptedTileAtlas {
       { texture: this.quality, origin: { x: slot.x, y: slot.y } },
       { width: PERSISTENT_TILE_SIZE, height: PERSISTENT_TILE_SIZE }
     );
+    encoder.copyTextureToTexture(
+      { texture: evidence },
+      { texture: this.evidence, origin: { x: slot.x, y: slot.y } },
+      { width: PERSISTENT_TILE_SIZE, height: PERSISTENT_TILE_SIZE }
+    );
   }
 
   destroy(): void {
     this.colour.destroy();
     this.quality.destroy();
+    this.evidence.destroy();
     this.leaseDirectory.destroy();
   }
 }

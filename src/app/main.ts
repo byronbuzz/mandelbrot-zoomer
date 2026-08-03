@@ -9,6 +9,21 @@ const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('Missing app root');
 
 const ui = createUi(root);
+const urlParameters = new URLSearchParams(location.search);
+const testIterations = urlParameters.get('testIterations');
+const continuityTestEnabled = urlParameters.get('continuityTest') === '1';
+let testIterationTarget: number | null = null;
+if (testIterations !== null) {
+  const requested = Number(testIterations);
+  const minimum = Number(ui.iterations.min);
+  const maximum = Number(ui.iterations.max);
+  const step = Number(ui.iterations.step);
+  if (Number.isFinite(requested) && requested >= minimum && requested <= maximum) {
+    const snapped = minimum + Math.round((requested - minimum) / step) * step;
+    testIterationTarget = Math.min(maximum, Math.max(minimum, snapped));
+    ui.iterations.value = String(testIterationTarget);
+  }
+}
 const camera = new CameraModel();
 let renderer = await TileFieldRenderer.create(ui.canvas);
 let rendererEpoch = 1;
@@ -40,6 +55,10 @@ let lastReadoutAt = 0;
 const presentationTimestamps: number[] = [];
 
 function targetIterations(): number {
+  if (testIterationTarget !== null) {
+    ui.iterations.value = String(testIterationTarget);
+    return testIterationTarget;
+  }
   return Math.max(1, Math.floor(Number(ui.iterations.value)));
 }
 
@@ -63,14 +82,19 @@ function clearSettleTimers(): void {
 }
 
 function requestField(nextInteraction: InteractionState): void {
+  const cssWidth = ui.canvas.clientWidth;
+  const cssHeight = ui.canvas.clientHeight;
+  const suspended = cssWidth <= 0 || cssHeight <= 0;
+  renderer.setSuspended(suspended);
+  if (suspended) return;
   interaction = nextInteraction;
   requestId++;
   lastRequestAt = performance.now();
   renderer.request({
     requestId,
     camera: camera.snapshot(),
-    cssWidth: Math.max(1, ui.canvas.clientWidth),
-    cssHeight: Math.max(1, ui.canvas.clientHeight),
+    cssWidth,
+    cssHeight,
     devicePixelRatio: renderDevicePixelRatio(),
     targetIterations: targetIterations(),
     palettePhase: palettePhase(),
@@ -133,6 +157,7 @@ function precisionSummary(): string {
 function updateReadouts(): void {
   const stats = renderer.stats;
   const presentation = renderer.presentationDiagnostics;
+  const cameraSnapshot = camera.snapshot();
   const depth = camera.log10Magnification();
   ui.zoomOut.value = `10^${depth.toFixed(3)}`;
   ui.stateOut.value = `${interaction}${renderer.isBusy ? ' · calculating' : ''}`;
@@ -156,7 +181,31 @@ function updateReadouts(): void {
     resourceEpoch: String(presentation.resourceEpoch),
     reprojectionErrorTexels: presentation.worstReprojectionErrorTexels.toFixed(6),
     presentationCpuMs: presentation.lastFrameCpuMs.toFixed(3),
-    validationErrors: String(presentation.validationErrors.length)
+    validationErrors: String(presentation.validationErrors),
+    rollingFrames: String(presentation.rollingFrames),
+    retainedSnapshots: String(presentation.snapshotCount),
+    reducedFrame: String(presentation.reducedFrame),
+    totalPixels: String(presentation.totalPixels),
+    invalidPixels: String(presentation.invalidPixels),
+    historyPixels: String(presentation.historyPixels),
+    retainedPixels: String(presentation.retainedPixels),
+    currentPixels: String(presentation.currentPixels),
+    provisionalCapPixels: String(presentation.provisionalCapPixels),
+    finalCapPixels: String(presentation.finalCapPixels),
+    terminalPixels: String(presentation.terminalPixels),
+    qualityRegressionPixels: String(presentation.qualityRegressionPixels),
+    escapedToProvisionalBlackPixels: String(presentation.escapedToProvisionalBlackPixels),
+    candidateRejectedLowerQualityPixels: String(presentation.candidateRejectedLowerQualityPixels),
+    semanticConflictEvents: String(presentation.semanticConflictEvents),
+    conflictPixels: String(presentation.conflictPixels),
+    droppedReadbacks: String(presentation.droppedReadbacks),
+    centerXRaw: cameraSnapshot.centerX.raw.toString(),
+    centerXBits: String(cameraSnapshot.centerX.bits),
+    centerYRaw: cameraSnapshot.centerY.raw.toString(),
+    centerYBits: String(cameraSnapshot.centerY.bits),
+    scaleMantissa: cameraSnapshot.scale.mantissa.toPrecision(17),
+    scaleExponent: String(cameraSnapshot.scale.exponent),
+    log10Magnification: depth.toPrecision(17)
   });
 }
 
@@ -178,7 +227,17 @@ function diagnosticsReport(): string {
     `Presentation resource epoch: ${presentation.resourceEpoch}`,
     `Worst reprojection error: ${presentation.worstReprojectionErrorTexels.toFixed(6)} source texel`,
     `Presentation CPU: ${presentation.lastFrameCpuMs.toFixed(3)} ms`,
-    `WebGPU validation errors: ${presentation.validationErrors.length}`,
+    `WebGPU validation errors: ${presentation.validationErrors}`,
+    `Retained multiscale snapshots: ${presentation.snapshotCount}`,
+    `Continuity reduced frame: ${presentation.reducedFrame}`,
+    `Continuity pixels: ${presentation.totalPixels} total · ${presentation.invalidPixels} invalid`,
+    `Continuity provenance: ${presentation.historyPixels} rolling · ${presentation.retainedPixels} retained · ${presentation.currentPixels} current`,
+    `Continuity caps: ${presentation.provisionalCapPixels} provisional · ${presentation.finalCapPixels} final`,
+    `Continuity definite evidence: ${presentation.terminalPixels}`,
+    `Continuity regressions: ${presentation.qualityRegressionPixels} quality · ${presentation.escapedToProvisionalBlackPixels} escaped-to-provisional-black`,
+    `Continuity rejected candidates: ${presentation.candidateRejectedLowerQualityPixels}`,
+    `Continuity conflicts: ${presentation.semanticConflictEvents} events · ${presentation.conflictPixels} displayed pixels`,
+    `Continuity dropped readbacks: ${presentation.droppedReadbacks}`,
     `URL: ${location.href}`,
     `Zoom depth: 10^${camera.log10Magnification().toFixed(6)}`,
     `Center X raw: ${snapshot.centerX.raw.toString()} (bits ${snapshot.centerX.bits})`,
@@ -351,16 +410,138 @@ attachRenderer(renderer);
 ui.status.textContent = `${renderer.adapterLabel} · ${APP_NAME} ${BUILD_LABEL}`;
 
 Object.assign(window, {
-  __ZOOMER_DIAGNOSTICS__: () => ({
-    build: BUILD_LABEL,
-    rendererEpoch,
-    recovering: recoveryPromise !== null,
-    presenter: renderer.presentationMode,
-    presentation: renderer.presentationDiagnostics,
-    field: renderer.stats
-  }),
+  __ZOOMER_DIAGNOSTICS__: () => {
+    const snapshot = camera.snapshot();
+    return {
+      build: BUILD_LABEL,
+      rendererEpoch,
+      recovering: recoveryPromise !== null,
+      presenter: renderer.presentationMode,
+      camera: {
+        centerXRaw: snapshot.centerX.raw.toString(),
+        centerXBits: snapshot.centerX.bits,
+        centerYRaw: snapshot.centerY.raw.toString(),
+        centerYBits: snapshot.centerY.bits,
+        scaleMantissa: snapshot.scale.mantissa,
+        scaleExponent: snapshot.scale.exponent,
+        log10Magnification: camera.log10Magnification()
+      },
+      presentation: renderer.presentationDiagnostics,
+      field: renderer.stats
+    };
+  },
   __ZOOMER_FORCE_DEVICE_LOSS__: () => renderer.forceDeviceLossForTest()
 });
+
+if (continuityTestEnabled) {
+  type SerializedTestCamera = {
+    centerXRaw: string;
+    centerXBits: number;
+    centerYRaw: string;
+    centerYBits: number;
+    scaleMantissa: number;
+    scaleExponent: number;
+  };
+  const testApi = {
+    setExactCamera: async (
+      serialized: SerializedTestCamera,
+      nextInteraction: InteractionState = 'moving'
+    ) => {
+      clearSettleTimers();
+      targetDirection = 0;
+      zoomVelocity = 0;
+      panning = false;
+      panPointer = -1;
+      camera.setExact(
+        { raw: BigInt(serialized.centerXRaw), bits: serialized.centerXBits },
+        { raw: BigInt(serialized.centerYRaw), bits: serialized.centerYBits },
+        { mantissa: serialized.scaleMantissa, exponent: serialized.scaleExponent }
+      );
+      requestField(nextInteraction);
+      return { viewRevision: camera.generation, requestId };
+    },
+    setSchedulerGate: async (state: 'paused' | 'running') => {
+      await renderer.setTestSchedulerPaused(state === 'paused');
+    },
+    releaseBatches: (count: number) => renderer.releaseTestBatches(count),
+    nextPresentedFrame: (afterFrame: number) => renderer.nextContinuityFrame(afterFrame),
+    waitForResolved: async (
+      viewRevision: number,
+      expectedRequestId: number,
+      minimumBatchRevision = 0
+    ) => {
+      let afterFrame = renderer.presentationDiagnostics.reducedFrame;
+      for (;;) {
+        const frame = await renderer.nextContinuityFrame(afterFrame);
+        afterFrame = frame.frameId;
+        if (
+          frame.viewRevision === viewRevision
+          && frame.requestId === expectedRequestId
+          && frame.completedBatchRevision >= minimumBatchRevision
+          && frame.invalidPixels === 0
+          && frame.provisionalCapPixels === 0
+          && frame.qualityRegressionPixels === 0
+          && frame.escapedToProvisionalBlackPixels === 0
+          && frame.conflictPixels === 0
+          && frame.checkpointEligible
+          && !renderer.isBusy
+        ) return frame;
+      }
+    },
+    diagnostics: () => ({
+      batchRevision: renderer.completedTestBatchRevision,
+      requestId: renderer.currentTestRequestId,
+      adapterLabel: renderer.adapterLabel,
+      presentation: renderer.presentationDiagnostics,
+      field: renderer.stats
+    })
+  };
+  Object.assign(window, { __ZOOMER_TEST__: testApi });
+
+  const rpc = document.createElement('div');
+  rpc.id = 'zoomer-test-rpc';
+  rpc.hidden = true;
+  document.body.append(rpc);
+  rpc.addEventListener('zoomer-test-command', () => {
+    void (async () => {
+      const request = JSON.parse(rpc.dataset.request ?? '{}') as {
+        id: string;
+        command: keyof typeof testApi;
+        args?: unknown[];
+      };
+      const args = request.args ?? [];
+      try {
+        let result: unknown;
+        if (request.command === 'setExactCamera') {
+          result = await testApi.setExactCamera(
+            args[0] as SerializedTestCamera,
+            (args[1] as InteractionState | undefined) ?? 'moving'
+          );
+        } else if (request.command === 'setSchedulerGate') {
+          result = await testApi.setSchedulerGate(args[0] as 'paused' | 'running');
+        } else if (request.command === 'releaseBatches') {
+          result = await testApi.releaseBatches(Number(args[0] ?? 1));
+        } else if (request.command === 'nextPresentedFrame') {
+          result = await testApi.nextPresentedFrame(Number(args[0] ?? 0));
+        } else if (request.command === 'waitForResolved') {
+          result = await testApi.waitForResolved(
+            Number(args[0]),
+            Number(args[1]),
+            Number(args[2] ?? 0)
+          );
+        } else {
+          result = testApi.diagnostics();
+        }
+        rpc.dataset.response = JSON.stringify({ id: request.id, result });
+      } catch (error) {
+        rpc.dataset.response = JSON.stringify({
+          id: request.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    })();
+  });
+}
 
 if (new URLSearchParams(location.search).get('testDeviceLoss') === '1') {
   window.setTimeout(() => renderer.forceDeviceLossForTest(), 1200);
@@ -384,11 +565,11 @@ function tick(now: number): void {
   if (wasMoving && !moving) beginSettling();
   wasMoving = moving;
 
-  if (renderer.present(
-    camera.snapshot(),
-    Math.max(1, ui.canvas.clientWidth),
-    Math.max(1, ui.canvas.clientHeight),
-    renderDevicePixelRatio()
+    if (renderer.present(
+      camera.snapshot(),
+      ui.canvas.clientWidth,
+      ui.canvas.clientHeight,
+      renderDevicePixelRatio()
   )) {
     notePresentation(now);
   }
