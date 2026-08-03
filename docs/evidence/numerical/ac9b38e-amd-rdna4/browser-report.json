@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "startedAt": "2026-08-03T12:17:01.293Z",
-  "completedAt": "2026-08-03T12:17:03.055Z",
+  "startedAt": "2026-08-03T12:22:52.664Z",
+  "completedAt": "2026-08-03T12:22:54.390Z",
   "pass": true,
-  "commit": "f6433f52c067356c7060e46f61f42eb8c69bfd97",
+  "commit": "ac9b38ed600e15fbe04ded7b1b4109cd379eea8a",
   "fixture": {
     "path": "tests/fixtures/shallow-direct-v1.json",
     "sha256": "50dbc8e2b80520fb3448ef079e32ebe97863f3ab176f32155a418153901fe943"
@@ -15,7 +15,7 @@
   "harnessSources": {
     "runner": {
       "path": "scripts/run-numerical-browser-gate.mjs",
-      "sha256": "410f97b3137876415bccbea0984d2c235d143f7296a8afb1dcfcb68a70aba2bc"
+      "sha256": "268e6f03504ab3aea6831200613891b4657263431227aba5e1182fc0b30050b8"
     },
     "browser": {
       "path": "tests/numerical/direct-gpu-harness.ts",
@@ -23,7 +23,7 @@
     },
     "oracle": {
       "path": "tests/numerical/mandelbrot-contract.mjs",
-      "sha256": "9dd1df5e1cbfc9aa40ab3df2c94ff270ee5a6f081da20e1c7e1822588c165094"
+      "sha256": "2b1f71669d69a62203db93cefd5b63f76a0b011e31b9b3d23ccc5fb1958496c9"
     }
   },
   "environment": {
@@ -105,8 +105,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 5.1000001430511475,
-          "readbackWallMs": 3.200000047683716
+          "queueCompletionWallMs": 5.700000047683716,
+          "readbackWallMs": 2.5
         }
       ]
     },
@@ -132,7 +132,7 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3,
+          "queueCompletionWallMs": 2.5999999046325684,
           "readbackWallMs": 2.6000001430511475
         }
       ]
@@ -159,8 +159,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.799999952316284,
-          "readbackWallMs": 3
+          "queueCompletionWallMs": 3,
+          "readbackWallMs": 3.200000047683716
         },
         {
           "id": "ones",
@@ -237,8 +237,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 4.799999952316284,
-          "readbackWallMs": 3.200000047683716
+          "queueCompletionWallMs": 2.299999952316284,
+          "readbackWallMs": 3.700000047683716
         },
         {
           "id": "prime-7",
@@ -261,8 +261,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3.200000047683716,
-          "readbackWallMs": 3.0999999046325684
+          "queueCompletionWallMs": 4.6000001430511475,
+          "readbackWallMs": 3
         },
         {
           "id": "fibonacci",
@@ -283,8 +283,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.8000001907348633,
-          "readbackWallMs": 3.5999999046325684
+          "queueCompletionWallMs": 3.3000001907348633,
+          "readbackWallMs": 3
         }
       ]
     },
@@ -311,7 +311,7 @@
           },
           "smoothAbsoluteError": null,
           "queueCompletionWallMs": 2.8999998569488525,
-          "readbackWallMs": 3.1000001430511475
+          "readbackWallMs": 3.5
         },
         {
           "id": "ones",
@@ -388,8 +388,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 4,
-          "readbackWallMs": 3
+          "queueCompletionWallMs": 3.299999952316284,
+          "readbackWallMs": 3.0999999046325684
         },
         {
           "id": "prime-7",
@@ -412,8 +412,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.5,
-          "readbackWallMs": 2.6000001430511475
+          "queueCompletionWallMs": 3.0999999046325684,
+          "readbackWallMs": 3.1000001430511475
         },
         {
           "id": "fibonacci",
@@ -434,8 +434,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.700000047683716,
-          "readbackWallMs": 3.200000047683716
+          "queueCompletionWallMs": 2.5999999046325684,
+          "readbackWallMs": 2.5
         }
       ]
     },
@@ -461,7 +461,7 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3.299999952316284,
+          "queueCompletionWallMs": 2.799999952316284,
           "readbackWallMs": 3.0999999046325684
         },
         {
@@ -539,8 +539,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3.299999952316284,
-          "readbackWallMs": 3.6000001430511475
+          "queueCompletionWallMs": 3.8999998569488525,
+          "readbackWallMs": 3.1000001430511475
         },
         {
           "id": "prime-7",
@@ -563,8 +563,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.799999952316284,
-          "readbackWallMs": 3.0999999046325684
+          "queueCompletionWallMs": 2.700000047683716,
+          "readbackWallMs": 3.5999999046325684
         },
         {
           "id": "fibonacci",
@@ -585,8 +585,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3.1999998092651367,
-          "readbackWallMs": 3
+          "queueCompletionWallMs": 2.6999998092651367,
+          "readbackWallMs": 3.1000001430511475
         }
       ]
     },
@@ -612,8 +612,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.799999952316284,
-          "readbackWallMs": 3.6000001430511475
+          "queueCompletionWallMs": 3.200000047683716,
+          "readbackWallMs": 3.0999999046325684
         },
         {
           "id": "ones",
@@ -691,7 +691,7 @@
           },
           "smoothAbsoluteError": null,
           "queueCompletionWallMs": 3.4000000953674316,
-          "readbackWallMs": 3.0999999046325684
+          "readbackWallMs": 2.6999998092651367
         },
         {
           "id": "prime-7",
@@ -714,8 +714,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 3.5999999046325684,
-          "readbackWallMs": 3.1000001430511475
+          "queueCompletionWallMs": 2.5999999046325684,
+          "readbackWallMs": 3.5999999046325684
         },
         {
           "id": "fibonacci",
@@ -736,8 +736,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.700000047683716,
-          "readbackWallMs": 2.5
+          "queueCompletionWallMs": 3.0999999046325684,
+          "readbackWallMs": 3.1000001430511475
         }
       ]
     },
@@ -763,8 +763,8 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 2.8000001907348633,
-          "readbackWallMs": 3.0999999046325684
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 2.6000001430511475
         },
         {
           "id": "ones",
@@ -905,13 +905,20 @@
             "smooth": null
           },
           "smoothAbsoluteError": null,
-          "queueCompletionWallMs": 5.3999998569488525,
+          "queueCompletionWallMs": 5,
           "readbackWallMs": 3.1000001430511475
         },
         {
           "id": "prime-7",
           "chunks": [
-     …6029 tokens truncated…           1,
+…5996 tokens truncated…       1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
             1,
             1,
             1,
@@ -1016,8 +1023,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 6.400000095367432,
-          "readbackWallMs": 2.5
+          "queueCompletionWallMs": 7.299999952316284,
+          "readbackWallMs": 3.200000047683716
         },
         {
           "id": "prime-7",
@@ -1067,8 +1074,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 3.5999999046325684,
-          "readbackWallMs": 3.0999999046325684
+          "queueCompletionWallMs": 3,
+          "readbackWallMs": 3
         },
         {
           "id": "workgroup-64",
@@ -1085,8 +1092,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 3.299999952316284,
-          "readbackWallMs": 3.1000001430511475
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 3.5999999046325684
         },
         {
           "id": "fibonacci",
@@ -1123,8 +1130,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 2.700000047683716,
-          "readbackWallMs": 2.6000001430511475
+          "queueCompletionWallMs": 2.5999999046325684,
+          "readbackWallMs": 3.200000047683716
         },
         {
           "id": "escape-boundary",
@@ -1140,8 +1147,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 2.8000001907348633,
-          "readbackWallMs": 2.5999999046325684
+          "queueCompletionWallMs": 2.799999952316284,
+          "readbackWallMs": 2.4000000953674316
         }
       ]
     },
@@ -1167,8 +1174,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 3.299999952316284,
-          "readbackWallMs": 3.200000047683716
+          "queueCompletionWallMs": 3.1000001430511475,
+          "readbackWallMs": 3.299999952316284
         },
         {
           "id": "ones",
@@ -1437,8 +1444,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 4.799999952316284,
-          "readbackWallMs": 3.1000001430511475
+          "queueCompletionWallMs": 5.800000190734863,
+          "readbackWallMs": 3.0999999046325684
         },
         {
           "id": "prime-7",
@@ -1488,8 +1495,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 3.4000000953674316,
-          "readbackWallMs": 3.5999999046325684
+          "queueCompletionWallMs": 3,
+          "readbackWallMs": 3.0999999046325684
         },
         {
           "id": "workgroup-64",
@@ -1506,8 +1513,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 2.8999998569488525,
-          "readbackWallMs": 3
+          "queueCompletionWallMs": 2.5999999046325684,
+          "readbackWallMs": 2.6000001430511475
         },
         {
           "id": "fibonacci",
@@ -1544,7 +1551,7 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 4.1000001430511475,
+          "queueCompletionWallMs": 2.700000047683716,
           "readbackWallMs": 3
         },
         {
@@ -1561,8 +1568,8 @@
             "smooth": 33.424503326416016
           },
           "smoothAbsoluteError": 0.00008316601800117951,
-          "queueCompletionWallMs": 2.8000001907348633,
-          "readbackWallMs": 2.5
+          "queueCompletionWallMs": 3.200000047683716,
+          "readbackWallMs": 3.0999999046325684
         }
       ]
     }
@@ -1817,31 +1824,31 @@
     "metric": "fresh-run queue completion latency; includes prior uniform uploads and possible lazy initialization; telemetry only",
     "queueCompletionWallMs": {
       "samples": [
-        3.200000047683716,
-        3.3999998569488525,
-        2.8999998569488525,
-        2.5,
         2.5999999046325684,
+        3.3999998569488525,
+        3.5,
         3,
-        2.5
+        3.5,
+        2.5,
+        3
       ],
-      "p50": 2.8999998569488525,
-      "p95": 3.200000047683716,
+      "p50": 3,
+      "p95": 3.5,
       "min": 2.5,
-      "max": 3.3999998569488525
+      "max": 3.5
     },
     "readbackWallMs": {
       "samples": [
-        3.5999999046325684,
         3,
+        2.5,
         3.200000047683716,
+        3.0999999046325684,
         2.6000001430511475,
-        3,
-        3.1000001430511475,
-        3.5999999046325684
+        3.200000047683716,
+        0.2999999523162842
       ],
-      "p50": 3.1000001430511475,
-      "p95": 3.5999999046325684
+      "p50": 3,
+      "p95": 3.200000047683716
     },
     "explicitIterations": 2436847,
     "finalCounters": [

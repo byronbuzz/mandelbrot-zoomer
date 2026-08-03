@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-03T12:17:00.574Z",
+  "generatedAt": "2026-08-03T12:22:51.924Z",
   "contractVersion": 1,
   "fixture": {
     "path": "tests/fixtures/shallow-direct-v1.json",
@@ -500,11 +500,11 @@
     "scene": "boundary-throughput-128",
     "metric": "CPU f64 oracle wall time; excludes I/O",
     "samplesMs": [
-      8.354699999999998,
-      5.379400000000004,
-      5.973100000000002
+      8.064099999999996,
+      5.358699999999999,
+      5.999400000000001
     ],
-    "medianMs": 5.973100000000002,
+    "medianMs": 5.999400000000001,
     "classes": {
       "escaped": 16081,
       "analytic": 0,

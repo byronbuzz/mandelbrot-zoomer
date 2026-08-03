@@ -21,13 +21,13 @@ The browser fixture imports only `src/numerical/tileDirectShader.ts`. It creates
 - recurrence metadata, accepted-result evidence and accepted quality must agree;
 - smooth tolerance is `max(0.001, 8 f32 ULP)`.
 
-The tested source commit is `f6433f52c067356c7060e46f61f42eb8c69bfd97`. SHA-256 identities:
+The tested source commit is `ac9b38ed600e15fbe04ded7b1b4109cd379eea8a`. SHA-256 identities:
 
 - fixture: `50dbc8e2b80520fb3448ef079e32ebe97863f3ab176f32155a418153901fe943`;
 - unchanged production direct shader: `6f2b4110f3f1f790660bdb99d6116c86ac6dc8f3a59ab5e36ae6157955b63ec1`;
-- browser runner: `410f97b3137876415bccbea0984d2c235d143f7296a8afb1dcfcb68a70aba2bc`;
+- browser runner: `268e6f03504ab3aea6831200613891b4657263431227aba5e1182fc0b30050b8`;
 - WebGPU harness: `3270a81a8b73985263d476b9232cd1bc717941eede09b384267b81f87708db64`;
-- CPU oracle contract: `9dd1df5e1cbfc9aa40ab3df2c94ff270ee5a6f081da20e1c7e1822588c165094`.
+- CPU oracle contract: `2b1f71669d69a62203db93cefd5b63f76a0b011e31b9b3d23ccc5fb1958496c9`.
 
 ## Portable CPU and compile gates
 
@@ -36,7 +36,7 @@ The tested source commit is `f6433f52c067356c7060e46f61f42eb8c69bfd97`. SHA-256 
 - one 16x16 exact-dyadic coordinate grid independently tests half-pixel offsets, exponent mapping and both axes;
 - analytic-boundary inclusion, strict bailout equality, escape-at-target precedence, nonanalytic bounded cap, short escape, `-2` boundary behavior and conjugacy are represented;
 - four deliberately sensitive f32 boundary/signed-zero cases are recorded separately;
-- CPU-f64 benchmark median: `5.9731 ms` for `2,442,855` explicitly executed iterations.
+- CPU-f64 benchmark median: `5.9994 ms` for `2,442,855` explicitly executed iterations.
 
 The CPU gate and a test-specific TypeScript compilation of the browser harness are part of `pnpm run build`. All existing release, WGSL, persistent-field, presentation, provenance, production TypeScript and Vite gates continued to pass.
 
@@ -63,14 +63,14 @@ Scene: 128x128 boundary tile at 1,000 target iterations, 64-iteration chunks. Se
 
 - explicitly executed GPU recurrence iterations: `2,436,847`;
 - final classes: 16,097 escaped, 287 capped, zero non-finite;
-- fresh-run queue-completion latency: p50 `2.900 ms`, p95 `3.200 ms`, range `2.500â€“3.400 ms`;
-- readback wall time p50: `3.100 ms`.
+- fresh-run queue-completion latency: p50 `3.000 ms`, p95 `3.500 ms`, range `2.500â€“3.500 ms`;
+- readback wall time p50: `3.000 ms`.
 
 These are local before-optimization telemetry, not timestamp-query measurements, recurrence-only throughput, or a cross-adapter threshold. Each measured run creates fresh resources; the timed queue completion follows uniform uploads and can include upload completion, lazy GPU initialization, submission and browser scheduling overhead. Compilation, host allocation and readback are outside the interval.
 
 ## Evidence files
 
-Every invocation writes an isolated run directory and one authoritative terminal manifest. The immutable bundle for source commit `f6433f5` is checked in under `docs/evidence/numerical/f6433f5-amd-rdna4/`:
+Every invocation writes an isolated run directory and one authoritative terminal manifest. The immutable bundle for source commit `ac9b38e` is checked in under `docs/evidence/numerical/ac9b38e-amd-rdna4/`:
 
 - `cpu-oracle.json`;
 - `browser-report.json`;
