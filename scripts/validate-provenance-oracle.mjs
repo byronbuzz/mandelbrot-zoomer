@@ -13,10 +13,15 @@ const invalid = item(INVALID);
 function isDefinite(kind) { return kind === ESCAPED || kind === ANALYTIC; }
 function isEstimate(kind) { return kind === ESCAPED_ESTIMATE || kind === ANALYTIC_ESTIMATE; }
 function isCap(kind) { return kind === PROVISIONAL || kind === FINAL; }
+function classificationFamily(kind) {
+  if (kind === ESCAPED || kind === ESCAPED_ESTIMATE) return 1;
+  if (kind === ANALYTIC || kind === ANALYTIC_ESTIMATE) return 2;
+  return 0;
+}
 
 function representative(left, right) {
-  if (right.origin !== left.origin) return right.origin > left.origin ? right : left;
-  return right.rank > left.rank ? right : left;
+  if (right.rank !== left.rank) return right.rank > left.rank ? right : left;
+  return right.origin > left.origin ? right : left;
 }
 
 function merge(left, right) {
@@ -50,6 +55,14 @@ function merge(left, right) {
   if (right.origin !== left.origin) return right.origin > left.origin ? right : left;
   if (right.evidence !== left.evidence) return right.evidence > left.evidence ? right : left;
   return left;
+}
+
+function presentMerge(history, current) {
+  const historyFamily = classificationFamily(history.kind);
+  const preserveFinerCompatibleHistory = history.origin !== 3 && current.origin === 3
+    && historyFamily !== 0 && historyFamily === classificationFamily(current.kind)
+    && history.rank > current.rank;
+  return preserveFinerCompatibleHistory ? history : merge(history, current);
 }
 
 function normalize(value, exactResolvedView) {
@@ -91,6 +104,21 @@ for (const [label, values, expected] of cases) expect(label, fold(values), expec
 expect('reprojected final is provisional', normalize(item(FINAL, 1000, 4), false), item(PROVISIONAL, 1000, 4));
 expect('reprojected escape is estimate', normalize(item(ESCAPED, 80, 4), false), item(ESCAPED_ESTIMATE, 80, 4));
 expect('exact final remains final', normalize(item(FINAL, 1000, 4), true), item(FINAL, 1000, 4));
+expect('coarse current escape preserves finer history',
+  presentMerge(item(ESCAPED_ESTIMATE, 80, 9), item(ESCAPED, 80, 7, 3)),
+  item(ESCAPED_ESTIMATE, 80, 9));
+expect('finer current escape replaces coarser history',
+  presentMerge(item(ESCAPED_ESTIMATE, 80, 7), item(ESCAPED, 80, 9, 3)),
+  item(ESCAPED, 80, 9, 3));
+expect('equal footprint prefers current exact escape',
+  presentMerge(item(ESCAPED_ESTIMATE, 80, 9), item(ESCAPED, 80, 9, 3)),
+  item(ESCAPED, 80, 9, 3));
+expect('coarse incompatible current records conflict with finer history representative',
+  presentMerge(item(ESCAPED, 80, 9), item(ANALYTIC, 1, 7, 3)),
+  item(CONFLICT, 1, 9));
+expect('finer incompatible current records conflict with current representative',
+  presentMerge(item(ESCAPED, 80, 7), item(ANALYTIC, 1, 9, 3)),
+  item(CONFLICT, 1, 9, 3));
 
 function permutations(values) {
   if (values.length <= 1) return [values];
@@ -119,4 +147,4 @@ for (const values of invariantSets) {
   }
 }
 
-console.log(`Validated ${cases.length + 3} provenance oracle cases plus permutation, idempotence, and associativity invariants.`);
+console.log(`Validated ${cases.length + 8} provenance oracle cases plus permutation, idempotence, and associativity invariants.`);

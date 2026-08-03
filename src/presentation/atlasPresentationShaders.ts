@@ -29,6 +29,11 @@ fn isDisplayDefinite(value: u32) -> bool { return isDefinite(value) || isEstimat
 fn isCap(value: u32) -> bool {
   return value == SEMANTIC_PROVISIONAL_CAP || value == SEMANTIC_FINAL_CAP;
 }
+fn classificationFamily(value: u32) -> u32 {
+  if (value == SEMANTIC_ESCAPED || value == SEMANTIC_ESCAPED_ESTIMATE) { return 1u; }
+  if (value == SEMANTIC_ANALYTIC || value == SEMANTIC_ANALYTIC_ESTIMATE) { return 2u; }
+  return 0u;
+}
 `;
 
 export const atlasReprojectShader = /* wgsl */ `
@@ -88,6 +93,9 @@ fn adjustedHistoryProvenance(packed: u32) -> u32 {
   let provenance = adjustedHistoryProvenance(textureLoad(historyProvenance, coordinate, 0).x);
   if (semantic(provenance) == SEMANTIC_INVALID) { discard; }
   var out: FragmentOutput;
+  // History surfaces are immutable resolved checkpoints. Linear reconstruction
+  // is therefore applied once from the original source to the current target;
+  // no filtered full-frame result is ever fed into a later frame.
   out.colour = vec4f(textureSampleLevel(historyColour,linearSampler,sourceUv,0.0).rgb,1.0);
   out.provenance = provenance;
   return out;
@@ -227,8 +235,8 @@ fn compatiblePreference(base: u32, candidate: u32) -> i32 {
 
 fn conflictProvenance(base: u32, candidate: u32, reason: u32) -> u32 {
   let representative=select(base,candidate,
-    origin(candidate) > origin(base)
-    || (origin(candidate) == origin(base) && rank(candidate) > rank(base))
+    rank(candidate) > rank(base)
+    || (rank(candidate) == rank(base) && origin(candidate) > origin(base))
   );
   return (representative & ((ORIGIN_MASK << ORIGIN_SHIFT) | (RANK_MASK << RANK_SHIFT)))
     | SEMANTIC_CONFLICT
@@ -246,7 +254,15 @@ fn conflictProvenance(base: u32, candidate: u32, reason: u32) -> u32 {
   let base=textureLoad(baseProvenance,coordinate,0).x;
   let candidate=textureLoad(candidateProvenance,coordinate,0).x;
   let preference=compatiblePreference(base,candidate);
-  let chooseCandidate=preference == 1;
+  // Composition order is meaningful here: base is already-accepted history
+  // and candidate is the current atlas. Keep the semantic merge algebra
+  // unchanged, but reject a compatible current classification whose spatial
+  // footprint is coarser than the displayed historical sample.
+  let baseFamily=classificationFamily(semantic(base));
+  let preserveFinerCompatibleHistory=origin(base) != 3u && origin(candidate) == 3u
+    && baseFamily != 0u && baseFamily == classificationFamily(semantic(candidate))
+    && rank(base) > rank(candidate);
+  let chooseCandidate=preference == 1 && !preserveFinerCompatibleHistory;
   if (TEST_INSTRUMENTATION && semantic(candidate) != SEMANTIC_INVALID) {
     if (!chooseCandidate && preference >= 0) { atomicAdd(&counters.values[10],1u); }
     if (preference < 0) { atomicAdd(&counters.values[11],1u); }
@@ -259,8 +275,10 @@ fn conflictProvenance(base: u32, candidate: u32, reason: u32) -> u32 {
     }
   }
   var out: FragmentOutput;
-  let representativeCandidate=origin(candidate) > origin(base)
-    || (origin(candidate) == origin(base) && rank(candidate) > rank(base));
+  // A semantic conflict must be retained, but its display representative is
+  // still the finer spatial sample. Current origin breaks only a rank tie.
+  let representativeCandidate=rank(candidate) > rank(base)
+    || (rank(candidate) == rank(base) && origin(candidate) > origin(base));
   out.colour=select(
     textureLoad(baseColour,coordinate,0),
     textureLoad(candidateColour,coordinate,0),

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "user-boundary-sharpness-start-2026-08-03",
+  "description": "User-positioned complex boundary start for bidirectional while-moving sharpness and continuity regression testing.",
+  "capturedAt": "2026-08-03T11:31:53.588Z",
+  "build": "1.4-dev-sharpness-fix",
+  "gpu": "amd",
+  "iterationTarget": 5000,
+  "palettePhase": 0.08,
+  "camera": {
+    "centerX": {
+      "raw": "-1086987134517280290689879582078081936663748018176",
+      "bits": 160
+    },
+    "centerY": {
+      "raw": "-182091033578402453896837821740817316653599555584",
+      "bits": 160
+    },
+    "scale": {
+      "mantissa": 0.7505205815215608,
+      "exponent": -8
+    },
+    "log10Magnification": 3.009999
+  },
+  "viewport": {
+    "cssWidth": 756,
+    "cssHeight": 927,
+    "devicePixelRatio": 1.375,
+    "canvasWidth": 1039,
+    "canvasHeight": 1274
+  },
+  "traceAnchorCss": {
+    "x": 300,
+    "y": 460
+  },
+  "settledBaseline": {
+    "visibleTiles": 245,
+    "convergedTiles": 245,
+    "sampleExponent": -19,
+    "invalidPixels": 0,
+    "qualityRegressionPixels": 0,
+    "escapedToProvisionalBlackPixels": 0,
+    "conflictPixels": 0,
+    "validationErrors": 0
+  }
+}
