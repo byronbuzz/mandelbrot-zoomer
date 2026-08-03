@@ -12,7 +12,7 @@ const architecture = readFileSync(new URL('../docs/webgpu-fractal-zoomer-archite
 const build = readFileSync(new URL('../src/app/build.ts', import.meta.url), 'utf8');
 
 const checks = [
-  ['greenfield entry point', entry, "import('./app/main')"],
+  ['greenfield entry point remains the default route', entry, ": './app/main'"],
   ['1.x semantic version', build, "APP_VERSION = '1."],
   ['explicit moving state', app, "'moving'"],
   ['explicit settling state', app, "'settling'"],

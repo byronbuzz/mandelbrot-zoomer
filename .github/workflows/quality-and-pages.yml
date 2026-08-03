@@ -1,5 +1,6 @@
-name: Deploy GitHub Pages
+name: Quality Gate and Pages
 on:
+  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
@@ -8,30 +9,35 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          package-manager-cache: false
-      - run: npm install
-      - run: npm run build
-      - uses: actions/configure-pages@v5
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Record tested artifact
+        run: sha256sum pnpm-lock.yaml dist/index.html | tee dist/build-evidence.txt
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: dist
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     needs: build
     steps:
-      - name: Deploy
+      - name: Deploy tested artifact
         id: deployment
         uses: actions/deploy-pages@v4

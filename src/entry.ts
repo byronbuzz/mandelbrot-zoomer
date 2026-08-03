@@ -25,7 +25,10 @@ async function copyText(text: string): Promise<void> {
 }
 
 try {
-  await import('./app/main');
+  const route = new URLSearchParams(location.search).get('mode');
+  await import(route === 'presentation-kernel'
+    ? './presentationKernel/demo'
+    : './app/main');
 } catch (error) {
   const message = errorMessage(error);
   console.error(`${APP_NAME} startup failed`, error);
@@ -40,6 +43,8 @@ try {
 
   const status = document.querySelector<HTMLElement>('#status');
   if (status) status.textContent = `Renderer startup failed: ${message}`;
+  const phase1Status = document.querySelector<HTMLElement>('#phase1-status');
+  if (phase1Status) phase1Status.textContent = `Presentation kernel startup failed: ${message}`;
   setOutput('state-out', 'startup failed');
   setOutput('precision-out', 'shader/device unavailable');
   setOutput('field-out', message);

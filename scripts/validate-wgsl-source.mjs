@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WgslReflect } from 'wgsl_reflect/wgsl_reflect.module.js';
 
 const root = new URL('../src/', import.meta.url);
@@ -49,7 +50,7 @@ function stripComments(source) {
 
 const failures = [];
 let shaderCount = 0;
-for (const file of sourceFiles(root.pathname)) {
+for (const file of sourceFiles(fileURLToPath(root))) {
   const source = readFileSync(file, 'utf8');
   const shaderPattern = /\/\*\s*wgsl\s*\*\/\s*`([\s\S]*?)`/g;
   for (const match of source.matchAll(shaderPattern)) {
