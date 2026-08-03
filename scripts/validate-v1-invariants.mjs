@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 const entry = readFileSync(new URL('../src/entry.ts', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/app/main.ts', import.meta.url), 'utf8');
 const renderer = readFileSync(new URL('../src/presentation/tileFieldRenderer.ts', import.meta.url), 'utf8');
-const shaders = readFileSync(new URL('../src/numerical/tileFieldShaders.ts', import.meta.url), 'utf8');
+const shaders = [
+  '../src/numerical/tileDirectShader.ts',
+  '../src/numerical/tilePerturbationShader.ts',
+  '../src/numerical/tileDisplayShaders.ts'
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const architecture = readFileSync(new URL('../docs/webgpu-fractal-zoomer-architecture.md', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../src/app/build.ts', import.meta.url), 'utf8');
 
