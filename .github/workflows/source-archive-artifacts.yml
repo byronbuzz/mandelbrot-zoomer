@@ -1,0 +1,74 @@
+name: Source Archive Artifacts
+
+on:
+  push:
+    branches:
+      - artifact/source-zips-20260808
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build exact source trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROD_SHA=39867044ffee22761ea9ad3f74b7385688178a0b
+          LINEAGE_SHA=eb79d2975b426171f923f8dcbc56f38c5ae3f0c4
+
+          rm -rf artifacts
+          mkdir -p artifacts/production artifacts/lineage
+
+          git archive "$PROD_SHA" | tar -x -C artifacts/production
+          git archive "$LINEAGE_SHA" | tar -x -C artifacts/lineage
+
+          cat > artifacts/production/SOURCE_ARCHIVE_MANIFEST.txt <<EOF
+          Package: WebGPU Fractal Zoomer v1.4.0 - production source
+          Repository: byronbuzz/mandelbrot-zoomer
+          Exact commit: $PROD_SHA
+          Purpose: Current in-production 1.x codebase at the requested authoritative head.
+          EOF
+
+          cat > artifacts/lineage/SOURCE_ARCHIVE_MANIFEST.txt <<EOF
+          Package: WebGPU Fractal Zoomer - final V4/V5/V6 lineage source
+          Repository: byronbuzz/mandelbrot-zoomer
+          Exact commit: $LINEAGE_SHA
+          Final V6 label: V6.1.0-alpha.2.3
+          Purpose: Complete repository state immediately before the production entry switched to the greenfield 1.x line.
+          EOF
+
+          printf 'Production entry:\n'
+          sed -n '1,20p' artifacts/production/src/entry.ts
+          printf '\nLineage entry:\n'
+          sed -n '1,20p' artifacts/lineage/src/entry.ts
+          printf '\nProduction package version:\n'
+          grep '"version"' artifacts/production/package.json | head -1
+          printf '\nLineage V6 version:\n'
+          cat artifacts/lineage/src/v6/build.ts
+
+      - name: Upload production v1.4.0 source
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebGPU_Fractal_Zoomer_v1.4.0_PRODUCTION_3986704
+          path: artifacts/production
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload final V4-V5-V6 lineage source
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebGPU_Fractal_Zoomer_V4_V5_V6_LINEAGE_eb79d29
+          path: artifacts/lineage
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
